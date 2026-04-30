@@ -1,56 +1,56 @@
-# Hardlink Manager
+# 🚀 Hardlink Manager
 
-一个功能强大的硬链接管理工具，支持自动化硬链接创建、删除监控联动下载器任务删除，提供友好的Web界面管理。
+> 硬链接管理神器，让文件管理变得超级简单！✨
 
-## 功能特性
+---
 
-### 硬链接管理
-- 监控自定义目录，自动为新文件创建硬链接
-- 支持自定义目标目录
-- 可选择是否为硬链接文件创建文件夹结构
-- 支持常见媒体文件扩展名过滤（.mkv, .mp4, .avi, .mov等）
-- 支持自定义排除目录（如sample, subs）
-- 缓存记录已硬链接的文件，防止重复创建
+## 🎯 功能亮点
 
-### 删除监控
-- 监控目录删除事件
-- 联动删除qBittorrent任务
-- 支持文件删除和目录删除事件监控
-- 可配置删除延迟，防止误删
-- 支持删除种子时同时删除文件
+### 🔗 硬链接管理
+- 👀 **智能监控**：自动监控目录，新文件秒级创建硬链接
+- 🎯 **精准过滤**：支持自定义扩展名过滤（.mkv, .mp4, .avi等）
+- 📂 **智能分类**：自动创建文件夹结构，文件管理更有序
+- 🚫 **智能排除**：自动跳过sample、subs等目录
+- 🧠 **智能缓存**：记忆已处理文件，杜绝重复操作
 
-### 通知系统
-- Telegram通知支持
-- 硬链接创建通知
-- 删除事件通知
+### 🗑️ 删除监控
+- 🔄 **联动删除**：监控删除事件，自动联动删除 qBittorrent 任务
+- ⏱️ **防误删延迟**：可配置延迟，给你后悔的机会
+- 📦 **文件清理**：支持删除种子时同步删除文件
 
-### 定时任务
-- 支持 cron 表达式设置执行计划
-- 提供常用时间计划预设（每分钟、每小时、每天等）
-- 支持自定义 cron 表达式
-- 可执行任务类型：批量创建硬链接、清理日志、清理缓存
+### 🔔 通知系统
+- 📱 **Telegram 通知**：硬链接创建、删除事件实时推送
+- 🔔 **及时提醒**：不错过任何重要操作
 
-### 安全特性
-- 下载器密码使用AES加密存储（基于SECRET_KEY）
-- 完整的操作日志记录
-- 删除操作需要确认
+### ⏰ 定时任务
+- ⚙️ **Cron 支持**：灵活的定时执行计划
+- ⚡ **快速预设**：每分钟、每小时、每天一键配置
+- 🧹 **自动维护**：定期清理日志和缓存
 
-## 技术栈
+### 🔒 安全特性
+- 🔐 **AES 加密**：密码安全存储
+- 📝 **完整日志**：所有操作有迹可循
+- 🚨 **删除确认**：双重确认防止误操作
 
-- Python 3.11+
-- Flask 3.1+
-- Flask-SQLAlchemy 3.1+
-- Flask-Bcrypt 1.0+
-- cryptography 42+
-- Watchdog 6.0+
-- requests 2.33+
-- python-telegram-bot 22.7+
-- APScheduler 3.10+
-- Bootstrap 5
+---
 
-## 快速开始
+## 🛠️ 技术栈
 
-### 使用Docker
+| 技术 | 版本 | 说明 |
+|------|------|------|
+| Python | 3.11+ | 核心语言 |
+| Flask | 3.1+ | Web框架 |
+| SQLAlchemy | 3.1+ | 数据库 ORM |
+| Watchdog | 6.0+ | 文件系统监控 |
+| APScheduler | 3.10+ | 定时任务 |
+| Bootstrap | 5.x | 现代 UI |
+| Font Awesome | 6.x | 精美图标 |
+
+---
+
+## 🚀 快速开始
+
+### 🐳 使用 Docker（推荐）
 
 ```bash
 docker run -d \
@@ -61,93 +61,132 @@ docker run -d \
   your-docker-username/hardlink-manager:latest
 ```
 
-### 手动安装
+### 🖥️ 手动安装
 
 ```bash
-# 安装依赖
+# 克隆项目
+git clone https://github.com/your-repo/hardlink-manager.git
+cd hardlink-manager
+
+# 安装依赖（建议使用虚拟环境）
 pip install -r requirements.txt
 
-# 设置环境变量
-export SECRET_KEY=your-secret-key-here
+# 设置密钥（重要！）
+export SECRET_KEY=your-super-secret-key
 
 # 启动应用
 python app.py
 ```
 
-## 配置说明
+---
+
+## ⚙️ 配置说明
 
 ### 环境变量
 
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
-| SECRET_KEY | Flask会话和密码安全密钥 | default-secret-key-for-dev-only |
+| `SECRET_KEY` | 安全密钥（务必修改！） | `default-secret-key-for-dev-only` |
 
-### 应用设置
+### Web 界面设置
 
-通过Web界面的设置页面可以配置：
+通过设置页面可以轻松配置：
+- 📊 日志保留天数
+- 🧹 自动清理日志开关
+- 📁 默认文件扩展名
+- 🚫 默认排除目录
+- ⚠️ 删除确认延迟
 
-- 日志保留天数
-- 自动清理日志
-- 默认文件扩展名
-- 默认排除目录
-- 删除种子时是否同时删除文件
-- 删除确认延迟（秒）
-- 硬链接创建通知开关
-- 删除通知开关
+---
 
-## API接口
+## 🌐 API 接口
 
 ### 健康检查
-
-```
+```http
 GET /api/health
 ```
 
 ### 任务状态
-
-```
+```http
 GET /api/tasks/status
 ```
 
-## 项目结构
+---
+
+## 📁 项目结构
 
 ```
-.
-├── app.py                 # 主应用文件
-├── requirements.txt       # 依赖列表
-├── Dockerfile             # Docker构建文件
-├── .github/
-│   └── workflows/
-│       └── docker-build.yml  # GitHub Actions工作流
-└── templates/             # HTML模板
-    ├── dashboard.html     # 仪表盘
-    ├── hardlink.html      # 硬链接管理
-    ├── delete_monitor.html # 删除监控
-    ├── downloader.html    # 下载器管理
-    ├── notifier.html      # 通知器管理
-    ├── cron.html          # 定时任务管理
-    ├── logs.html          # 操作日志
-    └── settings.html      # 设置页面
+hardlink-manager/
+├── app.py                 # 🎯 主应用文件
+├── requirements.txt       # 📦 依赖列表
+├── Dockerfile             # 🐳 Docker构建配置
+├── .github/workflows/
+│   └── docker-build.yml   # 🚀 CI/CD工作流
+└── templates/             # 🎨 HTML模板
+    ├── dashboard.html     # 📊 仪表盘
+    ├── hardlink.html      # 🔗 硬链接管理
+    ├── delete_monitor.html# 🗑️ 删除监控
+    ├── downloader.html    # 📥 下载器管理
+    ├── notifier.html      # 🔔 通知器管理
+    ├── cron.html          # ⏰ 定时任务
+    ├── logs.html          # 📝 操作日志
+    └── settings.html      # ⚙️ 设置页面
 ```
 
-## 使用说明
+---
 
-1. **添加下载器**: 在下载器管理页面添加qBittorrent连接信息
-2. **添加通知器**: 在通知器管理页面添加Telegram Bot信息
-3. **创建硬链接任务**: 设置源目录、目标目录和过滤规则
-4. **创建删除监控任务**: 设置监控目录并关联下载器和通知器
+## 📖 使用指南
 
-## 安全注意事项
+1. **添加下载器** 📥
+   - 进入下载器管理页面
+   - 填写 qBittorrent 连接信息
 
-1. **SECRET_KEY**: 务必在生产环境中设置一个安全的随机密钥
-2. **数据库备份**: 定期备份`hardlink_manager.db`数据库文件
-3. **访问控制**: 建议通过反向代理（如Nginx）添加访问控制
-4. **敏感信息**: 不要在代码中硬编码敏感信息
+2. **添加通知器** 🔔
+   - 进入通知器管理页面
+   - 添加 Telegram Bot 信息
 
-## 许可证
+3. **创建硬链接任务** 🔗
+   - 设置源目录、目标目录
+   - 配置过滤规则
 
-MIT License
+4. **创建删除监控** 🗑️
+   - 设置监控目录
+   - 关联下载器和通知器
 
-## 贡献
+---
 
-欢迎提交Issue和Pull Request！
+## 🔒 安全小贴士
+
+1. **🔑 SECRET_KEY**：生产环境务必使用强随机密钥
+2. **💾 备份数据库**：定期备份 `hardlink_manager.db`
+3. **🚪 访问控制**：建议使用 Nginx 反向代理添加认证
+4. **🚫 敏感信息**：不要在代码中硬编码密码
+
+---
+
+## 📝 更新日志
+
+### v1.0.0 🎉
+- ✨ 初始版本发布
+- 🔗 硬链接自动创建
+- 🗑️ 删除监控联动
+- 🔔 Telegram 通知
+- ⏰ 定时任务
+
+---
+
+## 📄 许可证
+
+MIT License - 自由使用，欢迎贡献！
+
+---
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！🎉
+
+如果你喜欢这个项目，别忘了给个 ⭐ 哦！
+
+---
+
+*Made with ❤️ for file management lovers*
