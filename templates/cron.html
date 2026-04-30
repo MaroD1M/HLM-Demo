@@ -306,12 +306,18 @@
                                                 <td>{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                                                 <td>
                                                     <div class="btn-group btn-group-sm">
-                                                        <a href="/cron/toggle/{{ job.id }}" class="btn btn-outline-secondary action-btn" title="{{ '禁用' if job.enabled else '启用' }}">
-                                                            <i class="fa-solid {{ 'fa-toggle-on' if job.enabled else 'fa-toggle-off' }}"></i>
-                                                        </a>
-                                                        <a href="/cron/delete/{{ job.id }}" class="btn btn-outline-danger action-btn" title="删除" onclick="return confirm('确定删除此定时任务？')">
-                                                            <i class="fa-solid fa-xmark"></i>
-                                                        </a>
+                                                        <form action="/cron/toggle/{{ job.id }}" method="POST" class="d-inline">
+                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                            <button type="submit" class="btn btn-outline-secondary action-btn" title="{{ '禁用' if job.enabled else '启用' }}">
+                                                                <i class="fa-solid {{ 'fa-toggle-on' if job.enabled else 'fa-toggle-off' }}"></i>
+                                                            </button>
+                                                        </form>
+                                                        <form action="/cron/delete/{{ job.id }}" method="POST" class="d-inline" onsubmit="return confirm('确定删除此定时任务？')">
+                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                            <button type="submit" class="btn btn-outline-danger action-btn" title="删除">
+                                                                <i class="fa-solid fa-xmark"></i>
+                                                            </button>
+                                                        </form>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -339,6 +345,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <form action="/cron/add" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="modal-body">
                         <div class="mb-3">
                             <label>任务名称 *</label>
