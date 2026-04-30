@@ -286,18 +286,30 @@
                                                 <td>{{ task.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                                                 <td>
                                                     <div class="btn-group btn-group-sm">
-                                                        <a href="/hardlink/toggle/{{ task.id }}" class="btn btn-outline-secondary action-btn" title="{{ '停止' if task.enabled else '启动' }}">
-                                                            <i class="fa-solid {{ 'fa-pause' if task.enabled else 'fa-play' }}"></i>
-                                                        </a>
-                                                        <a href="/hardlink/execute/{{ task.id }}" class="btn btn-outline-info action-btn" title="批量执行">
-                                                            <i class="fa-solid fa-play-circle"></i>
-                                                        </a>
-                                                        <a href="/hardlink/cache/clear/{{ task.id }}" class="btn btn-outline-warning action-btn" title="清除缓存">
-                                                            <i class="fa-solid fa-trash"></i>
-                                                        </a>
-                                                        <a href="/hardlink/delete/{{ task.id }}" class="btn btn-outline-danger action-btn" title="删除" onclick="return confirm('确定删除此任务？')">
-                                                            <i class="fa-solid fa-xmark"></i>
-                                                        </a>
+                                                        <form action="/hardlink/toggle/{{ task.id }}" method="POST" class="d-inline">
+                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                            <button type="submit" class="btn btn-outline-secondary action-btn" title="{{ '停止' if task.enabled else '启动' }}">
+                                                                <i class="fa-solid {{ 'fa-pause' if task.enabled else 'fa-play' }}"></i>
+                                                            </button>
+                                                        </form>
+                                                        <form action="/hardlink/execute/{{ task.id }}" method="POST" class="d-inline">
+                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                            <button type="submit" class="btn btn-outline-info action-btn" title="批量执行">
+                                                                <i class="fa-solid fa-play-circle"></i>
+                                                            </button>
+                                                        </form>
+                                                        <form action="/hardlink/cache/clear/{{ task.id }}" method="POST" class="d-inline">
+                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                            <button type="submit" class="btn btn-outline-warning action-btn" title="清除缓存">
+                                                                <i class="fa-solid fa-trash"></i>
+                                                            </button>
+                                                        </form>
+                                                        <form action="/hardlink/delete/{{ task.id }}" method="POST" class="d-inline" onsubmit="return confirm('确定删除此任务？')">
+                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                            <button type="submit" class="btn btn-outline-danger action-btn" title="删除">
+                                                                <i class="fa-solid fa-xmark"></i>
+                                                            </button>
+                                                        </form>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -325,6 +337,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <form action="/hardlink/add" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="modal-body">
                         <div class="row">
                             <div class="col-md-6">

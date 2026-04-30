@@ -142,9 +142,12 @@
             <main role="main" class="col-md-10 ml-sm-auto px-4 py-4">
                 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
                     <h1 class="h2">操作日志</h1>
-                    <a href="/logs/clear" class="btn btn-outline-danger" onclick="return confirm('确定清空所有日志？')">
-                        <i class="fa-solid fa-trash-can me-1"></i> 清空日志
-                    </a>
+                    <form action="/logs/clear" method="POST" class="d-inline" onsubmit="return confirm('确定清空所有日志？')">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn btn-outline-danger">
+                            <i class="fa-solid fa-trash-can me-1"></i> 清空日志
+                        </button>
+                    </form>
                 </div>
 
                 {% with messages = get_flashed_messages(with_categories=true) %}

@@ -290,12 +290,18 @@
                                                 <td>{{ task.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                                                 <td>
                                                     <div class="btn-group btn-group-sm">
-                                                        <a href="/delete-monitor/toggle/{{ task.id }}" class="btn btn-outline-secondary action-btn" title="{{ '停止' if task.enabled else '启动' }}">
-                                                            <i class="fa-solid {{ 'fa-pause' if task.enabled else 'fa-play' }}"></i>
-                                                        </a>
-                                                        <a href="/delete-monitor/delete/{{ task.id }}" class="btn btn-outline-danger action-btn" title="删除" onclick="return confirm('确定删除此任务？')">
-                                                            <i class="fa-solid fa-xmark"></i>
-                                                        </a>
+                                                        <form action="/delete-monitor/toggle/{{ task.id }}" method="POST" class="d-inline">
+                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                            <button type="submit" class="btn btn-outline-secondary action-btn" title="{{ '停止' if task.enabled else '启动' }}">
+                                                                <i class="fa-solid {{ 'fa-pause' if task.enabled else 'fa-play' }}"></i>
+                                                            </button>
+                                                        </form>
+                                                        <form action="/delete-monitor/delete/{{ task.id }}" method="POST" class="d-inline" onsubmit="return confirm('确定删除此任务？')">
+                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                            <button type="submit" class="btn btn-outline-danger action-btn" title="删除">
+                                                                <i class="fa-solid fa-xmark"></i>
+                                                            </button>
+                                                        </form>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -323,6 +329,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <form action="/delete-monitor/add" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="modal-body">
                         <div class="row">
                             <div class="col-md-6">

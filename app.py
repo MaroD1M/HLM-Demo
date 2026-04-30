@@ -1,9 +1,11 @@
 import os
 import threading
 import asyncio
+import secrets
+from urllib.parse import urlparse
 from datetime import datetime, UTC, timedelta
 from pathlib import Path
-from flask import Flask, render_template, request, redirect, flash, jsonify
+from flask import Flask, render_template, request, redirect, flash, jsonify, session, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from watchdog.observers import Observer
@@ -24,6 +26,9 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default-secret-key-for-dev-only')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///hardlink_manager.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['APP_USERNAME'] = os.environ.get('APP_USERNAME', '').strip()
+app.config['APP_PASSWORD'] = os.environ.get('APP_PASSWORD', '')
+app.config['REQUEST_TIMEOUT_SECONDS'] = int(os.environ.get('REQUEST_TIMEOUT_SECONDS', '10'))
 
 db = SQLAlchemy(app)
 scheduler = BackgroundScheduler(timezone='UTC')
@@ -31,6 +36,36 @@ bcrypt = Bcrypt(app)
 
 observers = {}
 observer_lock = threading.Lock()
+
+
+def ensure_csrf_token():
+    token = session.get('_csrf_token')
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session['_csrf_token'] = token
+    return token
+
+
+@app.context_processor
+def inject_csrf_token():
+    return {'csrf_token': ensure_csrf_token()}
+
+
+@app.before_request
+def security_guard():
+    if request.endpoint == 'static':
+        return
+
+    if app.config['APP_USERNAME'] and app.config['APP_PASSWORD']:
+        auth = request.authorization
+        if not auth or auth.username != app.config['APP_USERNAME'] or auth.password != app.config['APP_PASSWORD']:
+            return ('Unauthorized', 401, {'WWW-Authenticate': 'Basic realm="HLM"'})
+
+    if request.method == 'POST':
+        request_token = request.form.get('csrf_token') or request.headers.get('X-CSRF-Token')
+        session_token = session.get('_csrf_token')
+        if not session_token or not request_token or request_token != session_token:
+            abort(400, description='Invalid CSRF token')
 
 class HardlinkTask(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -47,7 +82,7 @@ class HardlinkTask(db.Model):
 
     def get_extensions_list(self):
         if not self.extensions:
-            return []
+            return None
         return [e.strip().lower() for e in self.extensions.split(',')]
 
     def get_exclude_dirs_list(self):
@@ -213,11 +248,12 @@ def get_qbittorrent_torrents(downloader):
         session = requests.Session()
         if downloader.username and downloader.encrypted_password:
             login_url = f"{downloader.host}:{downloader.port}/api/v2/auth/login"
-            session.post(login_url, data={
+            login_resp = session.post(login_url, data={
                 'username': downloader.username,
                 'password': downloader.get_password()
-            })
-        response = session.get(url)
+            }, timeout=app.config['REQUEST_TIMEOUT_SECONDS'])
+            login_resp.raise_for_status()
+        response = session.get(url, timeout=app.config['REQUEST_TIMEOUT_SECONDS'])
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -230,15 +266,16 @@ def delete_qbittorrent_torrent(downloader, torrent_hash):
         session = requests.Session()
         if downloader.username and downloader.encrypted_password:
             login_url = f"{downloader.host}:{downloader.port}/api/v2/auth/login"
-            session.post(login_url, data={
+            login_resp = session.post(login_url, data={
                 'username': downloader.username,
                 'password': downloader.get_password()
-            })
+            }, timeout=app.config['REQUEST_TIMEOUT_SECONDS'])
+            login_resp.raise_for_status()
         delete_files = get_config('delete_files_with_torrent', 'false') == 'true'
         response = session.post(url, data={
             'hashes': torrent_hash,
             'deleteFiles': 'true' if delete_files else 'false'
-        })
+        }, timeout=app.config['REQUEST_TIMEOUT_SECONDS'])
         response.raise_for_status()
         return True
     except Exception as e:
@@ -285,8 +322,11 @@ class HardlinkHandler(FileSystemEventHandler):
                 os.link(file_path, dest_file)
                 
                 if self.task.use_cache:
-                    cache_entry = HardlinkCache(source_path=str(file_path), dest_path=str(dest_file))
-                    db.session.add(cache_entry)
+                    cache_entry = HardlinkCache.query.filter_by(source_path=str(file_path)).first()
+                    if cache_entry:
+                        cache_entry.dest_path = str(dest_file)
+                    else:
+                        db.session.add(HardlinkCache(source_path=str(file_path), dest_path=str(dest_file)))
                     db.session.commit()
                 
                 log_operation('hardlink_created', 'HardlinkTask', self.task.id, self.task.name, 
@@ -298,6 +338,7 @@ class HardlinkHandler(FileSystemEventHandler):
                         send_telegram_notification(notifier, f"硬链接已创建\n{file_path}\n-> {dest_file}")
                 
             except Exception as e:
+                db.session.rollback()
                 app.logger.error(f"Failed to create hard link: {e}")
                 log_operation('hardlink_failed', 'HardlinkTask', self.task.id, self.task.name, 
                             f"Failed to create hard link: {e}", success=False)
@@ -318,6 +359,9 @@ class DeleteHandler(FileSystemEventHandler):
             
             if self.task.downloader:
                 torrents = get_qbittorrent_torrents(self.task.downloader)
+                if torrents is None:
+                    log_operation('torrent_list_failed', 'DeleteMonitorTask', self.task.id, self.task.name, 'Failed to query downloader torrents', success=False)
+                    return
                 for torrent in torrents:
                     torrent_name = torrent.get('name', '')
                     if deleted_path.name in torrent_name or str(deleted_path.parent) in torrent.get('save_path', ''):
@@ -397,6 +441,7 @@ def batch_create_hardlinks(task_id):
                     if task.use_cache:
                         cache_entry = HardlinkCache.query.filter_by(source_path=str(file_path)).first()
                         if cache_entry:
+                            cache_entry.dest_path = str(dest_file)
                             continue
                     
                     dest_path = Path(task.dest_dir)
@@ -422,6 +467,7 @@ def batch_create_hardlinks(task_id):
                         f"Batch created {count} hard links")
             return True, f"成功创建 {count} 个硬链接"
         except Exception as e:
+            db.session.rollback()
             log_operation('batch_hardlink_failed', 'HardlinkTask', task.id, task.name, 
                         f"Batch hardlink failed: {e}", success=False)
             return False, str(e)
@@ -503,17 +549,24 @@ def update_cron_job(job_id):
 def validate_path(path):
     if not path:
         return False, "路径不能为空"
-    if '..' in path or '~' in path or '\\' in path:
+    if '\x00' in path or '~' in path or '\\' in path:
         return False, "非法路径字符"
+    normalized = Path(path)
+    if not normalized.is_absolute():
+        return False, "路径必须为绝对路径"
     return True, ""
 
 def validate_host(host):
     if not host:
         return False, "主机地址不能为空"
-    import re
-    if not re.match(r'^https?://[a-zA-Z0-9.-]+(:\d+)?/?$', host):
+    parsed = urlparse(host)
+    if parsed.scheme not in {'http', 'https'} or not parsed.hostname:
         return False, "无效的主机地址格式"
     return True, ""
+
+def validate_cron_expression(expr):
+    parts = (expr or '').split()
+    return len(parts) == 5
 
 @app.route('/')
 def dashboard():
@@ -570,6 +623,9 @@ def hardlink_add():
         flash(f'目标目录无效: {msg}', 'danger')
         return redirect('/hardlink')
     
+    source_dir = str(Path(source_dir))
+    dest_dir = str(Path(dest_dir))
+
     new_task = HardlinkTask(
         name=name,
         source_dir=source_dir,
@@ -590,7 +646,7 @@ def hardlink_add():
     flash('硬链接任务已添加', 'success')
     return redirect('/hardlink')
 
-@app.route('/hardlink/toggle/<int:task_id>')
+@app.route('/hardlink/toggle/<int:task_id>', methods=['POST'])
 def hardlink_toggle(task_id):
     task = HardlinkTask.query.get(task_id)
     if not task:
@@ -611,7 +667,7 @@ def hardlink_toggle(task_id):
     
     return redirect('/hardlink')
 
-@app.route('/hardlink/delete/<int:task_id>')
+@app.route('/hardlink/delete/<int:task_id>', methods=['POST'])
 def hardlink_delete(task_id):
     task = HardlinkTask.query.get(task_id)
     if not task:
@@ -628,7 +684,7 @@ def hardlink_delete(task_id):
     flash(f'任务 {task.name} 已删除', 'success')
     return redirect('/hardlink')
 
-@app.route('/hardlink/batch/<int:task_id>')
+@app.route('/hardlink/batch/<int:task_id>', methods=['POST'])
 def hardlink_batch(task_id):
     success, message = batch_create_hardlinks(task_id)
     if success:
@@ -637,7 +693,7 @@ def hardlink_batch(task_id):
         flash(f'批量创建失败: {message}', 'danger')
     return redirect('/hardlink')
 
-@app.route('/hardlink/execute/<int:task_id>')
+@app.route('/hardlink/execute/<int:task_id>', methods=['POST'])
 def hardlink_execute(task_id):
     success, message = batch_create_hardlinks(task_id)
     if success:
@@ -646,7 +702,7 @@ def hardlink_execute(task_id):
         flash(f'执行失败: {message}', 'danger')
     return redirect('/hardlink')
 
-@app.route('/hardlink/cache/clear/<int:task_id>')
+@app.route('/hardlink/cache/clear/<int:task_id>', methods=['POST'])
 def hardlink_clear_cache(task_id):
     task = HardlinkTask.query.get(task_id)
     if not task:
@@ -674,9 +730,14 @@ def delete_monitor_add():
     notifier_id = request.form.get('notifier_id')
     events = ','.join(request.form.getlist('events'))
     
+    valid, msg = validate_path(directory)
+    if not valid:
+        flash(f'监控目录无效: {msg}', 'danger')
+        return redirect('/delete-monitor')
+
     new_task = DeleteMonitorTask(
         name=name,
-        directory=directory,
+        directory=str(Path(directory)),
         downloader_id=downloader_id if downloader_id else None,
         notifier_id=notifier_id if notifier_id else None,
         events=events or 'unlink,unlinkDir'
@@ -692,7 +753,7 @@ def delete_monitor_add():
     flash('删除监控任务已添加', 'success')
     return redirect('/delete-monitor')
 
-@app.route('/delete-monitor/toggle/<int:task_id>')
+@app.route('/delete-monitor/toggle/<int:task_id>', methods=['POST'])
 def delete_monitor_toggle(task_id):
     task = DeleteMonitorTask.query.get(task_id)
     if not task:
@@ -713,7 +774,7 @@ def delete_monitor_toggle(task_id):
     
     return redirect('/delete-monitor')
 
-@app.route('/delete-monitor/delete/<int:task_id>')
+@app.route('/delete-monitor/delete/<int:task_id>', methods=['POST'])
 def delete_monitor_delete(task_id):
     task = DeleteMonitorTask.query.get(task_id)
     if not task:
@@ -760,6 +821,8 @@ def downloader_add():
         flash('端口号必须在 1-65535 之间', 'danger')
         return redirect('/downloader')
     
+    host = host.rstrip('/')
+
     new_downloader = Downloader(
         name=name,
         type=downloader_type,
@@ -776,7 +839,7 @@ def downloader_add():
     flash('下载器已添加', 'success')
     return redirect('/downloader')
 
-@app.route('/downloader/toggle/<int:downloader_id>')
+@app.route('/downloader/toggle/<int:downloader_id>', methods=['POST'])
 def downloader_toggle(downloader_id):
     downloader = Downloader.query.get(downloader_id)
     if not downloader:
@@ -791,7 +854,7 @@ def downloader_toggle(downloader_id):
     flash(f'下载器 {downloader.name} 已{"启用" if downloader.enabled else "禁用"}', 'success')
     return redirect('/downloader')
 
-@app.route('/downloader/delete/<int:downloader_id>')
+@app.route('/downloader/delete/<int:downloader_id>', methods=['POST'])
 def downloader_delete(downloader_id):
     downloader = Downloader.query.get(downloader_id)
     if not downloader:
@@ -805,7 +868,7 @@ def downloader_delete(downloader_id):
     flash(f'下载器 {downloader.name} 已删除', 'success')
     return redirect('/downloader')
 
-@app.route('/downloader/test/<int:downloader_id>')
+@app.route('/downloader/test/<int:downloader_id>', methods=['POST'])
 def downloader_test(downloader_id):
     downloader = Downloader.query.get(downloader_id)
     if not downloader:
@@ -848,7 +911,7 @@ def notifier_add():
     flash('通知器已添加', 'success')
     return redirect('/notifier')
 
-@app.route('/notifier/toggle/<int:notifier_id>')
+@app.route('/notifier/toggle/<int:notifier_id>', methods=['POST'])
 def notifier_toggle(notifier_id):
     notifier = Notifier.query.get(notifier_id)
     if not notifier:
@@ -863,7 +926,7 @@ def notifier_toggle(notifier_id):
     flash(f'通知器 {notifier.name} 已{"启用" if notifier.enabled else "禁用"}', 'success')
     return redirect('/notifier')
 
-@app.route('/notifier/delete/<int:notifier_id>')
+@app.route('/notifier/delete/<int:notifier_id>', methods=['POST'])
 def notifier_delete(notifier_id):
     notifier = Notifier.query.get(notifier_id)
     if not notifier:
@@ -877,7 +940,7 @@ def notifier_delete(notifier_id):
     flash(f'通知器 {notifier.name} 已删除', 'success')
     return redirect('/notifier')
 
-@app.route('/notifier/test/<int:notifier_id>')
+@app.route('/notifier/test/<int:notifier_id>', methods=['POST'])
 def notifier_test(notifier_id):
     notifier = Notifier.query.get(notifier_id)
     if not notifier:
@@ -899,7 +962,7 @@ def logs_list():
     logs = OperationLog.query.order_by(OperationLog.created_at.desc()).all()
     return render_template('logs.html', logs=logs)
 
-@app.route('/logs/clear')
+@app.route('/logs/clear', methods=['POST'])
 def logs_clear():
     OperationLog.query.delete()
     db.session.commit()
@@ -973,7 +1036,7 @@ def cron_add():
     flash('定时任务已添加', 'success')
     return redirect('/cron')
 
-@app.route('/cron/toggle/<int:job_id>')
+@app.route('/cron/toggle/<int:job_id>', methods=['POST'])
 def cron_toggle(job_id):
     job = CronJob.query.get(job_id)
     if not job:
@@ -989,7 +1052,7 @@ def cron_toggle(job_id):
     flash(f'定时任务 {job.name} 已{"启用" if job.enabled else "禁用"}', 'success')
     return redirect('/cron')
 
-@app.route('/cron/delete/<int:job_id>')
+@app.route('/cron/delete/<int:job_id>', methods=['POST'])
 def cron_delete(job_id):
     job = CronJob.query.get(job_id)
     if not job:
