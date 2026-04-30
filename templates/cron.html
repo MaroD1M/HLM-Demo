@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hardlink Manager - 定时任务</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --secondary-color: #8b5cf6;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --info-color: #06b6d4;
+            --danger-color: #ef4444;
+        }
+        
+        .sidebar {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+            position: sticky;
+            top: 0;
+        }
+        
+        .sidebar .brand {
+            font-size: 1.1rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .sidebar a {
+            color: rgba(255,255,255,0.7);
+            transition: all 0.3s ease;
+            border-radius: 8px;
+            margin: 2px 8px;
+        }
+        
+        .sidebar a:hover {
+            color: #fff;
+            background: rgba(99, 102, 241, 0.2);
+            transform: translateX(4px);
+        }
+        
+        .sidebar a.active {
+            color: #fff;
+            background: rgba(99, 102, 241, 0.3);
+            border-left: 3px solid #6366f1;
+        }
+        
+        .card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: none;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        
+        .card:hover {
+            transform: translateY(-4px) scale(1.01);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+        }
+        
+        .status-badge {
+            font-size: 12px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .status-enabled {
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            color: #065f46;
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+        }
+        
+        .status-disabled {
+            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+            color: #991b1b;
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+        }
+        
+        .action-btn {
+            opacity: 0.6;
+            transition: all 0.3s ease;
+        }
+        
+        .action-btn:hover {
+            opacity: 1;
+            transform: scale(1.1);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border: none;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.4);
+        }
+        
+        .btn-outline-secondary, .btn-outline-info, .btn-outline-danger {
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-outline-secondary:hover, .btn-outline-info:hover, .btn-outline-danger:hover {
+            transform: translateY(-1px);
+        }
+        
+        .alert {
+            border-radius: 12px;
+            border: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .table {
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        
+        .table th {
+            background: #f8fafc;
+            border-bottom: 2px solid #e2e8f0;
+            font-weight: 600;
+        }
+        
+        .table td {
+            border-bottom: 1px solid #e2e8f0;
+            transition: background 0.2s ease;
+        }
+        
+        .table tr:hover td {
+            background: #f8fafc;
+        }
+        
+        .modal-content {
+            border-radius: 20px;
+            border: none;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.2);
+        }
+        
+        .modal-header {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            border-bottom: none;
+            border-radius: 20px 20px 0 0;
+        }
+        
+        .form-control, .form-select {
+            border-radius: 10px;
+            border: 2px solid #e2e8f0;
+            transition: all 0.3s ease;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+            outline: none;
+        }
+        
+        .nav-item {
+            position: relative;
+        }
+        
+        .nav-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 0;
+            background: #6366f1;
+            transition: height 0.3s ease;
+        }
+        
+        .nav-item:hover::before, .nav-item.active::before {
+            height: 60%;
+        }
+        
+        .cron-help {
+            font-size: 12px;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <nav class="col-md-2 d-none d-md-block sidebar">
+                <div class="sidebar-sticky pt-3">
+                    <h5 class="brand px-3 mb-4">Hardlink Manager</h5>
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link" href="/">
+                                <i class="fa-solid fa-gauge me-2"></i> 仪表盘
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/hardlink">
+                                <i class="fa-solid fa-link me-2"></i> 硬链接管理
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/delete-monitor">
+                                <i class="fa-solid fa-trash-can me-2"></i> 删除监控
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/downloader">
+                                <i class="fa-solid fa-download me-2"></i> 下载器管理
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/notifier">
+                                <i class="fa-solid fa-bell me-2"></i> 通知器管理
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/logs">
+                                <i class="fa-solid fa-file-text me-2"></i> 操作日志
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="/cron">
+                                <i class="fa-solid fa-clock me-2"></i> 定时任务
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/settings">
+                                <i class="fa-solid fa-gear me-2"></i> 设置
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <main role="main" class="col-md-10 ml-sm-auto px-4 py-4">
+                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+                    <h1 class="h2">定时任务</h1>
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addJobModal">
+                        <i class="fa-solid fa-plus me-1"></i> 添加任务
+                    </button>
+                </div>
+
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <div class="card">
+                    <div class="card-body">
+                        {% if jobs %}
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>任务名称</th>
+                                            <th>任务类型</th>
+                                            <th>目标任务</th>
+                                            <th>Cron表达式</th>
+                                            <th>状态</th>
+                                            <th>创建时间</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for job in jobs %}
+                                            <tr>
+                                                <td>{{ job.name }}</td>
+                                                <td>
+                                                    {% if job.task_type == 'batch_hardlink' %}批量创建硬链接{% endif %}
+                                                    {% if job.task_type == 'clean_logs' %}清理日志{% endif %}
+                                                    {% if job.task_type == 'clean_cache' %}清理缓存{% endif %}
+                                                </td>
+                                                <td>
+                                                    {% if job.task_type == 'batch_hardlink' and job.target_id %}
+                                                        {% set target = hardlink_tasks | selectattr('id', 'equalto', job.target_id) | first %}
+                                                        {{ target.name if target else '未知' }}
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    <code>{{ job.cron_expression }}</code>
+                                                </td>
+                                                <td>
+                                                    {% if job.enabled %}
+                                                        <span class="status-badge status-enabled">已启用</span>
+                                                    {% else %}
+                                                        <span class="status-badge status-disabled">已禁用</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                                <td>
+                                                    <div class="btn-group btn-group-sm">
+                                                        <a href="/cron/toggle/{{ job.id }}" class="btn btn-outline-secondary action-btn" title="{{ '禁用' if job.enabled else '启用' }}">
+                                                            <i class="fa-solid {{ 'fa-toggle-on' if job.enabled else 'fa-toggle-off' }}"></i>
+                                                        </a>
+                                                        <a href="/cron/delete/{{ job.id }}" class="btn btn-outline-danger action-btn" title="删除" onclick="return confirm('确定删除此定时任务？')">
+                                                            <i class="fa-solid fa-xmark"></i>
+                                                        </a>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="text-center py-8">
+                                <i class="fa-solid fa-clock fa-4x text-muted mb-3"></i>
+                                <p class="text-muted">暂无定时任务，点击上方按钮添加</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div class="modal fade" id="addJobModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">添加定时任务</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form action="/cron/add" method="POST">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label>任务名称 *</label>
+                            <input type="text" name="name" class="form-control" required placeholder="输入任务名称">
+                        </div>
+
+                        <div class="mb-3">
+                            <label>任务类型 *</label>
+                            <select name="task_type" class="form-select" required onchange="updateTargetField()">
+                                <option value="">选择任务类型</option>
+                                <option value="batch_hardlink">批量创建硬链接</option>
+                                <option value="clean_logs">清理日志</option>
+                                <option value="clean_cache">清理缓存</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3" id="target_field" style="display: none;">
+                            <label>关联硬链接任务</label>
+                            <select name="target_id" class="form-select">
+                                <option value="">选择硬链接任务</option>
+                                {% for task in hardlink_tasks %}
+                                    <option value="{{ task.id }}">{{ task.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label>执行计划 *</label>
+                            <select name="cron_expression" class="form-select" onchange="toggleCustomCron()">
+                                <option value="">选择预设计划</option>
+                                {% for name, expr in {
+                                    '每分钟': '* * * * *',
+                                    '每5分钟': '*/5 * * * *',
+                                    '每10分钟': '*/10 * * * *',
+                                    '每15分钟': '*/15 * * * *',
+                                    '每30分钟': '*/30 * * * *',
+                                    '每小时': '0 * * * *',
+                                    '每2小时': '0 */2 * * *',
+                                    '每6小时': '0 */6 * * *',
+                                    '每天凌晨2点': '0 2 * * *',
+                                    '每天早上6点': '0 6 * * *',
+                                    '每天中午12点': '0 12 * * *',
+                                    '每周一凌晨2点': '0 2 * * 1',
+                                    '每月1号凌晨2点': '0 2 1 * *'
+                                }.items() %}
+                                    <option value="{{ expr }}">{{ name }} ({{ expr }})</option>
+                                {% endfor %}
+                                <option value="custom">自定义 Cron 表达式</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3" id="custom_cron_field" style="display: none;">
+                            <label>自定义 Cron 表达式</label>
+                            <input type="text" name="custom_cron" class="form-control" placeholder="分 时 日 月 周">
+                            <p class="cron-help mt-1">格式: <code>分钟 小时 日期 月份 星期</code></p>
+                            <p class="cron-help">例如: <code>0 2 * * *</code> 表示每天凌晨2点执行</p>
+                            <p class="cron-help">使用 <code>*</code> 表示任意值，<code>*/5</code> 表示每5个单位</p>
+                        </div>
+
+                        <div class="mb-3">
+                            <label>描述</label>
+                            <textarea name="description" class="form-control" rows="2" placeholder="任务描述（可选）"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                        <button type="submit" class="btn btn-primary">添加</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function updateTargetField() {
+            var taskType = document.querySelector('select[name="task_type"]').value;
+            var targetField = document.getElementById('target_field');
+            if (taskType === 'batch_hardlink') {
+                targetField.style.display = 'block';
+            } else {
+                targetField.style.display = 'none';
+            }
+        }
+
+        function toggleCustomCron() {
+            var cronSelect = document.querySelector('select[name="cron_expression"]');
+            var customField = document.getElementById('custom_cron_field');
+            if (cronSelect.value === 'custom') {
+                customField.style.display = 'block';
+            } else {
+                customField.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
