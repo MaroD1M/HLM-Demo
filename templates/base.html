@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Hardlink Manager{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+  <style>
+    :root { --bg:#f3f6fb; --card:#ffffff; --text:#122030; --muted:#62748a; --brand:#0f766e; --brand2:#155e75; --danger:#b91c1c; }
+    body{background:radial-gradient(circle at 15% 10%,#dff7f3 0,#f3f6fb 40%),var(--bg);color:var(--text)}
+    .app-shell{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+    .sidebar{background:linear-gradient(180deg,var(--brand2),#0b3e4c);padding:20px 14px;color:#e8f7f6;position:sticky;top:0;height:100vh}
+    .brand{font-weight:700;letter-spacing:.5px;margin-bottom:16px}
+    .nav-link{color:#cdeeed;border-radius:10px;margin:4px 0}
+    .nav-link.active,.nav-link:hover{background:rgba(255,255,255,.14);color:#fff}
+    .main{padding:20px 24px}
+    .card{border:none;border-radius:14px;background:var(--card);box-shadow:0 6px 24px rgba(15,35,50,.06)}
+    .table td,.table th{vertical-align:middle}
+    .muted{color:var(--muted)}
+    @media (max-width: 900px){.app-shell{grid-template-columns:1fr}.sidebar{height:auto;position:relative}}
+  </style>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand"><i class="fa-solid fa-link"></i> Hardlink Manager</div>
+    <nav class="nav flex-column">
+      <a class="nav-link {% if request.path=='/' %}active{% endif %}" href="/">仪表盘</a>
+      <a class="nav-link {% if request.path.startswith('/hardlink') %}active{% endif %}" href="/hardlink">硬链接任务</a>
+      <a class="nav-link {% if request.path.startswith('/delete-monitor') %}active{% endif %}" href="/delete-monitor">删除联动</a>
+      <a class="nav-link {% if request.path.startswith('/cron') %}active{% endif %}" href="/cron">定时任务</a>
+      <a class="nav-link {% if request.path.startswith('/downloader') %}active{% endif %}" href="/downloader">下载器</a>
+      <a class="nav-link {% if request.path.startswith('/notifier') %}active{% endif %}" href="/notifier">通知器</a>
+      <a class="nav-link {% if request.path.startswith('/logs') %}active{% endif %}" href="/logs">日志</a>
+      <a class="nav-link {% if request.path.startswith('/settings') %}active{% endif %}" href="/settings">设置</a>
+    </nav>
+  </aside>
+  <main class="main">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
