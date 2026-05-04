@@ -36,7 +36,9 @@
 - `.gitignore` 新增运行数据与 `.env` 忽略规则，防止敏感信息误提交。
 
 ### Security
-- 路径校验与白名单策略（`allowed_roots`）保持启用。
+- 升级 `cryptography` 至 `46.0.7`，修复 `CVE-2026-39892`。
+- 修复 `allowed_roots` 路径白名单校验边界：从字符串前缀匹配改为规范化路径包含校验，避免路径前缀绕过。
+- 启动时增加默认 `SECRET_KEY` 风险告警，降低误用默认密钥风险。
 - CSRF 防护保持启用。
 - 新增 Dependabot 自动依赖检查（pip + GitHub Actions）。
 - 新增 Dependabot 安全自动合并策略（仅 patch/minor）。
