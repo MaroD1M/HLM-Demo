@@ -204,3 +204,15 @@ docker compose -f docker-compose.prod.yml --profile backup run --rm backup
 2. 优先合并安全修复 PR
 3. 对大版本升级先走预发验证
 
+
+
+### 自动合并策略
+
+已配置 Dependabot 自动合并策略：
+- `pip` 与 `github-actions` 的 **patch/minor** 版本自动 squash 合并
+- **major** 版本仍需人工审阅
+
+对应文件：
+- `.github/dependabot.yml`
+- `.github/workflows/dependabot-automerge.yml`
+

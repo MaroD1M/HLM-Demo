@@ -39,3 +39,4 @@
 - 路径校验与白名单策略（`allowed_roots`）保持启用。
 - CSRF 防护保持启用。
 - 新增 Dependabot 自动依赖检查（pip + GitHub Actions）。
+- 新增 Dependabot 安全自动合并策略（仅 patch/minor）。
