@@ -24,6 +24,17 @@
 - 删除未接入的重复定义与冗余文件。
 - 移除未使用依赖：`watchdog`、`python-telegram-bot`。
 
+### Added
+- 新增 `docker-compose.yml`（基础部署）与 `.env.example`。
+- 新增 `docker-compose.prod.yml`（生产安全加固版）。
+- 新增 `.env.prod.example` 生产环境变量模板。
+- 新增运维脚本：`scripts/bootstrap.sh`、`scripts/backup.sh`。
+- 新增运行数据目录结构：`data/instance/.gitkeep`、`data/backups/.gitkeep`。
+
+### Changed
+- README 新增基础与生产 Compose 部署文档、持久化与备份说明。
+- `.gitignore` 新增运行数据与 `.env` 忽略规则，防止敏感信息误提交。
+
 ### Security
 - 路径校验与白名单策略（`allowed_roots`）保持启用。
 - CSRF 防护保持启用。

@@ -106,3 +106,88 @@ make dev          # 启动服务
 make format       # 代码格式化（需 black/isort）
 make clean-cache  # 清理缓存
 ```
+
+
+## Docker Compose 部署（推荐）
+
+### 1) 准备配置文件
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env`：
+- 必填：`SECRET_KEY`
+- 建议：`APP_USERNAME` / `APP_PASSWORD`
+- 媒体路径：`DOWNLOADS_PATH`、`LIBRARY_PATH`
+
+### 2) 启动
+
+```bash
+docker compose up -d
+```
+
+### 3) 验证
+
+```bash
+docker compose ps
+docker compose logs -f hlm
+```
+
+访问：`http://<你的IP>:${APP_PORT:-5000}`
+
+### 持久化说明
+
+本项目关键状态已持久化：
+- `./data/instance -> /app/instance`：SQLite 数据库与运行状态
+- `DOWNLOADS_PATH -> /downloads`：下载目录（任务源）
+- `LIBRARY_PATH -> /library`：媒体库目录（任务目标）
+
+容器重建后，配置和任务不会因数据库丢失而丢失。
+
+
+
+## 生产部署（安全加固版）
+
+项目提供 `docker-compose.prod.yml`，默认开启：
+- 只读根文件系统（`read_only: true`）
+- `tmpfs /tmp`
+- `no-new-privileges`
+- `cap_drop: ALL`
+- 健康检查与日志轮转
+
+### 1) 准备生产配置
+
+```bash
+cp .env.prod.example .env
+# 编辑 .env，至少填写 SECRET_KEY / DOWNLOADS_PATH / LIBRARY_PATH
+```
+
+### 2) 启动
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### 3) 备份数据库
+
+方式A（主机脚本）：
+```bash
+./scripts/backup.sh
+```
+
+方式B（Compose profile）：
+```bash
+docker compose -f docker-compose.prod.yml --profile backup run --rm backup
+```
+
+默认保留最近 7 份备份。
+
+### 4) 初始化辅助
+
+```bash
+./scripts/bootstrap.sh
+```
+
+会自动创建必要目录并检查 compose 配置。
+

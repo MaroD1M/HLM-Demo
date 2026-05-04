@@ -21,3 +21,12 @@ env/
 Thumbs.db
 .vscode/
 .idea/
+
+# Local env
+.env
+
+# Runtime data (keep structure only)
+data/instance/*
+!data/instance/.gitkeep
+data/backups/*
+!data/backups/.gitkeep
