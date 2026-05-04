@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [v0.0.8] - 2026-05-04
+
+### Fixed
+- 修复删除联动异常：`DeleteMonitorTask` 补充 `downloader/notifier` 关系，解决 `object has no attribute downloader` 报错。
+- 修复删除联动时区异常：统一兼容 naive/aware datetime，解决 `can't subtract offset-naive and offset-aware datetimes`。
+- 修复前端交互卡死：AJAX 成功后强制清理 modal 遮罩和 `modal-open` 状态，避免页面“不可点击”。
+
+### Changed
+- 增强容器日志可见性：日志强制输出到 stdout，并增加启动日志标记，便于群晖容器日志排查。
+- 删除联动目录匹配改为规范路径判断，避免 `/media/a` 误匹配 `/media/ab`。
+- 硬链接覆盖策略加固：仅允许覆盖系统托管目标文件，非托管同名文件直接跳过，防止误删。
+
 ## [v0.0.7] - 2026-05-04
 
 ### Added

@@ -1,6 +1,7 @@
 import os
 import secrets
 import logging
+import sys
 from datetime import datetime, UTC, timedelta
 from threading import Lock
 from pathlib import Path
@@ -21,7 +22,12 @@ from core.models import HardlinkTask, DeleteMonitorTask, Downloader, Notifier, H
 
 
 app = Flask(__name__)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(name)s: %(message)s',
+    stream=sys.stdout,
+    force=True,
+)
 app.logger.setLevel(logging.INFO)
 
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default-secret-key-for-dev-only')
@@ -390,10 +396,13 @@ def scan_delete_task(task_id):
     if not task or not task.enabled:
         return False, '任务不存在或已禁用'
 
-    rows = FileLinkMap.query.filter(
-        (FileLinkMap.source_path.like(f"{task.directory}%")) | (FileLinkMap.dest_path.like(f"{task.directory}%")),
-        FileLinkMap.deleted_at.is_(None)
-    ).all()
+    monitor_root = str(Path(task.directory).resolve(strict=False))
+    rows = FileLinkMap.query.filter(FileLinkMap.deleted_at.is_(None)).all()
+    rows = [
+        row for row in rows
+        if _is_path_within_root(Path(row.source_path or ''), Path(monitor_root))
+        or _is_path_within_root(Path(row.dest_path or ''), Path(monitor_root))
+    ]
 
     ok, deleted_torrents, hit_count, pending_count = scan_delete_rows(
         task,
@@ -659,6 +668,7 @@ def init_system_jobs():
 
 
 def init_app():
+    app.logger.info('startup access_log_enabled=%s tz=%s', app.config.get('ACCESS_LOG_ENABLED'), os.environ.get('TZ', ''))
     if app.config['SECRET_KEY'] == 'default-secret-key-for-dev-only':
         app.logger.warning('Using default SECRET_KEY; set SECRET_KEY in production to avoid session forgery risk.')
 

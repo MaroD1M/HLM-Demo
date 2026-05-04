@@ -45,6 +45,9 @@ class DeleteMonitorTask(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
+    downloader = db.relationship('Downloader', foreign_keys=[downloader_id], lazy='joined')
+    notifier = db.relationship('Notifier', foreign_keys=[notifier_id], lazy='joined')
+
 
 class Downloader(db.Model):
     id = db.Column(db.Integer, primary_key=True)
