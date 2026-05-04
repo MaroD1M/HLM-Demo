@@ -191,3 +191,16 @@ docker compose -f docker-compose.prod.yml --profile backup run --rm backup
 
 会自动创建必要目录并检查 compose 配置。
 
+
+
+## 依赖安全维护
+
+项目已启用 Dependabot（`.github/dependabot.yml`）：
+- 每周检查 Python 依赖（pip）
+- 每周检查 GitHub Actions 依赖
+
+建议流程：
+1. 收到依赖升级 PR 后先执行 `make check`
+2. 优先合并安全修复 PR
+3. 对大版本升级先走预发验证
+
