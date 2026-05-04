@@ -1,226 +1,306 @@
-# Hardlink Manager
+# 🎬 HLM-Demo
 
-Hardlink Manager 是一个面向媒体下载场景的“定时扫描 + 安全联动”工具。它用于将下载目录中的媒体文件硬链接到目标目录，并在文件删除后联动处理下载器任务。
+<div align="center">
 
-## 核心能力
+# 🔗 Hardlink Manager · 媒体硬链接自动化中心
 
-- 任务“立即执行一次”
-  - 硬链接任务、删除联动任务、Cron 计划任务均支持手动立即触发
-  - 执行过程记录到任务执行历史（含状态、耗时、消息）
+**让下载目录自动入库，让删除联动可控可靠。**  
+**面向新手开箱即用，也兼顾多任务与扩展性。**
 
-- 定时扫描硬链接（不依赖实时监听）
-  - 支持扩展名白名单、黑名单
-  - 支持排除目录
-  - 支持单文件自动创建同名目录
-  - 支持“最小文件年龄”避免处理下载中的文件
-- 删除联动
-  - 定时扫描删除事件（通过映射差异识别）
-  - 支持冷却时间、单次删除阈值、Dry Run
-  - 支持联动删除 qBittorrent 任务（可选删除文件）
-- 映射回填
-  - 定时回填 `文件 -> torrent hash` 映射，提升删除联动准确率
-- 新增数据库备份任务：支持 Cron 定时备份与立即备份
-- 多下载器配置（当前主实现 qBittorrent）
-- Telegram 通知
-  - 支持代理地址（如 `http://127.0.0.1:7890`）
-  - 支持自定义 Telegram API Base
-- 操作日志与系统配置
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-Web-black?style=flat-square&logo=flask)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 
-## 架构概览
+</div>
 
-```text
-app.py                  # 应用入口、初始化、调度
-core/
-  deps.py               # 路由依赖对象
-  routes/
-    web.py              # 页面与表单路由
-    api.py              # API路由
-  services/
-    hardlink_service.py # 硬链接扫描与建链
-    delete_service.py   # 删除联动扫描
-    backfill_service.py # 映射回填
-templates/
-  base.html             # 统一UI基座
-  *.html                # 业务页面
-```
+---
 
-## 快速开始
+## 🌟 项目亮点
 
-### 1) 安装依赖（推荐虚拟环境）
+- 🧠 **多任务管理**：一个系统同时管理电影、剧集、动漫等多个硬链接任务
+- 📦 **单目录映射更灵活**：Compose 只映射一个媒体根目录，任务里自由配置源/目标子目录
+- ⏱️ **定时 + 手动双模式**：支持 Cron 周期执行，也支持“立即执行一次”
+- 🧹 **删除联动可控**：支持冷却、阈值、Dry Run，降低误删风险
+- 💾 **数据库备份**：支持脚本与 Compose profile 双备份方案
+- 🔔 **通知能力**：支持 Telegram（含代理与自定义 API Base）
 
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-```
+---
 
-### 2) 启动服务
+## 🖼️ 界面导览（你会用到的页面）
 
-```bash
-.venv/bin/python app.py
-```
+- 🏠 **仪表盘**：整体运行状态、任务入口
+- 🔗 **硬链接任务**：配置源目录/目标目录、扩展名、排除目录
+- 🧹 **删除联动**：配置删种联动策略（含 Dry Run）
+- ⏰ **Cron 调度**：统一管理定时计划
+- ⚙️ **系统设置**：路径白名单、通知、日志保留、备份参数
+- 📜 **日志页面**：查看执行结果与排错信息
 
-默认监听 `0.0.0.0:5000`。
+---
 
-## 配置说明
+## 🧩 目录映射最佳实践（重点）
 
-### 环境变量
+### 推荐方式：只映射一个媒体根目录
 
-- `SECRET_KEY`：应用密钥（生产环境务必修改）
-- `APP_USERNAME` / `APP_PASSWORD`：可选基础认证
-- `REQUEST_TIMEOUT_SECONDS`：请求超时（默认 10）
+你完全可以不在 Compose 里固定“源目录”和“目标目录”两条映射。  
+**推荐只映射一个媒体总目录到容器 `/media`**，然后在程序内按任务配置子目录。
 
-### Web 设置项（重点）
+示例：
+- 任务A：源 `/media/downloads/movie` -> 目标 `/media/library/movie`
+- 任务B：源 `/media/downloads/tv` -> 目标 `/media/library/tv`
+- 任务C：源 `/media/downloads/anime` -> 目标 `/media/library/anime`
 
-- `allowed_roots`：允许访问根目录白名单（逗号分隔）
-- `delete_files_with_torrent`：删种时是否删文件
-- `delete_delay_seconds`：删除冷却基准
-- `notify_on_hardlink` / `notify_on_delete`：通知开关
-- `tg_proxy_url`：Telegram 代理（如 `http://127.0.0.1:7890`）
-- `tg_api_base`：Telegram API 地址（默认 `https://api.telegram.org`）
-- `backup_dir`：数据库备份目录（默认 `/app/data/backups`）
-- `backup_keep_last`：备份保留份数（默认 `7`）
+✅ 优点：
+- 新增任务不需要改 Compose
+- 结构统一、维护简单
+- 适合多任务长期使用
 
-## API
+---
 
-- `GET /api/health`
-- `GET /api/tasks/status`
+## 🚀 快速开始（Docker Compose）
 
-## 测试与自检
-
-```bash
-.venv/bin/python -m py_compile app.py core/deps.py core/routes/*.py core/services/*.py
-.venv/bin/python -m pytest -q tests/test_routes_smoke.py
-```
-
-## 兼容与安全说明
-
-- 数据库使用 SQLite，启动时会执行轻量兼容迁移（新增字段）
-- 所有 POST 接口启用 CSRF 校验
-- 路径参数要求绝对路径，并可用 `allowed_roots` 进一步收敛访问范围
-
-## 后续建议
-
-- 将 `downloader` 抽象进一步扩展到 Transmission / aria2
-- 增加“回填冲突人工确认”页面
-- 执行历史增加按任务/状态筛选与导出
-
-
-## 常用命令
-
-```bash
-make check        # 编译+测试+冒烟
-make dev          # 启动服务
-make format       # 代码格式化（需 black/isort）
-make clean-cache  # 清理缓存
-```
-
-
-## Docker Compose 部署（推荐）
-
-### 1) 准备配置文件
+### 1）复制配置
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env`：
-- 必填：`SECRET_KEY`
-- 建议：`APP_USERNAME` / `APP_PASSWORD`
-- 媒体路径：`DOWNLOADS_PATH`、`LIBRARY_PATH`
+### 2）只改关键项
 
-### 2) 启动
+编辑 `.env`，重点改：
+- `SECRET_KEY`（必须）
+- `APP_USERNAME` / `APP_PASSWORD`（建议）
+- `MEDIA_ROOT`（必须，宿主机媒体总目录）
 
-```bash
-docker compose up -d
-```
-
-### 3) 验证
-
-```bash
-docker compose ps
-docker compose logs -f hlm
-```
-
-访问：`http://<你的IP>:${APP_PORT:-5000}`
-
-### 持久化说明
-
-本项目关键状态已持久化：
-- `./data/instance -> /app/instance`：SQLite 数据库与运行状态
-- `./data/backups -> /app/data/backups`：数据库备份文件
-- `DOWNLOADS_PATH -> /downloads`：下载目录（任务源）
-- `LIBRARY_PATH -> /library`：媒体库目录（任务目标）
-
-容器重建后，配置和任务不会因数据库丢失而丢失。
-
-
-
-## 生产部署（安全加固版）
-
-项目提供 `docker-compose.prod.yml`，默认开启：
-- 只读根文件系统（`read_only: true`）
-- `tmpfs /tmp`
-- `no-new-privileges`
-- `cap_drop: ALL`
-- 健康检查与日志轮转
-
-### 1) 准备生产配置
-
-```bash
-cp .env.prod.example .env
-# 编辑 .env，至少填写 SECRET_KEY / DOWNLOADS_PATH / LIBRARY_PATH
-```
-
-### 2) 启动
-
-```bash
-docker compose -f docker-compose.prod.yml up -d
-```
-
-### 3) 备份数据库
-
-方式A（主机脚本）：
-```bash
-./scripts/backup.sh
-```
-
-方式B（Compose profile）：
-```bash
-docker compose -f docker-compose.prod.yml --profile backup run --rm backup
-```
-
-默认保留最近 7 份备份。
-
-### 4) 初始化辅助
+### 3）初始化（推荐）
 
 ```bash
 ./scripts/bootstrap.sh
 ```
 
-会自动创建必要目录并检查 compose 配置。
+### 4）启动
 
+```bash
+docker compose up -d
+```
 
+### 5）访问
 
-## 依赖安全维护
+- 本机：`http://127.0.0.1:5000`
+- 局域网：`http://你的主机IP:5000`
 
-项目已启用 Dependabot（`.github/dependabot.yml`）：
-- 每周检查 Python 依赖（pip）
-- 每周检查 GitHub Actions 依赖
+---
 
-建议流程：
-1. 收到依赖升级 PR 后先执行 `make check`
-2. 优先合并安全修复 PR
-3. 对大版本升级先走预发验证
+## 🧪 拿来即用 Compose 示例（小白友好版）
 
+> 你只需要改 4 处：密钥、账号、密码、媒体目录。
 
+```yaml
+services:
+  hlm:
+    image: ghcr.io/marod1m/hlm-demo:latest
+    container_name: hlm-demo
+    restart: unless-stopped
 
-### 自动合并策略
+    # 端口映射：宿主机5000 -> 容器5000
+    ports:
+      - "5000:5000"
 
-已配置 Dependabot 自动合并策略：
-- `pip` 与 `github-actions` 的 **patch/minor** 版本自动 squash 合并
-- **major** 版本仍需人工审阅
+    environment:
+      # 必填：请改成你自己的强随机密钥
+      SECRET_KEY: "请改成很长很随机的字符串"
 
-对应文件：
-- `.github/dependabot.yml`
-- `.github/workflows/dependabot-automerge.yml`
+      # 建议：开启基础登录认证
+      APP_USERNAME: "admin"
+      APP_PASSWORD: "123456"
 
+      # 可选：请求超时与时区
+      REQUEST_TIMEOUT_SECONDS: 10
+      TZ: "Asia/Shanghai"
+
+    volumes:
+      # 必须：数据库与运行状态（不要删除）
+      - ./data/instance:/app/instance
+
+      # 建议：数据库备份目录
+      - ./data/backups:/app/data/backups
+
+      # 必填：把左边路径改成你的宿主机媒体总目录
+      - /你的宿主机媒体总目录:/media
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+### ✅ 启动命令
+
+```bash
+docker compose up -d
+docker compose ps
+docker compose logs -f hlm
+```
+
+---
+
+## 🧰 群晖（Synology）图形界面部署（Container Manager）
+
+> 适合不想用命令行的用户。
+
+### 步骤 1：创建项目目录
+
+在群晖共享文件夹里创建一个目录，例如：
+- `/volume1/docker/hlm-demo`
+
+并在里面新建子目录：
+- `data/instance`
+- `data/backups`
+
+### 步骤 2：准备 Compose 文件
+
+在该目录创建 `docker-compose.yml`，粘贴上面的“一键示例”。
+
+把这行改成你的真实媒体目录：
+- `- /volume1/media:/media`
+
+### 步骤 3：在群晖图形界面导入项目
+
+- 打开 **Container Manager**
+- 进入 **项目（Project）**
+- 点击 **新增（Create）**
+- 选择你刚才的 `docker-compose.yml`
+- 点击部署
+
+### 步骤 4：访问并创建任务
+
+部署成功后访问：
+- `http://群晖IP:5000`
+
+在页面创建任务时填写容器内路径：
+- 源：`/media/downloads`
+- 目标：`/media/library`
+
+> 注意：页面里填的是容器路径（`/media/...`），不是宿主机路径（`/volume1/...`）。
+
+---
+
+## ⚙️ 生产部署（加固版）
+
+使用 `docker-compose.prod.yml` 可获得更安全默认值：
+
+- `read_only: true`
+- `tmpfs: /tmp`
+- `no-new-privileges`
+- `cap_drop: ALL`
+
+### 启动命令
+
+```bash
+cp .env.prod.example .env
+# 修改 SECRET_KEY 和 MEDIA_ROOT
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### 触发数据库备份
+
+```bash
+docker compose -f docker-compose.prod.yml --profile backup run --rm backup
+```
+
+---
+
+## 💽 持久化与数据说明
+
+这些目录会长期保存，容器重建也不会丢：
+
+- `./data/instance -> /app/instance`：数据库与运行状态
+- `./data/backups -> /app/data/backups`：数据库备份文件
+- `${MEDIA_ROOT} -> /media`：媒体总目录（任务源/目标都在这里按子目录区分）
+
+---
+
+## 🧭 新手任务模板（直接抄）
+
+### 电影任务
+- 名称：`电影入库`
+- 源目录：`/media/downloads/movie`
+- 目标目录：`/media/library/movie`
+
+### 剧集任务
+- 名称：`剧集入库`
+- 源目录：`/media/downloads/tv`
+- 目标目录：`/media/library/tv`
+
+### 动漫任务
+- 名称：`动漫入库`
+- 源目录：`/media/downloads/anime`
+- 目标目录：`/media/library/anime`
+
+---
+
+## 🛡️ 安全建议（务必执行）
+
+- 把 `SECRET_KEY` 改成强随机字符串
+- 建议设置 `APP_USERNAME` / `APP_PASSWORD`
+- 尽量只在内网开放端口
+- 建议定期备份数据库并做异地备份
+
+---
+
+## 🔍 常见问题 FAQ
+
+### Q1：一个目录映射真的能支持多个任务吗？
+能。你只要把任务拆成不同子目录即可。
+
+### Q2：为什么我填宿主机路径不生效？
+因为页面里需要填容器路径，例如 `/media/xxx`。
+
+### Q3：提示路径不允许怎么办？
+检查系统设置里的 `allowed_roots`，把 `/media` 加进去。
+
+### Q4：我想要双目录映射可以吗？
+可以。`docker-compose.yml` 里保留了注释示例，可按需启用。
+
+---
+
+## 🧑‍💻 开发调试（非 Docker）
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python app.py
+```
+
+---
+
+## 📁 项目结构
+
+```text
+app.py
+core/
+  models.py
+  deps.py
+  routes/
+    web.py
+    api.py
+  services/
+    hardlink_service.py
+    delete_service.py
+    backfill_service.py
+    backup_service.py
+templates/
+scripts/
+docker-compose.yml
+docker-compose.prod.yml
+```
+
+---

@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [v0.0.4] - 2026-05-04
+
+### Changed
+- Compose 默认目录映射方案升级为“单媒体根目录”模式：`MEDIA_ROOT -> /media`，任务可在程序内自由配置子目录。
+- `docker-compose.yml` 与 `docker-compose.prod.yml` 增加完整中文注释，并保留双目录映射的可选注释模板。
+- `.env.example` 与 `.env.prod.example` 同步为单目录映射示例，显著降低新手配置复杂度。
+- `README.md` 重构为小白友好文档：新增可直接复制的 Compose 示例、群晖图形界面部署步骤、任务模板与 FAQ。
+- `scripts/bootstrap.sh` 初始化提示文案更新为中文，并明确要求优先配置 `SECRET_KEY` 与 `MEDIA_ROOT`。
+
+### Verified
+- 本地 `make check` 全量通过（语法检查 + 路由测试 + 冒烟检查）。
+- 依赖漏洞扫描通过：`pip-audit` 未发现已知漏洞。
+
+
 ### Added
 - 新增任务执行历史模型 `JobExecutionLog`，记录手动/定时执行状态、耗时与结果消息。
 - 新增数据库备份服务 `core/services/backup_service.py`（SQLite 原生 backup API + 保留轮转）。
