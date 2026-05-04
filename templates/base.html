@@ -71,6 +71,8 @@ window.HLMAjax={
       form.dataset.bound='1';
       form.addEventListener('submit', async (e)=>{
         e.preventDefault();
+        const confirmMsg=form.getAttribute('data-confirm');
+        if(confirmMsg && !window.confirm(confirmMsg)) return;
         const btn=form.querySelector('button[type="submit"],button:not([type])');
         const old=btn?btn.textContent:'';
         if(btn){btn.disabled=true;btn.textContent='处理中...';}

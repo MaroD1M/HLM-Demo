@@ -12,6 +12,14 @@ def _within(path_text, root_text):
         return False
 
 
+def _as_aware_utc(dt_obj):
+    if not dt_obj:
+        return None
+    if dt_obj.tzinfo is None:
+        return dt_obj.replace(tzinfo=UTC)
+    return dt_obj.astimezone(UTC)
+
+
 def _resolve_deleted_path(row, monitor_root):
     src_path = str(row.source_path or '')
     dst_path = str(row.dest_path or '')
@@ -43,7 +51,8 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
             row.last_seen_at = now
             continue
 
-        if (now - (row.last_seen_at or now)).total_seconds() < task.cooldown_seconds:
+        last_seen_at = _as_aware_utc(row.last_seen_at) or now
+        if (now - last_seen_at).total_seconds() < task.cooldown_seconds:
             continue
 
         row.deleted_at = now
