@@ -9,12 +9,63 @@
         <td>{% if t.enabled %}<span class="badge text-bg-success">启用</span>{% else %}<span class="badge text-bg-secondary">禁用</span>{% endif %}</td>
         <td>
           <form class="d-inline js-ajax-form" action="/delete-monitor/run/{{ t.id }}" method="POST" data-target="deleteJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">立即执行</button></form>
+          <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editDeleteModal{{ t.id }}">修改</button>
           <form class="d-inline js-ajax-form" action="/delete-monitor/toggle/{{ t.id }}" method="POST" data-target="deleteJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">{{ '禁用' if t.enabled else '启用' }}</button></form>
           <form class="d-inline js-ajax-form" action="/delete-monitor/delete/{{ t.id }}" method="POST" data-target="deleteJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>
+        </td>
+      </tr>
+
+      <div class="modal fade" id="editDeleteModal{{ t.id }}" tabindex="-1">
+        <div class="modal-dialog"><div class="modal-content">
+          <form class="js-ajax-form" data-target="deleteJobsPanel" action="/delete-monitor/update/{{ t.id }}" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="modal-header"><h5 class="modal-title">修改删除联动任务：{{ t.name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+              <div class="mb-2"><label class="form-label">任务名称</label><input class="form-control" name="name" value="{{ t.name }}" required></div>
+              <div class="mb-2"><label class="form-label">监控目录</label><input class="form-control" name="directory" value="{{ t.directory }}" required></div>
+              <div class="mb-2"><label class="form-label">事件</label><select class="form-select" name="events"><option value="unlink" {% if t.events=='unlink' %}selected{% endif %}>文件删除</option><option value="unlinkDir" {% if t.events=='unlinkDir' %}selected{% endif %}>目录删除</option><option value="unlink,unlinkDir" {% if t.events=='unlink,unlinkDir' %}selected{% endif %}>两者</option></select></div>
+              <div class="mb-2"><label class="form-label">下载器</label><select class="form-select" name="downloader_id"><option value="">不关联</option>{% for d in downloaders %}<option value="{{ d.id }}" {% if t.downloader_id==d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
+              <div class="mb-2"><label class="form-label">通知器</label><select class="form-select" name="notifier_id"><option value="">不关联</option>{% for n in notifiers %}<option value="{{ n.id }}" {% if t.notifier_id==n.id %}selected{% endif %}>{{ n.name }}</option>{% endfor %}</select></div>
+              <div class="mb-2"><label class="form-label">冷却秒数</label><input class="form-control" type="number" name="cooldown_seconds" value="{{ t.cooldown_seconds }}" min="0"></div>
+              <div class="mb-2"><label class="form-label">单次最大删除</label><input class="form-control" type="number" name="max_deletes_per_run" value="{{ t.max_deletes_per_run }}" min="1"></div>
+              <div class="form-check"><input class="form-check-input" type="checkbox" name="dry_run" id="dry_run_{{ t.id }}" {% if t.dry_run %}checked{% endif %}><label class="form-check-label" for="dry_run_{{ t.id }}">仅记录不执行</label></div>
+            </div>
+            <div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-brand" type="submit">保存修改</button></div>
+          </form>
+        </div></div>
+      </div>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
+<div class="card p-3 mt-3 border-warning">
+  <h6 class="mb-2 text-warning">待确认（疑似误删）</h6>
+  {% if pending_actions %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr><th>时间</th><th>任务ID</th><th>匹配方式</th><th>路径</th><th>种子</th><th>原因</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for p in pending_actions %}
+      <tr>
+        <td>{{ fmt_dt(p.created_at) }}</td>
+        <td>{{ p.task_id }}</td>
+        <td><span class="badge text-bg-warning">{{ p.match_by }}</span></td>
+        <td><code>{{ p.deleted_path }}</code></td>
+        <td><code>{{ p.torrent_hash or '-' }}</code></td>
+        <td>{{ p.reason or '-' }}</td>
+        <td>
+          <form class="d-inline js-ajax-form" action="/delete-monitor/pending/confirm/{{ p.id }}" method="POST" data-target="deleteJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">确认删除</button></form>
+          <form class="d-inline js-ajax-form" action="/delete-monitor/pending/reject/{{ p.id }}" method="POST" data-target="deleteJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-secondary">驳回</button></form>
         </td>
       </tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
+  {% else %}
+    <div class="text-muted">暂无待确认项</div>
+  {% endif %}
 </div>

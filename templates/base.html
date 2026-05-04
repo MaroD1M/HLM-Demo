@@ -38,10 +38,12 @@
       <a class="nav-link {% if request.path.startswith('/downloader') %}active{% endif %}" href="/downloader">下载器</a>
       <a class="nav-link {% if request.path.startswith('/notifier') %}active{% endif %}" href="/notifier">通知器</a>
       <a class="nav-link {% if request.path.startswith('/logs') %}active{% endif %}" href="/logs">日志与执行</a>
+      <a class="nav-link {% if request.path.startswith('/mapping') %}active{% endif %}" href="/mapping">映射与缓存</a>
       <a class="nav-link {% if request.path.startswith('/settings') %}active{% endif %}" href="/settings">系统设置</a>
     </nav>
   </aside>
   <main class="main">
+    <div id="liveFeedback"></div>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
@@ -55,6 +57,13 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
+
+window.HLMNotice=function(msg,level){
+  const box=document.getElementById('liveFeedback');
+  if(!box||!msg) return;
+  box.innerHTML=`<div class="alert alert-${level} alert-dismissible fade show" role="alert">${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
+};
+
 window.HLMAjax={
   bind(){
     document.querySelectorAll('.js-ajax-form').forEach((form)=>{
@@ -68,12 +77,16 @@ window.HLMAjax={
         try{
           const res=await fetch(form.action,{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'},body:new FormData(form)});
           const data=await res.json();
-          if(!res.ok||!data.ok){alert(data.message||'操作失败');return;}
+          window.HLMNotice(data.message|| (data.ok ? '操作成功' : '操作失败'), data.ok ? 'success' : 'danger');
+          if(!res.ok||!data.ok){return;}
           if(data.target&&data.html){
             const panel=document.getElementById(data.target);
-            if(panel){panel.innerHTML=data.html;window.HLMAjax.bind();if(window.bindCronPreview) window.bindCronPreview();}
+            if(panel){panel.innerHTML=data.html;}
+            document.querySelectorAll('.modal.show').forEach((m)=>{const inst=bootstrap.Modal.getInstance(m);if(inst){inst.hide();}});
+            document.querySelectorAll('form').forEach((f)=>{if(f.classList.contains('js-ajax-form')) f.reset&&f.reset();});
+            window.HLMAjax.bind();if(window.bindCronPreview) window.bindCronPreview();
           }
-        }catch(_){alert('网络异常，请稍后重试');}
+        }catch(_){window.HLMNotice('网络异常，请稍后重试','danger');}
         finally{if(btn){btn.disabled=false;btn.textContent=old;}}
       });
     });

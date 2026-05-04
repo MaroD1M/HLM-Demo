@@ -3,7 +3,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3"><h3 class="mb-0">下载器</h3><button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#add">新增</button></div>
 <div id="downloaderJobsPanel">{% include "_downloader_jobs_panel.html" %}</div>
-<div class="modal fade" id="add" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><form action="/downloader/add" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><div class="modal-header"><h5 class="modal-title">新增下载器</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body">
+<div class="modal fade" id="add" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><form class="js-ajax-form" data-target="downloaderJobsPanel" action="/downloader/add" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><div class="modal-header"><h5 class="modal-title">新增下载器</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body">
 <div class="mb-2"><label class="form-label">名称</label><input class="form-control" name="name" required></div>
 <div class="mb-2"><label class="form-label">类型</label><select class="form-select" name="type"><option value="qbittorrent">qBittorrent</option></select></div>
 <div class="mb-2"><label class="form-label">主机</label><input class="form-control" name="host" placeholder="http://127.0.0.1" required></div>

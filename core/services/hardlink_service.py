@@ -20,6 +20,11 @@ def file_key_of(file_path: Path):
 
 
 def create_hardlink_for_file(task, file_path, cache_model, map_model, db, safe_unlink):
+    # When cache is enabled, treat source_path as processed until user clears cache manually.
+    cache = cache_model.query.filter_by(source_path=str(file_path)).first() if task.use_cache else None
+    if task.use_cache and cache:
+        return False, '命中缓存，已跳过'
+
     exts = task.get_extensions_list()
     if file_path.suffix.lower() not in exts:
         return False, '扩展名不匹配'
@@ -33,7 +38,13 @@ def create_hardlink_for_file(task, file_path, cache_model, map_model, db, safe_u
 
     dest_root = Path(task.dest_dir)
     dest_root.mkdir(parents=True, exist_ok=True)
-    dest_dir = dest_root / file_path.parent.name if task.create_folder else dest_root
+    source_root = Path(task.source_dir)
+    if task.create_folder:
+        # If file is directly under source root, create a same-name folder in destination.
+        folder_name = file_path.stem if file_path.parent == source_root else file_path.parent.name
+        dest_dir = dest_root / folder_name
+    else:
+        dest_dir = dest_root
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest_file = dest_dir / file_path.name
 
@@ -45,7 +56,6 @@ def create_hardlink_for_file(task, file_path, cache_model, map_model, db, safe_u
     os.link(file_path, dest_file)
     key, inode, fsize, mtime = file_key_of(file_path)
 
-    cache = cache_model.query.filter_by(source_path=str(file_path)).first()
     if cache:
         cache.dest_path = str(dest_file)
     else:

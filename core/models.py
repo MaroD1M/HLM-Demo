@@ -1,4 +1,7 @@
 from datetime import datetime, UTC
+import base64
+import hashlib
+import os
 from core.extensions import db
 
 
@@ -55,12 +58,44 @@ class Downloader(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
+    @staticmethod
+    def _key_bytes():
+        seed = (os.environ.get('APP_ENCRYPTION_KEY') or os.environ.get('SECRET_KEY') or 'default-secret-key-for-dev-only').encode('utf-8')
+        return hashlib.sha256(seed).digest()
+
+    @classmethod
+    def _encrypt_text(cls, raw):
+        data = raw.encode('utf-8')
+        key = cls._key_bytes()
+        xored = bytes([b ^ key[i % len(key)] for i, b in enumerate(data)])
+        return 'enc:' + base64.urlsafe_b64encode(xored).decode('utf-8')
+
+    @classmethod
+    def _decrypt_text(cls, token):
+        if not token.startswith('enc:'):
+            return token
+        payload = token[4:]
+        data = base64.urlsafe_b64decode(payload.encode('utf-8'))
+        key = cls._key_bytes()
+        raw = bytes([b ^ key[i % len(key)] for i, b in enumerate(data)])
+        return raw.decode('utf-8')
+
     def set_password(self, password):
-        # qBittorrent API login needs the raw password; keep stored value as-is.
-        self.encrypted_password = (password or '').strip() or None
+        raw = (password or '').strip()
+        if not raw:
+            self.encrypted_password = None
+            return
+        self.encrypted_password = self._encrypt_text(raw)
 
     def get_password(self):
-        return self.encrypted_password or ''
+        value = self.encrypted_password or ''
+        if not value:
+            return ''
+        try:
+            return self._decrypt_text(value)
+        except Exception:
+            # Backward compatibility for legacy plain-text values.
+            return value
 
 
 class Notifier(db.Model):
@@ -121,6 +156,20 @@ class JobExecutionLog(db.Model):
     started_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), index=True)
     finished_at = db.Column(db.DateTime)
     duration_ms = db.Column(db.Integer)
+
+class DeletePendingAction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    task_id = db.Column(db.Integer, db.ForeignKey('delete_monitor_task.id'), nullable=False, index=True)
+    file_map_id = db.Column(db.Integer, db.ForeignKey('file_link_map.id'), nullable=False, index=True)
+    deleted_path = db.Column(db.String(1000), nullable=False)
+    torrent_hash = db.Column(db.String(64))
+    match_by = db.Column(db.String(50), default='no_match')
+    status = db.Column(db.String(20), default='pending', index=True)
+    reason = db.Column(db.String(500))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), index=True)
+    confirmed_at = db.Column(db.DateTime)
+
+
 
 class AppConfig(db.Model):
     id = db.Column(db.Integer, primary_key=True)

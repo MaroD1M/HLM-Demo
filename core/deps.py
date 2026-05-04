@@ -12,6 +12,7 @@ class RouteDeps:
     FileLinkMap: Any
     OperationLog: Any
     JobExecutionLog: Any
+    DeletePendingAction: Any
     AppConfig: Any
     CronJob: Any
     db: Any

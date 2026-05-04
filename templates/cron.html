@@ -4,7 +4,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h3 class="mb-0">定时任务</h3>
   <div>
-    <form class="d-inline" action="/cron/backup-now" method="POST">
+    <form class="d-inline js-ajax-form" action="/cron/backup-now" method="POST" data-target="cronJobsPanel">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button class="btn btn-outline-primary">立即备份数据库</button>
     </form>
@@ -38,7 +38,7 @@
 <div class="modal fade" id="addCronModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
-      <form action="/cron/add" method="POST">
+      <form class="js-ajax-form" data-target="cronJobsPanel" action="/cron/add" method="POST">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="modal-header">
           <h5 class="modal-title">新建定时任务</h5>
@@ -149,40 +149,7 @@ function bindCronPreview(){
 
 updateTargetField();
 bindCronPreview();
-bindAjaxCronForms();
 
-function bindAjaxCronForms(){
-  document.querySelectorAll('.js-cron-form').forEach((form)=>{
-    form.addEventListener('submit', async (e)=>{
-      e.preventDefault();
-      const btn=form.querySelector('button[type="submit"],button:not([type])');
-      const old=btn?btn.textContent:'';
-      if(btn){btn.disabled=true; btn.textContent='处理中...';}
-      try{
-        const res=await fetch(form.action,{
-          method:'POST',
-          headers:{'X-Requested-With':'XMLHttpRequest'},
-          body:new FormData(form)
-        });
-        const data=await res.json();
-        if(!res.ok || !data.ok){
-          alert(data.message || '操作失败');
-        }else{
-          if(data.html){
-            const panel=document.getElementById('cronJobsPanel');
-            panel.innerHTML=data.html;
-            bindCronPreview();
-            bindAjaxCronForms();
-          }
-        }
-      }catch(err){
-        alert('网络异常，请稍后重试');
-      }finally{
-        if(btn){btn.disabled=false; btn.textContent=old;}
-      }
-    });
-  });
-}
 
 </script>
 {% endblock %}
