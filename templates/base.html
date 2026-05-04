@@ -53,6 +53,34 @@
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+window.HLMAjax={
+  bind(){
+    document.querySelectorAll('.js-ajax-form').forEach((form)=>{
+      if(form.dataset.bound==='1') return;
+      form.dataset.bound='1';
+      form.addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        const btn=form.querySelector('button[type="submit"],button:not([type])');
+        const old=btn?btn.textContent:'';
+        if(btn){btn.disabled=true;btn.textContent='处理中...';}
+        try{
+          const res=await fetch(form.action,{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'},body:new FormData(form)});
+          const data=await res.json();
+          if(!res.ok||!data.ok){alert(data.message||'操作失败');return;}
+          if(data.target&&data.html){
+            const panel=document.getElementById(data.target);
+            if(panel){panel.innerHTML=data.html;window.HLMAjax.bind();if(window.bindCronPreview) window.bindCronPreview();}
+          }
+        }catch(_){alert('网络异常，请稍后重试');}
+        finally{if(btn){btn.disabled=false;btn.textContent=old;}}
+      });
+    });
+  }
+};
+window.addEventListener('DOMContentLoaded',()=>window.HLMAjax.bind());
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

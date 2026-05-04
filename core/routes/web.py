@@ -1,5 +1,5 @@
 from pathlib import Path
-from flask import Blueprint, render_template, request, redirect, flash
+from flask import Blueprint, render_template, request, redirect, flash, jsonify
 from core.deps import RouteDeps
 
 web_bp = Blueprint('web_bp', __name__)
@@ -25,18 +25,72 @@ def init_web_routes(ctx: RouteDeps):
     validate_host = ctx.validate_host
     validate_cron_expression = ctx.validate_cron_expression
 
-    scan_hardlink_task = ctx.scan_hardlink_task
-    scan_delete_task = ctx.scan_delete_task
-    scan_backfill_task = ctx.scan_backfill_task
     run_hardlink_once = ctx.run_hardlink_once
     run_delete_once = ctx.run_delete_once
     run_backfill_once = ctx.run_backfill_once
     run_backup_once = ctx.run_backup_once
-    run_backup_task = ctx.run_backup_task
     run_cron_job = ctx.run_cron_job
     update_cron_job = ctx.update_cron_job
     list_torrents = ctx.list_torrents
     send_telegram_notification = ctx.send_telegram_notification
+
+    def _wants_json():
+        return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+    def _json_or_redirect(ok, message, redirect_path, html=None, target=None, status=200):
+        if _wants_json():
+            return jsonify({'ok': ok, 'message': message, 'html': html, 'target': target}), status
+        flash(message, 'success' if ok else 'danger')
+        return redirect(redirect_path)
+
+    def _hardlink_payload():
+        return {
+            'tasks': HardlinkTask.query.all(),
+            'default_extensions': get_config('default_extensions', '.mkv,.mp4,.avi,.mov,.wmv,.flv'),
+        }
+
+    def _delete_payload():
+        return {
+            'tasks': DeleteMonitorTask.query.all(),
+            'downloaders': Downloader.query.all(),
+            'notifiers': Notifier.query.all(),
+        }
+
+    def _downloader_payload():
+        return {'downloaders': Downloader.query.all()}
+
+    def _notifier_payload():
+        return {'notifiers': Notifier.query.all()}
+
+    def _cron_human_text(expr):
+        parts = (expr or '').split()
+        if len(parts) != 5:
+            return '格式错误（应为 5 段）'
+        minute, hour, day, month, dow = parts
+        if day == '*' and month == '*' and dow == '*':
+            if minute.isdigit() and hour.isdigit():
+                hh = int(hour)
+                mm = int(minute)
+                if 0 <= hh <= 23 and 0 <= mm <= 59:
+                    return f'每天 {hh:02d}:{mm:02d} 执行（24小时制）'
+            if hour.startswith('*/') and minute.isdigit():
+                step = hour[2:]
+                if step.isdigit() and int(step) > 0:
+                    return f'每 {int(step)} 小时在 {int(minute):02d} 分执行（24小时制）'
+            if minute.startswith('*/') and hour == '*':
+                step = minute[2:]
+                if step.isdigit() and int(step) > 0:
+                    return f'每 {int(step)} 分钟执行一次'
+        return '自定义 Cron（可参考下方示例）'
+
+    def _cron_payload():
+        jobs = CronJob.query.all()
+        return {
+            'jobs': jobs,
+            'cron_hints': {j.id: _cron_human_text(j.cron_expression) for j in jobs},
+            'hardlink_tasks': HardlinkTask.query.all(),
+            'delete_tasks': DeleteMonitorTask.query.all(),
+        }
 
     @web_bp.route('/')
     def dashboard():
@@ -66,7 +120,7 @@ def init_web_routes(ctx: RouteDeps):
 
     @web_bp.route('/hardlink')
     def hardlink_list():
-        return render_template('hardlink.html', tasks=HardlinkTask.query.all(), default_extensions=get_config('default_extensions', '.mkv,.mp4,.avi,.mov,.wmv,.flv'))
+        return render_template('hardlink.html', **_hardlink_payload())
 
     @web_bp.route('/hardlink/add', methods=['POST'])
     def hardlink_add():
@@ -79,19 +133,15 @@ def init_web_routes(ctx: RouteDeps):
         use_cache = request.form.get('use_cache') == 'on'
 
         if not name:
-            flash('任务名称不能为空', 'danger')
-            return redirect('/hardlink')
-
+            return _json_or_redirect(False, '任务名称不能为空', '/hardlink', status=400)
         for label, val in [('源目录', source_dir), ('目标目录', dest_dir)]:
             ok, msg = validate_path(val)
             if not ok:
-                flash(f'{label}无效: {msg}', 'danger')
-                return redirect('/hardlink')
+                return _json_or_redirect(False, f'{label}无效: {msg}', '/hardlink', status=400)
 
         min_file_age = request.form.get('min_file_age_seconds', type=int)
         if min_file_age is None or min_file_age < 0 or min_file_age > 86400:
-            flash('最小文件年龄必须在 0-86400 秒之间', 'danger')
-            return redirect('/hardlink')
+            return _json_or_redirect(False, '最小文件年龄必须在 0-86400 秒之间', '/hardlink', status=400)
 
         task = HardlinkTask(
             name=name,
@@ -107,65 +157,66 @@ def init_web_routes(ctx: RouteDeps):
         db.session.add(task)
         db.session.commit()
         log_operation('hardlink_task_created', 'HardlinkTask', task.id, task.name)
-        flash('硬链接任务已添加（定时扫描模式）', 'success')
-        return redirect('/hardlink')
+        payload = _hardlink_payload()
+        html = render_template('_hardlink_jobs_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, '硬链接任务已添加（定时扫描模式）', '/hardlink', html=html, target='hardlinkJobsPanel')
 
     @web_bp.route('/hardlink/toggle/<int:task_id>', methods=['POST'])
     def hardlink_toggle(task_id):
         task = db.session.get(HardlinkTask, task_id)
         if not task:
-            flash('任务不存在', 'danger')
-            return redirect('/hardlink')
+            return _json_or_redirect(False, '任务不存在', '/hardlink', status=404)
         task.enabled = not task.enabled
         db.session.commit()
         log_operation('hardlink_task_toggled', 'HardlinkTask', task.id, task.name, f"状态: {'已启用' if task.enabled else '已禁用'}")
-        flash(f'任务 {task.name} 已{"启用" if task.enabled else "禁用"}', 'success')
-        return redirect('/hardlink')
+        payload = _hardlink_payload()
+        html = render_template('_hardlink_jobs_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, f'任务 {task.name} 已{"启用" if task.enabled else "禁用"}', '/hardlink', html=html, target='hardlinkJobsPanel')
 
     @web_bp.route('/hardlink/delete/<int:task_id>', methods=['POST'])
     def hardlink_delete(task_id):
         task = db.session.get(HardlinkTask, task_id)
         if not task:
-            flash('任务不存在', 'danger')
-            return redirect('/hardlink')
+            return _json_or_redirect(False, '任务不存在', '/hardlink', status=404)
         HardlinkCache.query.filter(HardlinkCache.source_path.like(f"{task.source_dir}%")).delete()
         FileLinkMap.query.filter_by(task_id=task.id).delete()
         db.session.delete(task)
         db.session.commit()
         log_operation('hardlink_task_deleted', 'HardlinkTask', task_id, task.name)
-        flash('任务已删除', 'success')
-        return redirect('/hardlink')
+        payload = _hardlink_payload()
+        html = render_template('_hardlink_jobs_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, '任务已删除', '/hardlink', html=html, target='hardlinkJobsPanel')
 
     @web_bp.route('/hardlink/batch/<int:task_id>', methods=['POST'])
     @web_bp.route('/hardlink/execute/<int:task_id>', methods=['POST'])
     def hardlink_execute(task_id):
         ok, msg = run_hardlink_once(task_id)
-        flash(msg, 'success' if ok else 'danger')
-        return redirect('/hardlink')
+        if _wants_json():
+            payload = _hardlink_payload()
+            html = render_template('_hardlink_jobs_panel.html', **payload)
+            return _json_or_redirect(ok, msg, '/hardlink', html=html if ok else None, target='hardlinkJobsPanel', status=200 if ok else 400)
+        return _json_or_redirect(ok, msg, '/hardlink')
 
     @web_bp.route('/delete-monitor')
     def delete_monitor_list():
-        return render_template('delete_monitor.html', tasks=DeleteMonitorTask.query.all(), downloaders=Downloader.query.all(), notifiers=Notifier.query.all())
+        return render_template('delete_monitor.html', **_delete_payload())
 
     @web_bp.route('/delete-monitor/add', methods=['POST'])
     def delete_monitor_add():
         name = (request.form.get('name') or '').strip()
         directory = str(Path(request.form.get('directory', '')))
         if not name:
-            flash('任务名称不能为空', 'danger')
-            return redirect('/delete-monitor')
+            return _json_or_redirect(False, '任务名称不能为空', '/delete-monitor', status=400)
         ok, msg = validate_path(directory)
         if not ok:
-            flash(f'监控目录无效: {msg}', 'danger')
-            return redirect('/delete-monitor')
+            return _json_or_redirect(False, f'监控目录无效: {msg}', '/delete-monitor', status=400)
         cooldown = request.form.get('cooldown_seconds', type=int)
         max_deletes = request.form.get('max_deletes_per_run', type=int)
         if cooldown is None or cooldown < 0 or cooldown > 86400:
-            flash('冷却秒数必须在 0-86400 之间', 'danger')
-            return redirect('/delete-monitor')
+            return _json_or_redirect(False, '冷却秒数必须在 0-86400 之间', '/delete-monitor', status=400)
         if max_deletes is None or max_deletes < 1 or max_deletes > 1000:
-            flash('单次最大删除必须在 1-1000 之间', 'danger')
-            return redirect('/delete-monitor')
+            return _json_or_redirect(False, '单次最大删除必须在 1-1000 之间', '/delete-monitor', status=400)
+
         task = DeleteMonitorTask(
             name=name,
             directory=directory,
@@ -179,40 +230,44 @@ def init_web_routes(ctx: RouteDeps):
         db.session.add(task)
         db.session.commit()
         log_operation('delete_task_created', 'DeleteMonitorTask', task.id, task.name)
-        flash('删除监控任务已添加（定时扫描模式）', 'success')
-        return redirect('/delete-monitor')
+        payload = _delete_payload()
+        html = render_template('_delete_jobs_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, '删除监控任务已添加（定时扫描模式）', '/delete-monitor', html=html, target='deleteJobsPanel')
 
     @web_bp.route('/delete-monitor/run/<int:task_id>', methods=['POST'])
     def delete_monitor_run(task_id):
         ok, msg = run_delete_once(task_id)
-        flash(msg, 'success' if ok else 'danger')
-        return redirect('/delete-monitor')
+        if _wants_json():
+            payload = _delete_payload()
+            html = render_template('_delete_jobs_panel.html', **payload)
+            return _json_or_redirect(ok, msg, '/delete-monitor', html=html if ok else None, target='deleteJobsPanel', status=200 if ok else 400)
+        return _json_or_redirect(ok, msg, '/delete-monitor')
 
     @web_bp.route('/delete-monitor/toggle/<int:task_id>', methods=['POST'])
     def delete_monitor_toggle(task_id):
         task = db.session.get(DeleteMonitorTask, task_id)
         if not task:
-            flash('任务不存在', 'danger')
-            return redirect('/delete-monitor')
+            return _json_or_redirect(False, '任务不存在', '/delete-monitor', status=404)
         task.enabled = not task.enabled
         db.session.commit()
-        flash(f'任务 {task.name} 已{"启用" if task.enabled else "禁用"}', 'success')
-        return redirect('/delete-monitor')
+        payload = _delete_payload()
+        html = render_template('_delete_jobs_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, f'任务 {task.name} 已{"启用" if task.enabled else "禁用"}', '/delete-monitor', html=html, target='deleteJobsPanel')
 
     @web_bp.route('/delete-monitor/delete/<int:task_id>', methods=['POST'])
     def delete_monitor_delete(task_id):
         task = db.session.get(DeleteMonitorTask, task_id)
         if not task:
-            flash('任务不存在', 'danger')
-            return redirect('/delete-monitor')
+            return _json_or_redirect(False, '任务不存在', '/delete-monitor', status=404)
         db.session.delete(task)
         db.session.commit()
-        flash('任务已删除', 'success')
-        return redirect('/delete-monitor')
+        payload = _delete_payload()
+        html = render_template('_delete_jobs_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, '任务已删除', '/delete-monitor', html=html, target='deleteJobsPanel')
 
     @web_bp.route('/downloader')
     def downloader_list():
-        return render_template('downloader.html', downloaders=Downloader.query.all())
+        return render_template('downloader.html', **_downloader_payload())
 
     @web_bp.route('/downloader/add', methods=['POST'])
     def downloader_add():
@@ -220,104 +275,117 @@ def init_web_routes(ctx: RouteDeps):
         host = (request.form.get('host') or '').rstrip('/')
         port = request.form.get('port', type=int)
         if not name:
-            flash('下载器名称不能为空', 'danger')
-            return redirect('/downloader')
+            return _json_or_redirect(False, '下载器名称不能为空', '/downloader', status=400)
         ok, msg = validate_host(host)
         if not ok:
-            flash(f'主机地址无效: {msg}', 'danger')
-            return redirect('/downloader')
+            return _json_or_redirect(False, f'主机地址无效: {msg}', '/downloader', status=400)
         if port is None or port < 1 or port > 65535:
-            flash('端口号必须在 1-65535', 'danger')
-            return redirect('/downloader')
+            return _json_or_redirect(False, '端口号必须在 1-65535', '/downloader', status=400)
+
         d = Downloader(name=name, type=request.form.get('type', 'qbittorrent'), host=host, port=port, username=request.form.get('username'))
         d.set_password(request.form.get('password'))
         db.session.add(d)
         db.session.commit()
-        flash('下载器已添加', 'success')
-        return redirect('/downloader')
+        payload = _downloader_payload()
+        html = render_template('_downloader_jobs_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, '下载器已添加', '/downloader', html=html, target='downloaderJobsPanel')
 
     @web_bp.route('/downloader/test/<int:downloader_id>', methods=['POST'])
     def downloader_test(downloader_id):
         d = db.session.get(Downloader, downloader_id)
         if not d:
-            flash('下载器不存在', 'danger')
-            return redirect('/downloader')
+            return _json_or_redirect(False, '下载器不存在', '/downloader', status=404)
         torrents = list_torrents(d)
-        flash(f'连接成功，种子数: {len(torrents)}', 'success') if torrents is not None else flash('连接失败，请检查配置', 'danger')
-        return redirect('/downloader')
+        if _wants_json():
+            payload = _downloader_payload()
+            html = render_template('_downloader_jobs_panel.html', **payload)
+            if torrents is not None:
+                return _json_or_redirect(True, f'连接成功，种子数: {len(torrents)}', '/downloader', html=html, target='downloaderJobsPanel')
+            return _json_or_redirect(False, '连接失败，请检查配置', '/downloader', status=400)
+        return _json_or_redirect(torrents is not None, f'连接成功，种子数: {len(torrents)}' if torrents is not None else '连接失败，请检查配置', '/downloader')
 
     @web_bp.route('/downloader/toggle/<int:downloader_id>', methods=['POST'])
     def downloader_toggle(downloader_id):
         d = db.session.get(Downloader, downloader_id)
         if not d:
-            flash('下载器不存在', 'danger')
-            return redirect('/downloader')
+            return _json_or_redirect(False, '下载器不存在', '/downloader', status=404)
         d.enabled = not d.enabled
         db.session.commit()
-        return redirect('/downloader')
+        payload = _downloader_payload()
+        html = render_template('_downloader_jobs_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, f'下载器 {d.name} 已{"启用" if d.enabled else "禁用"}', '/downloader', html=html, target='downloaderJobsPanel')
 
     @web_bp.route('/downloader/delete/<int:downloader_id>', methods=['POST'])
     def downloader_delete(downloader_id):
         d = db.session.get(Downloader, downloader_id)
         if not d:
-            flash('下载器不存在', 'danger')
-            return redirect('/downloader')
+            return _json_or_redirect(False, '下载器不存在', '/downloader', status=404)
         db.session.delete(d)
         db.session.commit()
-        return redirect('/downloader')
+        payload = _downloader_payload()
+        html = render_template('_downloader_jobs_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, '下载器已删除', '/downloader', html=html, target='downloaderJobsPanel')
 
     @web_bp.route('/notifier')
     def notifier_list():
-        return render_template('notifier.html', notifiers=Notifier.query.all())
+        return render_template('notifier.html', **_notifier_payload())
 
     @web_bp.route('/notifier/add', methods=['POST'])
     def notifier_add():
         name = (request.form.get('name') or '').strip()
         api_key = (request.form.get('api_key') or '').strip()
         if not name or not api_key:
-            flash('通知器名称和API Key不能为空', 'danger')
-            return redirect('/notifier')
+            return _json_or_redirect(False, '通知器名称和API Key不能为空', '/notifier', status=400)
         n = Notifier(name=name, type=request.form.get('type', 'telegram'), api_key=api_key, chat_id=request.form.get('chat_id'))
         db.session.add(n)
         db.session.commit()
-        flash('通知器已添加', 'success')
-        return redirect('/notifier')
+        payload = _notifier_payload()
+        html = render_template('_notifier_jobs_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, '通知器已添加', '/notifier', html=html, target='notifierJobsPanel')
 
     @web_bp.route('/notifier/test/<int:notifier_id>', methods=['POST'])
     def notifier_test(notifier_id):
         n = db.session.get(Notifier, notifier_id)
         if not n:
-            flash('通知器不存在', 'danger')
-            return redirect('/notifier')
+            return _json_or_redirect(False, '通知器不存在', '/notifier', status=404)
         ok = send_telegram_notification(n, 'Hardlink Manager 测试通知')
-        flash('发送成功' if ok else '发送失败', 'success' if ok else 'danger')
-        return redirect('/notifier')
+        if _wants_json():
+            payload = _notifier_payload()
+            html = render_template('_notifier_jobs_panel.html', **payload)
+            return _json_or_redirect(ok, '发送成功' if ok else '发送失败', '/notifier', html=html if ok else None, target='notifierJobsPanel', status=200 if ok else 400)
+        return _json_or_redirect(ok, '发送成功' if ok else '发送失败', '/notifier')
 
     @web_bp.route('/notifier/toggle/<int:notifier_id>', methods=['POST'])
     def notifier_toggle(notifier_id):
         n = db.session.get(Notifier, notifier_id)
         if not n:
-            flash('通知器不存在', 'danger')
-            return redirect('/notifier')
+            return _json_or_redirect(False, '通知器不存在', '/notifier', status=404)
         n.enabled = not n.enabled
         db.session.commit()
-        return redirect('/notifier')
+        payload = _notifier_payload()
+        html = render_template('_notifier_jobs_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, f'通知器 {n.name} 已{"启用" if n.enabled else "禁用"}', '/notifier', html=html, target='notifierJobsPanel')
 
     @web_bp.route('/notifier/delete/<int:notifier_id>', methods=['POST'])
     def notifier_delete(notifier_id):
         n = db.session.get(Notifier, notifier_id)
         if not n:
-            flash('通知器不存在', 'danger')
-            return redirect('/notifier')
+            return _json_or_redirect(False, '通知器不存在', '/notifier', status=404)
         db.session.delete(n)
         db.session.commit()
-        return redirect('/notifier')
+        payload = _notifier_payload()
+        html = render_template('_notifier_jobs_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, '通知器已删除', '/notifier', html=html, target='notifierJobsPanel')
 
     @web_bp.route('/logs')
     def logs_list():
+        page = max(request.args.get('page', 1, type=int), 1)
+        pagination = OperationLog.query.order_by(OperationLog.created_at.desc()).paginate(page=page, per_page=100, error_out=False)
         return render_template(
             'logs.html',
-            logs=OperationLog.query.order_by(OperationLog.created_at.desc()).all(),
+            logs=pagination.items,
+            page=page,
+            total_pages=max(pagination.pages, 1),
             executions=JobExecutionLog.query.order_by(JobExecutionLog.started_at.desc()).limit(100).all(),
         )
 
@@ -348,7 +416,7 @@ def init_web_routes(ctx: RouteDeps):
 
     @web_bp.route('/cron')
     def cron_list():
-        return render_template('cron.html', jobs=CronJob.query.all(), hardlink_tasks=HardlinkTask.query.all(), delete_tasks=DeleteMonitorTask.query.all())
+        return render_template('cron.html', **_cron_payload())
 
     @web_bp.route('/cron/add', methods=['POST'])
     def cron_add():
@@ -357,36 +425,57 @@ def init_web_routes(ctx: RouteDeps):
         target_id = request.form.get('target_id', type=int)
         cron_expression = (request.form.get('custom_cron') or request.form.get('cron_expression') or '').strip()
         if not name:
-            flash('任务名称不能为空', 'danger')
-            return redirect('/cron')
+            return _json_or_redirect(False, '任务名称不能为空', '/cron', status=400)
         if not validate_cron_expression(cron_expression):
-            flash('Cron 表达式格式错误', 'danger')
-            return redirect('/cron')
+            return _json_or_redirect(False, 'Cron 表达式格式错误（应为 5 段，例如 0 3 * * *）', '/cron', status=400)
+
         allowed_types = {'batch_hardlink', 'delete_scan', 'backfill_mapping', 'clean_logs', 'clean_cache', 'db_backup'}
         if task_type not in allowed_types:
-            flash('不支持的任务类型', 'danger')
-            return redirect('/cron')
+            return _json_or_redirect(False, '不支持的任务类型', '/cron', status=400)
         if task_type == 'batch_hardlink' and (not target_id or not db.session.get(HardlinkTask, target_id)):
-            flash('请选择有效的硬链接任务', 'danger')
-            return redirect('/cron')
+            return _json_or_redirect(False, '请选择有效的硬链接任务', '/cron', status=400)
         if task_type == 'delete_scan' and (not target_id or not db.session.get(DeleteMonitorTask, target_id)):
-            flash('请选择有效的删除监控任务', 'danger')
-            return redirect('/cron')
+            return _json_or_redirect(False, '请选择有效的删除监控任务', '/cron', status=400)
         if task_type in {'clean_logs', 'clean_cache', 'backfill_mapping', 'db_backup'}:
             target_id = None
+
         c = CronJob(name=name, task_type=task_type, target_id=target_id, cron_expression=cron_expression, description=request.form.get('description'))
         db.session.add(c)
         db.session.commit()
         update_cron_job(c.id)
-        flash('定时任务已添加', 'success')
-        return redirect('/cron')
+
+        if _wants_json():
+            payload = _cron_payload()
+            html = render_template('_cron_jobs_panel.html', **payload)
+            return _json_or_redirect(True, '定时任务已添加', '/cron', html=html, target='cronJobsPanel')
+        return _json_or_redirect(True, '定时任务已添加', '/cron')
+
+    @web_bp.route('/cron/update/<int:job_id>', methods=['POST'])
+    def cron_update(job_id):
+        c = db.session.get(CronJob, job_id)
+        if not c:
+            return _json_or_redirect(False, '定时任务不存在', '/cron', status=404)
+
+        cron_expression = (request.form.get('custom_cron') or '').strip()
+        if not validate_cron_expression(cron_expression):
+            return _json_or_redirect(False, 'Cron 表达式格式错误（应为 5 段，例如 0 3 * * *）', '/cron', status=400)
+
+        c.cron_expression = cron_expression
+        c.description = request.form.get('description')
+        db.session.commit()
+        update_cron_job(c.id)
+
+        if _wants_json():
+            payload = _cron_payload()
+            html = render_template('_cron_jobs_panel.html', **payload)
+            return _json_or_redirect(True, '定时计划已更新', '/cron', html=html, target='cronJobsPanel')
+        return _json_or_redirect(True, '定时计划已更新', '/cron')
 
     @web_bp.route('/cron/run/<int:job_id>', methods=['POST'])
     def cron_run_once(job_id):
         c = db.session.get(CronJob, job_id)
         if not c:
-            flash('定时任务不存在', 'danger')
-            return redirect('/cron')
+            return _json_or_redirect(False, '定时任务不存在', '/cron', status=404)
 
         if c.task_type == 'batch_hardlink':
             ok, msg = run_hardlink_once(c.target_id)
@@ -400,34 +489,47 @@ def init_web_routes(ctx: RouteDeps):
             run_cron_job(c.id)
             ok, msg = True, f'已触发任务: {c.name}'
 
-        flash(msg, 'success' if ok else 'danger')
-        return redirect('/cron')
+        if _wants_json():
+            payload = _cron_payload()
+            html = render_template('_cron_jobs_panel.html', **payload)
+            return _json_or_redirect(ok, msg, '/cron', html=html if ok else None, target='cronJobsPanel', status=200 if ok else 400)
+        return _json_or_redirect(ok, msg, '/cron')
 
     @web_bp.route('/cron/backup-now', methods=['POST'])
     def backup_now():
         ok, msg = run_backup_once()
-        flash(msg, 'success' if ok else 'danger')
-        return redirect('/cron')
+        if _wants_json():
+            payload = _cron_payload()
+            html = render_template('_cron_jobs_panel.html', **payload)
+            return _json_or_redirect(ok, msg, '/cron', html=html if ok else None, target='cronJobsPanel', status=200 if ok else 400)
+        return _json_or_redirect(ok, msg, '/cron')
 
     @web_bp.route('/cron/toggle/<int:job_id>', methods=['POST'])
     def cron_toggle(job_id):
         c = db.session.get(CronJob, job_id)
         if not c:
-            flash('定时任务不存在', 'danger')
-            return redirect('/cron')
+            return _json_or_redirect(False, '定时任务不存在', '/cron', status=404)
         c.enabled = not c.enabled
         db.session.commit()
         update_cron_job(c.id)
-        return redirect('/cron')
+        state = '启用' if c.enabled else '禁用'
+        if _wants_json():
+            payload = _cron_payload()
+            html = render_template('_cron_jobs_panel.html', **payload)
+            return _json_or_redirect(True, f'任务 {c.name} 已{state}', '/cron', html=html, target='cronJobsPanel')
+        return _json_or_redirect(True, f'任务 {c.name} 已{state}', '/cron')
 
     @web_bp.route('/cron/delete/<int:job_id>', methods=['POST'])
     def cron_delete(job_id):
         c = db.session.get(CronJob, job_id)
         if not c:
-            flash('定时任务不存在', 'danger')
-            return redirect('/cron')
+            return _json_or_redirect(False, '定时任务不存在', '/cron', status=404)
         db.session.delete(c)
         db.session.commit()
-        return redirect('/cron')
+        if _wants_json():
+            payload = _cron_payload()
+            html = render_template('_cron_jobs_panel.html', **payload)
+            return _json_or_redirect(True, '定时任务已删除', '/cron', html=html, target='cronJobsPanel')
+        return _json_or_redirect(True, '定时任务已删除', '/cron')
 
     return web_bp

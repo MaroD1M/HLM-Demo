@@ -1,0 +1,20 @@
+<div class="card p-3">
+  <div class="table-responsive">
+    <table class="table">
+      <thead><tr><th>名称</th><th>目录</th><th>下载器</th><th>通知器</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for t in tasks %}
+      <tr>
+        <td>{{ t.name }}</td><td>{{ t.directory }}</td><td>{{ t.downloader_id or '-' }}</td><td>{{ t.notifier_id or '-' }}</td>
+        <td>{% if t.enabled %}<span class="badge text-bg-success">启用</span>{% else %}<span class="badge text-bg-secondary">禁用</span>{% endif %}</td>
+        <td>
+          <form class="d-inline js-ajax-form" action="/delete-monitor/run/{{ t.id }}" method="POST" data-target="deleteJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">立即执行</button></form>
+          <form class="d-inline js-ajax-form" action="/delete-monitor/toggle/{{ t.id }}" method="POST" data-target="deleteJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">{{ '禁用' if t.enabled else '启用' }}</button></form>
+          <form class="d-inline js-ajax-form" action="/delete-monitor/delete/{{ t.id }}" method="POST" data-target="deleteJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

@@ -2,13 +2,7 @@
 {% block title %}下载器 - Hardlink Manager{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3"><h3 class="mb-0">下载器</h3><button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#add">新增</button></div>
-<div class="card p-3"><table class="table"><thead><tr><th>名称</th><th>类型</th><th>地址</th><th>状态</th><th>操作</th></tr></thead><tbody>
-{% for d in downloaders %}<tr><td>{{ d.name }}</td><td>{{ d.type }}</td><td>{{ d.host }}:{{ d.port }}</td><td>{% if d.enabled %}<span class="badge text-bg-success">启用</span>{% else %}<span class="badge text-bg-secondary">禁用</span>{% endif %}</td><td>
-<form class="d-inline" action="/downloader/test/{{ d.id }}" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">测试</button></form>
-<form class="d-inline" action="/downloader/toggle/{{ d.id }}" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">切换</button></form>
-<form class="d-inline" action="/downloader/delete/{{ d.id }}" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>
-</td></tr>{% endfor %}
-</tbody></table></div>
+<div id="downloaderJobsPanel">{% include "_downloader_jobs_panel.html" %}</div>
 <div class="modal fade" id="add" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><form action="/downloader/add" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><div class="modal-header"><h5 class="modal-title">新增下载器</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body">
 <div class="mb-2"><label class="form-label">名称</label><input class="form-control" name="name" required></div>
 <div class="mb-2"><label class="form-label">类型</label><select class="form-select" name="type"><option value="qbittorrent">qBittorrent</option></select></div>
@@ -17,4 +11,10 @@
 <div class="mb-2"><label class="form-label">用户名</label><input class="form-control" name="username"></div>
 <div class="mb-2"><label class="form-label">密码</label><input class="form-control" type="password" name="password"></div>
 </div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button class="btn btn-primary" type="submit">保存</button></div></form></div></div></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.HLMAjax&&window.HLMAjax.bind();
+</script>
 {% endblock %}
