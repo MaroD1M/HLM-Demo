@@ -35,7 +35,7 @@
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn btn-sm btn-outline-warning">{{ '禁用' if j.enabled else '启用' }}</button>
             </form>
-            <form class="d-inline js-ajax-form" action="/cron/delete/{{ j.id }}" method="POST" data-target="cronJobsPanel">
+            <form class="d-inline js-ajax-form" action="/cron/delete/{{ j.id }}" method="POST" data-target="cronJobsPanel" data-confirm="确认删除该定时任务？">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn btn-sm btn-outline-danger">删除</button>
             </form>
@@ -52,6 +52,10 @@
                   <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                  <div class="mb-2">
+                    <label class="form-label">任务名称</label>
+                    <input class="form-control" name="name" value="{{ j.name }}" required>
+                  </div>
                   <div class="mb-2">
                     <label class="form-label">Cron 表达式</label>
                     <input class="form-control cron-input" name="custom_cron" value="{{ j.cron_expression }}" required data-preview-target="cronPreview{{ j.id }}">

@@ -13,7 +13,7 @@
           <form class="d-inline js-ajax-form" action="/hardlink/execute/{{ t.id }}" method="POST" data-target="hardlinkJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">立即执行</button></form>
           <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editHardlinkModal{{ t.id }}">修改</button>
           <form class="d-inline js-ajax-form" action="/hardlink/toggle/{{ t.id }}" method="POST" data-target="hardlinkJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">{{ '禁用' if t.enabled else '启用' }}</button></form>
-          <form class="d-inline js-ajax-form" action="/hardlink/delete/{{ t.id }}" method="POST" data-target="hardlinkJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>
+          <form class="d-inline js-ajax-form" action="/hardlink/delete/{{ t.id }}" method="POST" data-target="hardlinkJobsPanel" data-confirm="确认删除该硬链接任务？"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>
         </td>
       </tr>
 

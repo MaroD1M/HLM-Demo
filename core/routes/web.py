@@ -443,6 +443,38 @@ def init_web_routes(ctx: RouteDeps):
             return _json_or_redirect(ok, msg, '/downloader', html=html if ok else None, target='downloaderJobsPanel', status=200 if ok else 400)
         return _json_or_redirect(ok, msg, '/downloader')
 
+
+    @web_bp.route('/downloader/update/<int:downloader_id>', methods=['POST'])
+    def downloader_update(downloader_id):
+        d = db.session.get(Downloader, downloader_id)
+        if not d:
+            return _json_or_redirect(False, '下载器不存在', '/downloader', status=404)
+
+        name = (request.form.get('name') or '').strip()
+        host = (request.form.get('host') or '').rstrip('/')
+        port = request.form.get('port', type=int)
+        if not name:
+            return _json_or_redirect(False, '下载器名称不能为空', '/downloader', status=400)
+        ok, msg = validate_host(host)
+        if not ok:
+            return _json_or_redirect(False, f'主机地址无效: {msg}', '/downloader', status=400)
+        if port is None or port < 1 or port > 65535:
+            return _json_or_redirect(False, '端口号必须在 1-65535', '/downloader', status=400)
+
+        d.name = name
+        d.type = request.form.get('type', 'qbittorrent')
+        d.host = host
+        d.port = port
+        d.username = request.form.get('username')
+        new_password = request.form.get('password')
+        if (new_password or '').strip():
+            d.set_password(new_password)
+        db.session.commit()
+        log_operation('downloader_updated', 'Downloader', d.id, d.name)
+        payload = _downloader_payload()
+        html = render_template('_downloader_jobs_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, '下载器已更新', '/downloader', html=html, target='downloaderJobsPanel')
+
     @web_bp.route('/downloader/toggle/<int:downloader_id>', methods=['POST'])
     def downloader_toggle(downloader_id):
         d = db.session.get(Downloader, downloader_id)
@@ -493,6 +525,28 @@ def init_web_routes(ctx: RouteDeps):
             html = render_template('_notifier_jobs_panel.html', **payload)
             return _json_or_redirect(ok, '发送成功' if ok else '发送失败', '/notifier', html=html if ok else None, target='notifierJobsPanel', status=200 if ok else 400)
         return _json_or_redirect(ok, '发送成功' if ok else '发送失败', '/notifier')
+
+
+    @web_bp.route('/notifier/update/<int:notifier_id>', methods=['POST'])
+    def notifier_update(notifier_id):
+        n = db.session.get(Notifier, notifier_id)
+        if not n:
+            return _json_or_redirect(False, '通知器不存在', '/notifier', status=404)
+
+        name = (request.form.get('name') or '').strip()
+        api_key = (request.form.get('api_key') or '').strip()
+        if not name or not api_key:
+            return _json_or_redirect(False, '通知器名称和API Key不能为空', '/notifier', status=400)
+
+        n.name = name
+        n.type = request.form.get('type', 'telegram')
+        n.api_key = api_key
+        n.chat_id = request.form.get('chat_id')
+        db.session.commit()
+        log_operation('notifier_updated', 'Notifier', n.id, n.name)
+        payload = _notifier_payload()
+        html = render_template('_notifier_jobs_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, '通知器已更新', '/notifier', html=html, target='notifierJobsPanel')
 
     @web_bp.route('/notifier/toggle/<int:notifier_id>', methods=['POST'])
     def notifier_toggle(notifier_id):
@@ -658,10 +712,14 @@ def init_web_routes(ctx: RouteDeps):
         if not c:
             return _json_or_redirect(False, '定时任务不存在', '/cron', status=404)
 
+        name = (request.form.get('name') or '').strip()
         cron_expression = (request.form.get('custom_cron') or '').strip()
+        if not name:
+            return _json_or_redirect(False, '任务名称不能为空', '/cron', status=400)
         if not validate_cron_expression(cron_expression):
             return _json_or_redirect(False, 'Cron 表达式格式错误（应为 5 段，例如 0 3 * * *）', '/cron', status=400)
 
+        c.name = name
         c.cron_expression = cron_expression
         c.description = request.form.get('description')
         db.session.commit()
