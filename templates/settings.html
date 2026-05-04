@@ -2,8 +2,7 @@
 {% block title %}设置 - Hardlink Manager{% endblock %}
 {% block content %}
 <h3 class="mb-3">系统设置</h3>
-<div class="card p-3"><form action="/settings/save" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-<div class="row g-3">
+<div class="card p-3"><form action="/settings/save" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><div class="row g-3">
 <div class="col-md-4"><label class="form-label">日志保留天数</label><input class="form-control" type="number" name="log_retention_days" value="{{ settings.get('log_retention_days', 30) }}"></div>
 <div class="col-md-4"><label class="form-label">自动清理日志</label><select class="form-select" name="auto_clean_logs"><option value="true" {% if settings.get('auto_clean_logs')=='true' %}selected{% endif %}>启用</option><option value="false" {% if settings.get('auto_clean_logs')=='false' %}selected{% endif %}>禁用</option></select></div>
 <div class="col-md-4"><label class="form-label">默认扩展名</label><input class="form-control" name="default_extensions" value="{{ settings.get('default_extensions', '.mkv,.mp4,.avi,.mov') }}"></div>
@@ -14,8 +13,8 @@
 <div class="col-md-2"><label class="form-label">硬链接通知</label><select class="form-select" name="notify_on_hardlink"><option value="true" {% if settings.get('notify_on_hardlink')=='true' %}selected{% endif %}>开</option><option value="false" {% if settings.get('notify_on_hardlink')=='false' %}selected{% endif %}>关</option></select></div>
 <div class="col-md-2"><label class="form-label">删除通知</label><select class="form-select" name="notify_on_delete"><option value="true" {% if settings.get('notify_on_delete')=='true' %}selected{% endif %}>开</option><option value="false" {% if settings.get('notify_on_delete')=='false' %}selected{% endif %}>关</option></select></div>
 <div class="col-md-6"><label class="form-label">Telegram 代理地址</label><input class="form-control" name="tg_proxy_url" value="{{ settings.get('tg_proxy_url','') }}" placeholder="http://127.0.0.1:7890"></div>
-<div class="col-md-6"><label class="form-label">Telegram API Base</label><input class="form-control" name="tg_api_base" value="{{ settings.get('tg_api_base','https://api.telegram.org') }}" placeholder="https://api.telegram.org"></div>
-</div>
-<div class="mt-3"><button class="btn btn-primary" type="submit">保存设置</button></div>
-</form></div>
+<div class="col-md-6"><label class="form-label">Telegram API Base</label><input class="form-control" name="tg_api_base" value="{{ settings.get('tg_api_base','https://api.telegram.org') }}"></div>
+<div class="col-md-8"><label class="form-label">数据库备份目录</label><input class="form-control" name="backup_dir" value="{{ settings.get('backup_dir','/app/data/backups') }}"></div>
+<div class="col-md-4"><label class="form-label">备份保留份数</label><input class="form-control" type="number" min="1" name="backup_keep_last" value="{{ settings.get('backup_keep_last', 7) }}"></div>
+</div><div class="mt-3"><button class="btn btn-brand" type="submit">保存设置</button></div></form></div>
 {% endblock %}

@@ -3,31 +3,16 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h3 class="mb-0">系统仪表盘</h3>
-  <span class="muted">运行中任务: {{ running_count }}</span>
+  <span class="muted">运行任务: {{ running_count }}</span>
 </div>
 <div class="row g-3 mb-3">
   <div class="col-md-3"><div class="card p-3"><div class="muted">任务总数</div><div class="h4 mb-0">{{ total_tasks }}</div></div></div>
-  <div class="col-md-3"><div class="card p-3"><div class="muted">硬链接任务</div><div class="h4 mb-0">{{ hardlink_count }}</div></div></div>
-  <div class="col-md-3"><div class="card p-3"><div class="muted">删除监控任务</div><div class="h4 mb-0">{{ delete_count }}</div></div></div>
+  <div class="col-md-3"><div class="card p-3"><div class="muted">成功执行</div><div class="h4 mb-0 text-success">{{ success_runs }}</div></div></div>
+  <div class="col-md-3"><div class="card p-3"><div class="muted">失败执行</div><div class="h4 mb-0 text-danger">{{ failed_runs }}</div></div></div>
   <div class="col-md-3"><div class="card p-3"><div class="muted">定时任务</div><div class="h4 mb-0">{{ cron_jobs|length }}</div></div></div>
 </div>
-<div class="card p-3">
-  <h5>最近日志</h5>
-  <div class="table-responsive">
-    <table class="table">
-      <thead><tr><th>时间</th><th>类型</th><th>目标</th><th>结果</th><th>消息</th></tr></thead>
-      <tbody>
-      {% for log in recent_logs %}
-      <tr>
-        <td>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-        <td>{{ log.operation_type }}</td>
-        <td>{{ log.target_name or '-' }}</td>
-        <td>{% if log.success %}<span class="badge text-bg-success">成功</span>{% else %}<span class="badge text-bg-danger">失败</span>{% endif %}</td>
-        <td>{{ log.message or '-' }}</td>
-      </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
+<div class="row g-3">
+  <div class="col-lg-6"><div class="card p-3"><h5>最近执行</h5><div class="table-responsive"><table class="table"><thead><tr><th>时间</th><th>任务</th><th>来源</th><th>状态</th><th>耗时</th></tr></thead><tbody>{% for e in recent_executions %}<tr><td>{{ e.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</td><td>{{ e.job_name }}</td><td>{{ e.source }}</td><td>{% if e.status=='success' %}<span class="badge text-bg-success">成功</span>{% elif e.status=='failed' %}<span class="badge text-bg-danger">失败</span>{% else %}<span class="badge text-bg-secondary">运行中</span>{% endif %}</td><td>{{ e.duration_ms or 0 }}ms</td></tr>{% endfor %}</tbody></table></div></div></div>
+  <div class="col-lg-6"><div class="card p-3"><h5>最近日志</h5><div class="table-responsive"><table class="table"><thead><tr><th>时间</th><th>类型</th><th>目标</th><th>结果</th></tr></thead><tbody>{% for log in recent_logs %}<tr><td>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td><td>{{ log.operation_type }}</td><td>{{ log.target_name or '-' }}</td><td>{% if log.success %}<span class="badge text-bg-success">成功</span>{% else %}<span class="badge text-bg-danger">失败</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div></div></div>
 </div>
 {% endblock %}

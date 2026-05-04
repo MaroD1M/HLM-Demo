@@ -101,6 +101,20 @@ class OperationLog(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
 
 
+
+
+class JobExecutionLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    job_name = db.Column(db.String(150), nullable=False)
+    job_type = db.Column(db.String(80), nullable=False)
+    source = db.Column(db.String(30), default='manual')
+    target_id = db.Column(db.Integer)
+    status = db.Column(db.String(20), default='running')
+    message = db.Column(db.String(1000))
+    started_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), index=True)
+    finished_at = db.Column(db.DateTime)
+    duration_ms = db.Column(db.Integer)
+
 class AppConfig(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(100), unique=True, nullable=False)

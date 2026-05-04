@@ -13,6 +13,7 @@ def init_web_routes(ctx: RouteDeps):
     HardlinkCache = ctx.HardlinkCache
     FileLinkMap = ctx.FileLinkMap
     OperationLog = ctx.OperationLog
+    JobExecutionLog = ctx.JobExecutionLog
     AppConfig = ctx.AppConfig
     CronJob = ctx.CronJob
     db = ctx.db
@@ -25,6 +26,14 @@ def init_web_routes(ctx: RouteDeps):
     validate_cron_expression = ctx.validate_cron_expression
 
     scan_hardlink_task = ctx.scan_hardlink_task
+    scan_delete_task = ctx.scan_delete_task
+    scan_backfill_task = ctx.scan_backfill_task
+    run_hardlink_once = ctx.run_hardlink_once
+    run_delete_once = ctx.run_delete_once
+    run_backfill_once = ctx.run_backfill_once
+    run_backup_once = ctx.run_backup_once
+    run_backup_task = ctx.run_backup_task
+    run_cron_job = ctx.run_cron_job
     update_cron_job = ctx.update_cron_job
     list_torrents = ctx.list_torrents
     send_telegram_notification = ctx.send_telegram_notification
@@ -33,6 +42,9 @@ def init_web_routes(ctx: RouteDeps):
     def dashboard():
         hardlink_tasks = HardlinkTask.query.all()
         delete_tasks = DeleteMonitorTask.query.all()
+        executions = JobExecutionLog.query.order_by(JobExecutionLog.started_at.desc()).limit(10).all()
+        success_runs = JobExecutionLog.query.filter_by(status='success').count()
+        failed_runs = JobExecutionLog.query.filter_by(status='failed').count()
         return render_template(
             'dashboard.html',
             hardlink_tasks=hardlink_tasks,
@@ -41,12 +53,15 @@ def init_web_routes(ctx: RouteDeps):
             notifiers=Notifier.query.all(),
             cron_jobs=CronJob.query.all(),
             recent_logs=OperationLog.query.order_by(OperationLog.created_at.desc()).limit(10).all(),
+            recent_executions=executions,
             running_count=sum(1 for t in hardlink_tasks if t.enabled) + sum(1 for t in delete_tasks if t.enabled),
             total_tasks=len(hardlink_tasks) + len(delete_tasks),
             hardlink_count=len(hardlink_tasks),
             delete_count=len(delete_tasks),
             downloader_count=Downloader.query.count(),
             notifier_count=Notifier.query.count(),
+            success_runs=success_runs,
+            failed_runs=failed_runs,
         )
 
     @web_bp.route('/hardlink')
@@ -124,7 +139,7 @@ def init_web_routes(ctx: RouteDeps):
     @web_bp.route('/hardlink/batch/<int:task_id>', methods=['POST'])
     @web_bp.route('/hardlink/execute/<int:task_id>', methods=['POST'])
     def hardlink_execute(task_id):
-        ok, msg = scan_hardlink_task(task_id)
+        ok, msg = run_hardlink_once(task_id)
         flash(msg, 'success' if ok else 'danger')
         return redirect('/hardlink')
 
@@ -165,6 +180,12 @@ def init_web_routes(ctx: RouteDeps):
         db.session.commit()
         log_operation('delete_task_created', 'DeleteMonitorTask', task.id, task.name)
         flash('删除监控任务已添加（定时扫描模式）', 'success')
+        return redirect('/delete-monitor')
+
+    @web_bp.route('/delete-monitor/run/<int:task_id>', methods=['POST'])
+    def delete_monitor_run(task_id):
+        ok, msg = run_delete_once(task_id)
+        flash(msg, 'success' if ok else 'danger')
         return redirect('/delete-monitor')
 
     @web_bp.route('/delete-monitor/toggle/<int:task_id>', methods=['POST'])
@@ -294,7 +315,11 @@ def init_web_routes(ctx: RouteDeps):
 
     @web_bp.route('/logs')
     def logs_list():
-        return render_template('logs.html', logs=OperationLog.query.order_by(OperationLog.created_at.desc()).all())
+        return render_template(
+            'logs.html',
+            logs=OperationLog.query.order_by(OperationLog.created_at.desc()).all(),
+            executions=JobExecutionLog.query.order_by(JobExecutionLog.started_at.desc()).limit(100).all(),
+        )
 
     @web_bp.route('/logs/clear', methods=['POST'])
     def logs_clear():
@@ -310,7 +335,11 @@ def init_web_routes(ctx: RouteDeps):
 
     @web_bp.route('/settings/save', methods=['POST'])
     def settings_save():
-        for key in ['log_retention_days', 'auto_clean_logs', 'default_extensions', 'default_exclude_dirs', 'delete_files_with_torrent', 'delete_delay_seconds', 'notify_on_hardlink', 'notify_on_delete', 'allowed_roots']:
+        for key in [
+            'log_retention_days', 'auto_clean_logs', 'default_extensions', 'default_exclude_dirs',
+            'delete_files_with_torrent', 'delete_delay_seconds', 'notify_on_hardlink', 'notify_on_delete',
+            'allowed_roots', 'tg_proxy_url', 'tg_api_base', 'backup_dir', 'backup_keep_last',
+        ]:
             val = request.form.get(key)
             if val is not None:
                 set_config(key, val.strip() if isinstance(val, str) else val)
@@ -333,7 +362,7 @@ def init_web_routes(ctx: RouteDeps):
         if not validate_cron_expression(cron_expression):
             flash('Cron 表达式格式错误', 'danger')
             return redirect('/cron')
-        allowed_types = {'batch_hardlink', 'delete_scan', 'backfill_mapping', 'clean_logs', 'clean_cache'}
+        allowed_types = {'batch_hardlink', 'delete_scan', 'backfill_mapping', 'clean_logs', 'clean_cache', 'db_backup'}
         if task_type not in allowed_types:
             flash('不支持的任务类型', 'danger')
             return redirect('/cron')
@@ -343,13 +372,41 @@ def init_web_routes(ctx: RouteDeps):
         if task_type == 'delete_scan' and (not target_id or not db.session.get(DeleteMonitorTask, target_id)):
             flash('请选择有效的删除监控任务', 'danger')
             return redirect('/cron')
-        if task_type in {'clean_logs', 'clean_cache', 'backfill_mapping'}:
+        if task_type in {'clean_logs', 'clean_cache', 'backfill_mapping', 'db_backup'}:
             target_id = None
         c = CronJob(name=name, task_type=task_type, target_id=target_id, cron_expression=cron_expression, description=request.form.get('description'))
         db.session.add(c)
         db.session.commit()
         update_cron_job(c.id)
         flash('定时任务已添加', 'success')
+        return redirect('/cron')
+
+    @web_bp.route('/cron/run/<int:job_id>', methods=['POST'])
+    def cron_run_once(job_id):
+        c = db.session.get(CronJob, job_id)
+        if not c:
+            flash('定时任务不存在', 'danger')
+            return redirect('/cron')
+
+        if c.task_type == 'batch_hardlink':
+            ok, msg = run_hardlink_once(c.target_id)
+        elif c.task_type == 'delete_scan':
+            ok, msg = run_delete_once(c.target_id)
+        elif c.task_type == 'backfill_mapping':
+            ok, msg = run_backfill_once(c.target_id)
+        elif c.task_type == 'db_backup':
+            ok, msg = run_backup_once()
+        else:
+            run_cron_job(c.id)
+            ok, msg = True, f'已触发任务: {c.name}'
+
+        flash(msg, 'success' if ok else 'danger')
+        return redirect('/cron')
+
+    @web_bp.route('/cron/backup-now', methods=['POST'])
+    def backup_now():
+        ok, msg = run_backup_once()
+        flash(msg, 'success' if ok else 'danger')
         return redirect('/cron')
 
     @web_bp.route('/cron/toggle/<int:job_id>', methods=['POST'])
