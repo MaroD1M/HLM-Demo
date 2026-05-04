@@ -1,0 +1,7 @@
+<div class="card p-3"><table class="table"><thead><tr><th>名称</th><th>类型</th><th>地址</th><th>状态</th><th>操作</th></tr></thead><tbody>
+{% for d in downloaders %}<tr><td>{{ d.name }}</td><td>{{ d.type }}</td><td>{{ d.host }}:{{ d.port }}</td><td>{% if d.enabled %}<span class="badge text-bg-success">启用</span>{% else %}<span class="badge text-bg-secondary">禁用</span>{% endif %}</td><td>
+<form class="d-inline js-ajax-form" action="/downloader/test/{{ d.id }}" method="POST" data-target="downloaderJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">测试</button></form>
+<form class="d-inline js-ajax-form" action="/downloader/toggle/{{ d.id }}" method="POST" data-target="downloaderJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">{{ '禁用' if d.enabled else '启用' }}</button></form>
+<form class="d-inline js-ajax-form" action="/downloader/delete/{{ d.id }}" method="POST" data-target="downloaderJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>
+</td></tr>{% endfor %}
+</tbody></table></div>

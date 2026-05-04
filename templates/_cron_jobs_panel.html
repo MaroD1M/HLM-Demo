@@ -1,0 +1,78 @@
+<div class="card p-3 mb-3">
+  <div class="table-responsive">
+    <table class="table align-middle">
+      <thead>
+        <tr>
+          <th>名称</th>
+          <th>类型</th>
+          <th>Cron</th>
+          <th>解释</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for j in jobs %}
+        <tr>
+          <td>{{ j.name }}</td>
+          <td>{{ j.task_type }}</td>
+          <td><code>{{ j.cron_expression }}</code></td>
+          <td><small class="text-muted">{{ cron_hints.get(j.id, '-') }}</small></td>
+          <td>
+            {% if j.enabled %}
+              <span class="badge text-bg-success">启用</span>
+            {% else %}
+              <span class="badge text-bg-secondary">禁用</span>
+            {% endif %}
+          </td>
+          <td>
+            <form class="d-inline js-cron-form" action="/cron/run/{{ j.id }}" method="POST">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-sm btn-outline-primary">立即执行</button>
+            </form>
+            <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editCronModal{{ j.id }}">修改计划</button>
+            <form class="d-inline js-cron-form" action="/cron/toggle/{{ j.id }}" method="POST">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-sm btn-outline-warning">{{ '禁用' if j.enabled else '启用' }}</button>
+            </form>
+            <form class="d-inline js-cron-form" action="/cron/delete/{{ j.id }}" method="POST">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-sm btn-outline-danger">删除</button>
+            </form>
+          </td>
+        </tr>
+
+        <div class="modal fade" id="editCronModal{{ j.id }}" tabindex="-1">
+          <div class="modal-dialog">
+            <div class="modal-content">
+              <form class="js-cron-form" action="/cron/update/{{ j.id }}" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="modal-header">
+                  <h5 class="modal-title">修改计划：{{ j.name }}</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="mb-2">
+                    <label class="form-label">Cron 表达式</label>
+                    <input class="form-control cron-input" name="custom_cron" value="{{ j.cron_expression }}" required data-preview-target="cronPreview{{ j.id }}">
+                    <div class="form-text">格式：分 时 日 月 周（24小时制）</div>
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label">说明</label>
+                    <textarea class="form-control" name="description">{{ j.description or '' }}</textarea>
+                  </div>
+                  <div class="alert alert-secondary py-2 mb-0" id="cronPreview{{ j.id }}">{{ cron_hints.get(j.id, '自定义 Cron（可参考下方示例）') }}</div>
+                </div>
+                <div class="modal-footer">
+                  <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">取消</button>
+                  <button class="btn btn-brand" type="submit">保存修改</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
