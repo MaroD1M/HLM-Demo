@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}映射与缓存 - Hardlink Manager{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">文件映射与缓存管理</h3>
+  <form action="/mapping/cache/clear" method="POST" onsubmit="return confirm('确认清空全部缓存记录吗？')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn btn-outline-danger">清空全部缓存</button>
+  </form>
+</div>
+
+<div class="card p-3 mb-3"><form class="row g-2" method="GET" action="/mapping"><div class="col-md-6"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索路径 / hash"></div><div class="col-md-3"><select class="form-select" name="hash_state"><option value="all" {% if hash_state=='all' %}selected{% endif %}>全部关联状态</option><option value="linked" {% if hash_state=='linked' %}selected{% endif %}>已关联 Torrent</option><option value="unlinked" {% if hash_state=='unlinked' %}selected{% endif %}>未关联 Torrent</option></select></div><div class="col-md-3 d-flex gap-2"><button class="btn btn-brand" type="submit">筛选</button><a class="btn btn-outline-secondary" href="/mapping">重置</a></div></form></div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card p-3">
+      <h5>文件映射（可看是否关联下载器/qB）</h5>
+      <div class="table-responsive">
+        <table class="table table-sm">
+          <thead><tr><th>源文件</th><th>目标文件</th><th>下载器ID</th><th>Torrent Hash</th><th>最近看到</th></tr></thead>
+          <tbody>
+          {% for m in mappings %}
+            <tr>
+              <td><small>{{ m.source_path }}</small></td>
+              <td><small>{{ m.dest_path }}</small></td>
+              <td>{{ m.downloader_id or '-' }}</td>
+              <td><code>{{ m.torrent_hash or '-' }}</code></td>
+              <td>{{ fmt_dt(m.last_seen_at) }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between align-items-center">
+        <small class="text-muted">第 {{ map_page }} / {{ map_total_pages }} 页</small>
+        <div>
+          {% if map_page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page-1 }}&cache_page={{ cache_page }}">上一页</a>{% endif %}
+          {% if map_page<map_total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page+1 }}&cache_page={{ cache_page }}">下一页</a>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card p-3">
+      <h5>硬链接缓存（命中后会跳过）</h5>
+      <div class="table-responsive">
+        <table class="table table-sm">
+          <thead><tr><th>源文件</th><th>目标文件</th><th>操作</th></tr></thead>
+          <tbody>
+          {% for c in caches %}
+            <tr>
+              <td><small>{{ c.source_path }}</small></td>
+              <td><small>{{ c.dest_path }}</small></td>
+              <td>
+                <form action="/mapping/cache/delete" method="POST" onsubmit="return confirm('确认删除该缓存记录？删除后该源文件可再次硬链接。')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="source_path" value="{{ c.source_path }}">
+                  <button class="btn btn-sm btn-outline-danger">删除缓存</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between align-items-center">
+        <small class="text-muted">第 {{ cache_page }} / {{ cache_total_pages }} 页</small>
+        <div>
+          {% if cache_page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page }}&cache_page={{ cache_page-1 }}">上一页</a>{% endif %}
+          {% if cache_page<cache_total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page }}&cache_page={{ cache_page+1 }}">下一页</a>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

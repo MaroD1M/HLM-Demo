@@ -26,16 +26,16 @@
             {% endif %}
           </td>
           <td>
-            <form class="d-inline js-cron-form" action="/cron/run/{{ j.id }}" method="POST">
+            <form class="d-inline js-ajax-form" action="/cron/run/{{ j.id }}" method="POST" data-target="cronJobsPanel">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn btn-sm btn-outline-primary">立即执行</button>
             </form>
             <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editCronModal{{ j.id }}">修改计划</button>
-            <form class="d-inline js-cron-form" action="/cron/toggle/{{ j.id }}" method="POST">
+            <form class="d-inline js-ajax-form" action="/cron/toggle/{{ j.id }}" method="POST" data-target="cronJobsPanel">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn btn-sm btn-outline-warning">{{ '禁用' if j.enabled else '启用' }}</button>
             </form>
-            <form class="d-inline js-cron-form" action="/cron/delete/{{ j.id }}" method="POST">
+            <form class="d-inline js-ajax-form" action="/cron/delete/{{ j.id }}" method="POST" data-target="cronJobsPanel">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn btn-sm btn-outline-danger">删除</button>
             </form>
@@ -45,7 +45,7 @@
         <div class="modal fade" id="editCronModal{{ j.id }}" tabindex="-1">
           <div class="modal-dialog">
             <div class="modal-content">
-              <form class="js-cron-form" action="/cron/update/{{ j.id }}" method="POST">
+              <form class="js-ajax-form" action="/cron/update/{{ j.id }}" method="POST" data-target="cronJobsPanel">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <div class="modal-header">
                   <h5 class="modal-title">修改计划：{{ j.name }}</h5>

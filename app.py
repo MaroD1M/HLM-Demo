@@ -5,6 +5,7 @@ from datetime import datetime, UTC, timedelta
 from threading import Lock
 from pathlib import Path
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 import requests
 from flask import Flask, request, session, abort
@@ -16,7 +17,7 @@ from core.services.hardlink_service import create_hardlink_for_file as svc_creat
 from core.services.delete_service import scan_delete_rows
 from core.services.backup_service import run_sqlite_backup
 from core.extensions import db, bcrypt, scheduler
-from core.models import HardlinkTask, DeleteMonitorTask, Downloader, Notifier, HardlinkCache, FileLinkMap, OperationLog, JobExecutionLog, AppConfig, CronJob
+from core.models import HardlinkTask, DeleteMonitorTask, Downloader, Notifier, HardlinkCache, FileLinkMap, OperationLog, JobExecutionLog, DeletePendingAction, AppConfig, CronJob
 
 
 app = Flask(__name__)
@@ -29,12 +30,65 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['APP_USERNAME'] = os.environ.get('APP_USERNAME', '').strip()
 app.config['APP_PASSWORD'] = os.environ.get('APP_PASSWORD', '')
 app.config['REQUEST_TIMEOUT_SECONDS'] = int(os.environ.get('REQUEST_TIMEOUT_SECONDS', '10'))
+app.config['ACCESS_LOG_ENABLED'] = os.environ.get('ACCESS_LOG_ENABLED', 'true').lower() == 'true'
+
+try:
+    APP_TZ = ZoneInfo(os.environ.get('TZ', 'Asia/Shanghai'))
+except Exception:
+    APP_TZ = UTC
 
 db.init_app(app)
 bcrypt.init_app(app)
 
 RUN_LOCK = Lock()
 RUNNING_KEYS = set()
+AUTH_LOCK = Lock()
+AUTH_FAIL_WINDOW_SECONDS = 60
+AUTH_FAIL_MAX_TIMES = 3
+AUTH_BLOCK_SECONDS = 1800
+AUTH_STATE = {}
+
+
+def _get_client_ip():
+    # Prefer reverse-proxy forwarded IP if present.
+    xff = (request.headers.get('X-Forwarded-For') or '').strip()
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.remote_addr or 'unknown'
+
+
+def _auth_is_blocked(ip):
+    now = datetime.now(UTC)
+    with AUTH_LOCK:
+        state = AUTH_STATE.get(ip)
+        if not state:
+            return False, 0
+        blocked_until = state.get('blocked_until')
+        if blocked_until and blocked_until > now:
+            return True, int((blocked_until - now).total_seconds())
+        # Unblock and reset stale counters after block expiry.
+        if blocked_until and blocked_until <= now:
+            AUTH_STATE.pop(ip, None)
+    return False, 0
+
+
+def _record_auth_failure(ip):
+    now = datetime.now(UTC)
+    with AUTH_LOCK:
+        state = AUTH_STATE.get(ip, {'fails': [], 'blocked_until': None})
+        window_start = now - timedelta(seconds=AUTH_FAIL_WINDOW_SECONDS)
+        fails = [ts for ts in state.get('fails', []) if ts >= window_start]
+        fails.append(now)
+        state['fails'] = fails
+        if len(fails) >= AUTH_FAIL_MAX_TIMES:
+            state['blocked_until'] = now + timedelta(seconds=AUTH_BLOCK_SECONDS)
+        AUTH_STATE[ip] = state
+        return state.get('blocked_until')
+
+
+def _clear_auth_failure(ip):
+    with AUTH_LOCK:
+        AUTH_STATE.pop(ip, None)
 
 
 def ensure_csrf_token():
@@ -47,7 +101,18 @@ def ensure_csrf_token():
 
 @app.context_processor
 def inject_csrf_token():
-    return {'csrf_token': ensure_csrf_token()}
+    return {'csrf_token': ensure_csrf_token(), 'fmt_dt': format_datetime_local}
+
+
+def format_datetime_local(dt_obj, fmt='%Y-%m-%d %H:%M:%S'):
+    if not dt_obj:
+        return '-'
+    if dt_obj.tzinfo is None:
+        dt_obj = dt_obj.replace(tzinfo=UTC)
+    try:
+        return dt_obj.astimezone(APP_TZ).strftime(fmt)
+    except Exception:
+        return dt_obj.strftime(fmt)
 
 
 @app.before_request
@@ -60,12 +125,24 @@ def security_guard():
         return
 
     if app.config['APP_USERNAME'] and app.config['APP_PASSWORD']:
+        client_ip = _get_client_ip()
+        blocked, remain_seconds = _auth_is_blocked(client_ip)
+        if blocked:
+            app.logger.warning('auth_blocked method=%s path=%s ip=%s remain=%ss', request.method, request.path, client_ip, remain_seconds)
+            return ('Too Many Requests: 登录失败次数过多，请30分钟后重试或重启容器。', 429, {'Retry-After': str(remain_seconds)})
+
         auth = request.authorization
         if not auth or auth.username != app.config['APP_USERNAME'] or auth.password != app.config['APP_PASSWORD']:
-            app.logger.warning('auth_failed method=%s path=%s ip=%s', request.method, request.path, request.remote_addr)
+            blocked_until = _record_auth_failure(client_ip)
+            if blocked_until:
+                app.logger.warning('auth_failed_blocked method=%s path=%s ip=%s blocked_until=%s', request.method, request.path, client_ip, blocked_until.isoformat())
+                return ('Too Many Requests: 1分钟内错误超过3次，已封禁30分钟。', 429, {'Retry-After': str(AUTH_BLOCK_SECONDS)})
+            app.logger.warning('auth_failed method=%s path=%s ip=%s', request.method, request.path, client_ip)
             return ('Unauthorized', 401, {'WWW-Authenticate': 'Basic realm="HLM"'})
+        _clear_auth_failure(client_ip)
 
-    app.logger.info('request method=%s path=%s endpoint=%s ip=%s', request.method, request.path, request.endpoint, request.remote_addr)
+    if app.config.get('ACCESS_LOG_ENABLED', True):
+        app.logger.info('request method=%s path=%s endpoint=%s ip=%s', request.method, request.path, request.endpoint, request.remote_addr)
     if request.method == 'POST':
         request_token = request.form.get('csrf_token') or request.headers.get('X-CSRF-Token')
         session_token = session.get('_csrf_token')
@@ -286,6 +363,28 @@ def try_match_torrent_by_mapping_or_name(deleted_path: Path, downloader: Downloa
     return None, 'no_match'
 
 
+def create_pending_delete_action(task, row, deleted_path, torrent_hash, match_by, reason):
+    exists = DeletePendingAction.query.filter_by(
+        task_id=task.id,
+        file_map_id=row.id,
+        torrent_hash=torrent_hash,
+        status='pending',
+    ).first()
+    if exists:
+        return exists
+    pending = DeletePendingAction(
+        task_id=task.id,
+        file_map_id=row.id,
+        deleted_path=deleted_path,
+        torrent_hash=torrent_hash,
+        match_by=match_by,
+        status='pending',
+        reason=reason,
+    )
+    db.session.add(pending)
+    return pending
+
+
 def scan_delete_task(task_id):
     task = db.session.get(DeleteMonitorTask, task_id)
     if not task or not task.enabled:
@@ -296,7 +395,7 @@ def scan_delete_task(task_id):
         FileLinkMap.deleted_at.is_(None)
     ).all()
 
-    ok, deleted_torrents, hit_count = scan_delete_rows(
+    ok, deleted_torrents, hit_count, pending_count = scan_delete_rows(
         task,
         rows,
         try_match_torrent_by_mapping_or_name,
@@ -304,12 +403,13 @@ def scan_delete_task(task_id):
         log_operation,
         get_config,
         send_telegram_notification,
+        create_pending_delete_action,
     )
     db.session.commit()
 
     if not ok:
         return False, '超过单次删除阈值，已阻断执行'
-    return True, f'检测删除 {hit_count} 条，联动删除种子 {deleted_torrents} 条'
+    return True, f'检测删除 {hit_count} 条，联动删除种子 {deleted_torrents} 条，待确认 {pending_count} 条'
 def scan_backfill_task(downloader_id=None, limit=500):
     query = FileLinkMap.query.filter(FileLinkMap.torrent_hash.is_(None), FileLinkMap.deleted_at.is_(None))
     if downloader_id:
@@ -421,6 +521,8 @@ def run_backup_once():
 
 
 def run_cron_job(job_id):
+    app.config['DELETE_TORRENT_FUNC'] = delete_torrent
+
     with app.app_context():
         job = db.session.get(CronJob, job_id)
         if not job or not job.enabled:
@@ -502,6 +604,22 @@ def ensure_compat_columns():
         for col, sql in fields.items():
             if col not in existing:
                 db.session.execute(db.text(sql))
+
+    # create pending confirmation table for risky delete linkage decisions.
+    db.session.execute(db.text('''
+        CREATE TABLE IF NOT EXISTS delete_pending_action (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            file_map_id INTEGER NOT NULL,
+            deleted_path VARCHAR(1000) NOT NULL,
+            torrent_hash VARCHAR(64),
+            match_by VARCHAR(50) DEFAULT 'no_match',
+            status VARCHAR(20) DEFAULT 'pending',
+            reason VARCHAR(500),
+            created_at DATETIME,
+            confirmed_at DATETIME
+        )
+    '''))
     db.session.commit()
 
 
@@ -515,6 +633,8 @@ def init_defaults():
         ('delete_delay_seconds', '120', '删除确认冷却秒数'),
         ('notify_on_hardlink', 'false', '启用硬链接通知'),
         ('notify_on_delete', 'true', '启用删除通知'),
+        ('notify_on_risky_delete', 'true', '疑似误删风险通知'),
+        ('delete_match_strict_mode', 'true', '删除联动仅精确匹配自动执行'),
         ('allowed_roots', '', '允许访问的路径根目录，逗号分隔'),
         ('tg_proxy_url', '', 'Telegram请求代理地址，如http://127.0.0.1:7890'),
         ('tg_api_base', 'https://api.telegram.org', 'Telegram API基础地址'),
@@ -558,6 +678,7 @@ def init_app():
             FileLinkMap=FileLinkMap,
             OperationLog=OperationLog,
             JobExecutionLog=JobExecutionLog,
+            DeletePendingAction=DeletePendingAction,
             AppConfig=AppConfig,
             CronJob=CronJob,
             db=db,
