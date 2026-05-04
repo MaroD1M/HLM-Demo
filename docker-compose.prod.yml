@@ -6,16 +6,25 @@ services:
     ports:
       - "${APP_PORT:-5000}:5000"
     environment:
+      # 应用密钥（生产环境务必使用强随机值）
       SECRET_KEY: ${SECRET_KEY}
+      # 可选：访问账号密码（留空=不启用登录）
       APP_USERNAME: ${APP_USERNAME:-}
       APP_PASSWORD: ${APP_PASSWORD:-}
+      # 可选：HTTP 请求超时（秒）
       REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-10}
+      # 时区
       TZ: ${TZ:-Asia/Shanghai}
     volumes:
+      # 必须：数据库与运行状态
       - ./data/instance:/app/instance
+      # 建议：数据库备份目录
       - ./data/backups:/app/data/backups
-      - ${DOWNLOADS_PATH}:/downloads:rw
-      - ${LIBRARY_PATH}:/library:rw
+      # 推荐：单目录映射，程序内自定义子目录
+      - ${MEDIA_ROOT}:/media:rw
+      # 可选（非必要）：如需双目录固定映射可取消注释
+      # - ${DOWNLOADS_PATH}:/downloads:rw
+      # - ${LIBRARY_PATH}:/library:rw
     read_only: true
     tmpfs:
       - /tmp:size=64m

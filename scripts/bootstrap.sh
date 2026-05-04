@@ -3,7 +3,7 @@ set -euo pipefail
 
 if [[ ! -f .env ]]; then
   cp .env.example .env
-  echo "Created .env from .env.example. Please edit SECRET_KEY and path variables."
+  echo "已基于 .env.example 创建 .env，请至少修改 SECRET_KEY 和 MEDIA_ROOT（可选再配置账号密码）。"
 fi
 
 mkdir -p data/instance data/backups
