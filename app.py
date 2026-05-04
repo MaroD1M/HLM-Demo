@@ -1,5 +1,6 @@
 import os
 import secrets
+import logging
 from datetime import datetime, UTC, timedelta
 from threading import Lock
 from pathlib import Path
@@ -19,6 +20,9 @@ from core.models import HardlinkTask, DeleteMonitorTask, Downloader, Notifier, H
 
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+app.logger.setLevel(logging.INFO)
+
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default-secret-key-for-dev-only')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///hardlink_manager.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -50,10 +54,18 @@ def inject_csrf_token():
 def security_guard():
     if request.endpoint == 'static':
         return
+
+    # Allow unauthenticated health checks for container/runtime probes.
+    if request.endpoint in {'api_bp.api_health'}:
+        return
+
     if app.config['APP_USERNAME'] and app.config['APP_PASSWORD']:
         auth = request.authorization
         if not auth or auth.username != app.config['APP_USERNAME'] or auth.password != app.config['APP_PASSWORD']:
+            app.logger.warning('auth_failed method=%s path=%s ip=%s', request.method, request.path, request.remote_addr)
             return ('Unauthorized', 401, {'WWW-Authenticate': 'Basic realm="HLM"'})
+
+    app.logger.info('request method=%s path=%s endpoint=%s ip=%s', request.method, request.path, request.endpoint, request.remote_addr)
     if request.method == 'POST':
         request_token = request.form.get('csrf_token') or request.headers.get('X-CSRF-Token')
         session_token = session.get('_csrf_token')
@@ -87,6 +99,18 @@ def log_operation(operation_type, target_type=None, target_id=None, target_name=
         success=success,
     ))
     db.session.commit()
+
+    level = logging.INFO if success else logging.WARNING
+    app.logger.log(
+        level,
+        'op=%s success=%s target=%s:%s name=%s msg=%s',
+        operation_type,
+        success,
+        target_type or '-',
+        target_id if target_id is not None else '-',
+        target_name or '-',
+        message or '-',
+    )
 
 
 def validate_path(path):

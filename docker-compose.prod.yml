@@ -3,6 +3,8 @@ services:
     image: ghcr.io/marod1m/hlm-demo:${IMAGE_TAG:-latest}
     container_name: hlm-demo
     restart: unless-stopped
+    # 显式使用 bridge 网络，确保容器可正常访问外网（如 Telegram API）
+    network_mode: bridge
     ports:
       - "${APP_PORT:-5000}:5000"
     environment:
