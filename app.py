@@ -1,6 +1,7 @@
 import os
 import secrets
 from datetime import datetime, UTC, timedelta
+from threading import Lock
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -12,8 +13,9 @@ from core.routes.web import init_web_routes
 from core.deps import RouteDeps
 from core.services.hardlink_service import create_hardlink_for_file as svc_create_hardlink_for_file
 from core.services.delete_service import scan_delete_rows
+from core.services.backup_service import run_sqlite_backup
 from core.extensions import db, bcrypt, scheduler
-from core.models import HardlinkTask, DeleteMonitorTask, Downloader, Notifier, HardlinkCache, FileLinkMap, OperationLog, AppConfig, CronJob
+from core.models import HardlinkTask, DeleteMonitorTask, Downloader, Notifier, HardlinkCache, FileLinkMap, OperationLog, JobExecutionLog, AppConfig, CronJob
 
 
 app = Flask(__name__)
@@ -26,6 +28,9 @@ app.config['REQUEST_TIMEOUT_SECONDS'] = int(os.environ.get('REQUEST_TIMEOUT_SECO
 
 db.init_app(app)
 bcrypt.init_app(app)
+
+RUN_LOCK = Lock()
+RUNNING_KEYS = set()
 
 
 def ensure_csrf_token():
@@ -295,35 +300,140 @@ def scan_backfill_task(downloader_id=None, limit=500):
     matched, conflicts, skipped = scan_backfill_rows(rows, resolve_downloader, list_torrents, log_operation)
     db.session.commit()
     return True, f'回填成功 {matched}，冲突 {conflicts}，跳过 {skipped}'
+def _start_execution(job_name, job_type, source='manual', target_id=None):
+    started_at = datetime.now(UTC)
+    record = JobExecutionLog(
+        job_name=job_name,
+        job_type=job_type,
+        source=source,
+        target_id=target_id,
+        status='running',
+        started_at=started_at,
+    )
+    db.session.add(record)
+    db.session.commit()
+    return record, started_at
+
+
+def _finish_execution(record, started_at, ok, message):
+    finished_at = datetime.now(UTC)
+    record.status = 'success' if ok else 'failed'
+    record.message = message
+    record.finished_at = finished_at
+    record.duration_ms = int((finished_at - started_at).total_seconds() * 1000)
+    db.session.commit()
+
+
+def execute_with_guard(run_key, job_name, job_type, runner, source='manual', target_id=None):
+    with RUN_LOCK:
+        if run_key in RUNNING_KEYS:
+            return False, '任务正在执行中，请稍后重试'
+        RUNNING_KEYS.add(run_key)
+
+    record = None
+    started_at = None
+    try:
+        record, started_at = _start_execution(job_name, job_type, source=source, target_id=target_id)
+        ok, message = runner()
+        _finish_execution(record, started_at, ok, message)
+        return ok, message
+    except Exception as exc:
+        db.session.rollback()
+        err = f'执行异常: {exc}'
+        if record and started_at:
+            try:
+                _finish_execution(record, started_at, False, err)
+            except Exception:
+                db.session.rollback()
+        log_operation('job_execute_failed', 'Job', target_id, job_name, err, False)
+        return False, err
+    finally:
+        with RUN_LOCK:
+            RUNNING_KEYS.discard(run_key)
+
+
+def run_backup_task():
+    backup_dir = (get_config('backup_dir', '/app/data/backups') or '/app/data/backups').strip()
+    keep_last = int(get_config('backup_keep_last', '7') or '7')
+    db_file = Path(app.instance_path) / 'hardlink_manager.db'
+    ok, msg, backup_path = run_sqlite_backup(str(db_file), backup_dir, keep_last=max(1, keep_last))
+    log_operation('db_backup', 'System', None, '数据库备份', f"{msg} | {backup_path or '-'}", ok)
+    return ok, msg
+
+
+def run_hardlink_once(task_id):
+    task = db.session.get(HardlinkTask, task_id)
+    if not task:
+        return False, '任务不存在'
+
+    def _runner():
+        return scan_hardlink_task(task_id)
+
+    return execute_with_guard(f'hardlink:{task_id}', task.name, 'batch_hardlink', _runner, source='manual', target_id=task_id)
+
+
+def run_delete_once(task_id):
+    task = db.session.get(DeleteMonitorTask, task_id)
+    if not task:
+        return False, '任务不存在'
+
+    def _runner():
+        return scan_delete_task(task_id)
+
+    return execute_with_guard(f'delete:{task_id}', task.name, 'delete_scan', _runner, source='manual', target_id=task_id)
+
+
+def run_backfill_once(downloader_id=None):
+    run_key = f'backfill:{downloader_id or 0}'
+
+    def _runner():
+        return scan_backfill_task(downloader_id)
+
+    return execute_with_guard(run_key, '映射回填', 'backfill_mapping', _runner, source='manual', target_id=downloader_id)
+
+
+def run_backup_once():
+    return execute_with_guard('backup:manual', '数据库备份', 'db_backup', run_backup_task, source='manual')
+
+
 def run_cron_job(job_id):
     with app.app_context():
         job = db.session.get(CronJob, job_id)
         if not job or not job.enabled:
             return
 
-        try:
+        def _runner():
             if job.task_type in {'batch_hardlink', 'hardlink_scan'}:
                 ok, msg = scan_hardlink_task(job.target_id)
                 log_operation('cron_executed', 'CronJob', job.id, job.name, f'hardlink_scan: {msg}', ok)
-            elif job.task_type in {'delete_scan', 'delete_monitor_scan'}:
+                return ok, msg
+            if job.task_type in {'delete_scan', 'delete_monitor_scan'}:
                 ok, msg = scan_delete_task(job.target_id)
                 log_operation('cron_executed', 'CronJob', job.id, job.name, f'delete_scan: {msg}', ok)
-            elif job.task_type in {'backfill_mapping', 'backfill_torrent_mapping'}:
+                return ok, msg
+            if job.task_type in {'backfill_mapping', 'backfill_torrent_mapping'}:
                 ok, msg = scan_backfill_task(job.target_id)
                 log_operation('cron_executed', 'CronJob', job.id, job.name, f'backfill: {msg}', ok)
-            elif job.task_type == 'clean_logs':
+                return ok, msg
+            if job.task_type == 'clean_logs':
                 retention = int(get_config('log_retention_days', '30'))
                 cutoff = datetime.now(UTC) - timedelta(days=retention)
                 OperationLog.query.filter(OperationLog.created_at < cutoff).delete()
                 db.session.commit()
                 log_operation('cron_executed', 'CronJob', job.id, job.name, f'清理 {retention} 天前日志')
-            elif job.task_type == 'clean_cache':
+                return True, f'清理 {retention} 天前日志'
+            if job.task_type == 'clean_cache':
                 HardlinkCache.query.delete()
                 db.session.commit()
                 log_operation('cron_executed', 'CronJob', job.id, job.name, '清理缓存成功')
-        except Exception as exc:
-            db.session.rollback()
-            log_operation('cron_failed', 'CronJob', job.id, job.name, str(exc), False)
+                return True, '清理缓存成功'
+            if job.task_type == 'db_backup':
+                ok, msg = run_backup_task()
+                log_operation('cron_executed', 'CronJob', job.id, job.name, f'db_backup: {msg}', ok)
+                return ok, msg
+            return False, f'未知任务类型: {job.task_type}'
+
+        execute_with_guard(f'cron:{job.id}', job.name, job.task_type, _runner, source='cron', target_id=job.target_id)
 
 
 def start_cron_scheduler():
@@ -384,6 +494,8 @@ def init_defaults():
         ('allowed_roots', '', '允许访问的路径根目录，逗号分隔'),
         ('tg_proxy_url', '', 'Telegram请求代理地址，如http://127.0.0.1:7890'),
         ('tg_api_base', 'https://api.telegram.org', 'Telegram API基础地址'),
+        ('backup_dir', '/app/data/backups', '数据库备份目录'),
+        ('backup_keep_last', '7', '数据库备份保留数量'),
     ]
     for key, value, desc in default_configs:
         if not AppConfig.query.filter_by(key=key).first():
@@ -397,6 +509,8 @@ def init_system_jobs():
         db.session.add(CronJob(name='系统缓存清理', task_type='clean_cache', cron_expression='30 3 * * *', description='每天凌晨3:30清理缓存'))
     if not CronJob.query.filter_by(name='系统映射回填').first():
         db.session.add(CronJob(name='系统映射回填', task_type='backfill_mapping', cron_expression='*/30 * * * *', description='每30分钟回填文件与种子映射'))
+    if not CronJob.query.filter_by(name='系统数据库备份').first():
+        db.session.add(CronJob(name='系统数据库备份', task_type='db_backup', cron_expression='0 */6 * * *', description='每6小时执行一次数据库备份'))
     db.session.commit()
 
 
@@ -419,6 +533,7 @@ def init_app():
             HardlinkCache=HardlinkCache,
             FileLinkMap=FileLinkMap,
             OperationLog=OperationLog,
+            JobExecutionLog=JobExecutionLog,
             AppConfig=AppConfig,
             CronJob=CronJob,
             db=db,
@@ -429,6 +544,14 @@ def init_app():
             validate_host=validate_host,
             validate_cron_expression=validate_cron_expression,
             scan_hardlink_task=scan_hardlink_task,
+            scan_delete_task=scan_delete_task,
+            scan_backfill_task=scan_backfill_task,
+            run_hardlink_once=run_hardlink_once,
+            run_delete_once=run_delete_once,
+            run_backfill_once=run_backfill_once,
+            run_backup_once=run_backup_once,
+            run_backup_task=run_backup_task,
+            run_cron_job=run_cron_job,
             update_cron_job=update_cron_job,
             list_torrents=list_torrents,
             send_telegram_notification=send_telegram_notification,

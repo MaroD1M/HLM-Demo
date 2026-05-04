@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Added
+- 新增任务执行历史模型 `JobExecutionLog`，记录手动/定时执行状态、耗时与结果消息。
+- 新增数据库备份服务 `core/services/backup_service.py`（SQLite 原生 backup API + 保留轮转）。
+- 新增删除监控“立即执行”与 Cron 任务“立即执行”入口。
+- 新增 Cron 任务类型 `db_backup` 与系统默认备份计划（每 6 小时）。
+
 - Telegram 通知新增代理配置：`tg_proxy_url`（支持 `http://127.0.0.1:7890`）。
 - Telegram 通知新增 API Base 配置：`tg_api_base`。
 - 新增统一 UI 基座模板 `templates/base.html`。
@@ -10,6 +15,10 @@
 - 新增路由依赖对象：`core/deps.py`。
 
 ### Changed
+- UI 统一升级为现代化侧边导航与仪表盘布局，增强移动端适配。
+- Compose 持久化补充 `./data/backups:/app/data/backups`，避免备份丢失。
+- 设置页新增 `backup_dir` 与 `backup_keep_last` 配置。
+
 - 架构重构为分层：
   - `core/models.py`（模型）
   - `core/extensions.py`（扩展）

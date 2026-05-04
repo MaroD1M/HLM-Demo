@@ -14,6 +14,7 @@ services:
     volumes:
       # Flask instance dir: sqlite db and runtime state
       - ./data/instance:/app/instance
+      - ./data/backups:/app/data/backups
       # Optional folders you will reference in tasks
       - ${DOWNLOADS_PATH:-./data/downloads}:/downloads
       - ${LIBRARY_PATH:-./data/library}:/library

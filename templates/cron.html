@@ -1,65 +1,13 @@
 {% extends "base.html" %}
 {% block title %}定时任务 - Hardlink Manager{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h3 class="mb-0">定时任务</h3>
-  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCronModal"><i class="fa-solid fa-plus"></i> 新建计划</button>
-</div>
-<div class="card p-3 mb-3">
-  <div class="table-responsive"><table class="table">
-    <thead><tr><th>名称</th><th>类型</th><th>Cron</th><th>状态</th><th>操作</th></tr></thead>
-    <tbody>{% for j in jobs %}<tr>
-      <td>{{ j.name }}</td><td>{{ j.task_type }}</td><td><code>{{ j.cron_expression }}</code></td>
-      <td>{% if j.enabled %}<span class="badge text-bg-success">启用</span>{% else %}<span class="badge text-bg-secondary">禁用</span>{% endif %}</td>
-      <td>
-        <form class="d-inline" action="/cron/toggle/{{ j.id }}" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">切换</button></form>
-        <form class="d-inline" action="/cron/delete/{{ j.id }}" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>
-      </td>
-    </tr>{% endfor %}</tbody>
-  </table></div>
-</div>
-
-<div class="modal fade" id="addCronModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
-<form action="/cron/add" method="POST">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <div class="modal-header"><h5 class="modal-title">新建定时任务</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-  <div class="modal-body">
-    <div class="mb-2"><label class="form-label">任务名称</label><input class="form-control" name="name" required></div>
-    <div class="mb-2"><label class="form-label">任务类型</label>
-      <select class="form-select" name="task_type" id="task_type" onchange="updateTargetField()">
-        <option value="batch_hardlink">批量创建硬链接</option>
-        <option value="delete_scan">删除扫描联动</option>
-        <option value="backfill_mapping">映射回填任务</option>
-        <option value="clean_logs">清理日志</option>
-        <option value="clean_cache">清理缓存</option>
-      </select>
-    </div>
-    <div class="mb-2" id="target_wrap"><label id="target_label" class="form-label">关联任务</label><select class="form-select" name="target_id" id="target_id"></select></div>
-    <div class="mb-2"><label class="form-label">Cron</label><input class="form-control" name="custom_cron" placeholder="*/10 * * * *" required></div>
-    <div class="mb-2"><label class="form-label">说明</label><textarea class="form-control" name="description"></textarea></div>
-  </div>
-  <div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-primary" type="submit">保存</button></div>
-</form>
-</div></div></div>
+<div class="d-flex justify-content-between align-items-center mb-3"><h3 class="mb-0">定时任务</h3><div><form class="d-inline" action="/cron/backup-now" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-outline-primary">立即备份数据库</button></form> <button class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#addCronModal"><i class="fa-solid fa-plus"></i> 新建计划</button></div></div>
+<div class="card p-3 mb-3"><div class="table-responsive"><table class="table"><thead><tr><th>名称</th><th>类型</th><th>Cron</th><th>状态</th><th>操作</th></tr></thead><tbody>{% for j in jobs %}<tr><td>{{ j.name }}</td><td>{{ j.task_type }}</td><td><code>{{ j.cron_expression }}</code></td><td>{% if j.enabled %}<span class="badge text-bg-success">启用</span>{% else %}<span class="badge text-bg-secondary">禁用</span>{% endif %}</td><td><form class="d-inline" action="/cron/run/{{ j.id }}" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">立即执行</button></form> <form class="d-inline" action="/cron/toggle/{{ j.id }}" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">切换</button></form> <form class="d-inline" action="/cron/delete/{{ j.id }}" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form></td></tr>{% endfor %}</tbody></table></div></div>
+<div class="modal fade" id="addCronModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><form action="/cron/add" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><div class="modal-header"><h5 class="modal-title">新建定时任务</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-2"><label class="form-label">任务名称</label><input class="form-control" name="name" required></div><div class="mb-2"><label class="form-label">任务类型</label><select class="form-select" name="task_type" id="task_type" onchange="updateTargetField()"><option value="batch_hardlink">批量创建硬链接</option><option value="delete_scan">删除扫描联动</option><option value="backfill_mapping">映射回填任务</option><option value="clean_logs">清理日志</option><option value="clean_cache">清理缓存</option><option value="db_backup">数据库备份</option></select></div><div class="mb-2" id="target_wrap"><label id="target_label" class="form-label">关联任务</label><select class="form-select" name="target_id" id="target_id"></select></div><div class="mb-2"><label class="form-label">Cron</label><input class="form-control" name="custom_cron" placeholder="*/10 * * * *" required></div><div class="mb-2"><label class="form-label">说明</label><textarea class="form-control" name="description"></textarea></div></div><div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-brand" type="submit">保存</button></div></form></div></div></div>
 {% endblock %}
 {% block scripts %}
 <script>
-function updateTargetField() {
-  const t=document.getElementById('task_type').value;
-  const wrap=document.getElementById('target_wrap');
-  const label=document.getElementById('target_label');
-  const select=document.getElementById('target_id');
-  if (t==='batch_hardlink') {
-    wrap.style.display='block'; label.innerText='关联硬链接任务';
-    select.innerHTML=`<option value="">选择硬链接任务</option>{% for task in hardlink_tasks %}<option value="{{ task.id }}">{{ task.name }}</option>{% endfor %}`;
-  } else if (t==='delete_scan') {
-    wrap.style.display='block'; label.innerText='关联删除监控任务';
-    select.innerHTML=`<option value="">选择删除监控任务</option>{% for task in delete_tasks %}<option value="{{ task.id }}">{{ task.name }}</option>{% endfor %}`;
-  } else {
-    wrap.style.display='none';
-    select.innerHTML='<option value="">无</option>';
-  }
-}
+function updateTargetField(){const t=document.getElementById('task_type').value;const wrap=document.getElementById('target_wrap');const label=document.getElementById('target_label');const select=document.getElementById('target_id');if(t==='batch_hardlink'){wrap.style.display='block';label.innerText='关联硬链接任务';select.innerHTML=`<option value="">选择硬链接任务</option>{% for task in hardlink_tasks %}<option value="{{ task.id }}">{{ task.name }}</option>{% endfor %}`;}else if(t==='delete_scan'){wrap.style.display='block';label.innerText='关联删除监控任务';select.innerHTML=`<option value="">选择删除监控任务</option>{% for task in delete_tasks %}<option value="{{ task.id }}">{{ task.name }}</option>{% endfor %}`;}else{wrap.style.display='none';select.innerHTML='<option value="">无</option>';}}
 updateTargetField();
 </script>
 {% endblock %}

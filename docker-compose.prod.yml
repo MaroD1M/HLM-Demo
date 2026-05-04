@@ -13,6 +13,7 @@ services:
       TZ: ${TZ:-Asia/Shanghai}
     volumes:
       - ./data/instance:/app/instance
+      - ./data/backups:/app/data/backups
       - ${DOWNLOADS_PATH}:/downloads:rw
       - ${LIBRARY_PATH}:/library:rw
     read_only: true

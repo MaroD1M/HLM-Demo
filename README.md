@@ -4,6 +4,10 @@ Hardlink Manager 是一个面向媒体下载场景的“定时扫描 + 安全联
 
 ## 核心能力
 
+- 任务“立即执行一次”
+  - 硬链接任务、删除联动任务、Cron 计划任务均支持手动立即触发
+  - 执行过程记录到任务执行历史（含状态、耗时、消息）
+
 - 定时扫描硬链接（不依赖实时监听）
   - 支持扩展名白名单、黑名单
   - 支持排除目录
@@ -15,6 +19,7 @@ Hardlink Manager 是一个面向媒体下载场景的“定时扫描 + 安全联
   - 支持联动删除 qBittorrent 任务（可选删除文件）
 - 映射回填
   - 定时回填 `文件 -> torrent hash` 映射，提升删除联动准确率
+- 新增数据库备份任务：支持 Cron 定时备份与立即备份
 - 多下载器配置（当前主实现 qBittorrent）
 - Telegram 通知
   - 支持代理地址（如 `http://127.0.0.1:7890`）
@@ -72,6 +77,8 @@ python3 -m venv .venv
 - `notify_on_hardlink` / `notify_on_delete`：通知开关
 - `tg_proxy_url`：Telegram 代理（如 `http://127.0.0.1:7890`）
 - `tg_api_base`：Telegram API 地址（默认 `https://api.telegram.org`）
+- `backup_dir`：数据库备份目录（默认 `/app/data/backups`）
+- `backup_keep_last`：备份保留份数（默认 `7`）
 
 ## API
 
@@ -95,7 +102,7 @@ python3 -m venv .venv
 
 - 将 `downloader` 抽象进一步扩展到 Transmission / aria2
 - 增加“回填冲突人工确认”页面
-- 增加 cron 执行历史表与可视化统计
+- 执行历史增加按任务/状态筛选与导出
 
 
 ## 常用命令
@@ -140,6 +147,7 @@ docker compose logs -f hlm
 
 本项目关键状态已持久化：
 - `./data/instance -> /app/instance`：SQLite 数据库与运行状态
+- `./data/backups -> /app/data/backups`：数据库备份文件
 - `DOWNLOADS_PATH -> /downloads`：下载目录（任务源）
 - `LIBRARY_PATH -> /library`：媒体库目录（任务目标）
 
