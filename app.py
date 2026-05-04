@@ -92,9 +92,19 @@ def validate_path(path):
     p = Path(path)
     if not p.is_absolute():
         return False, '路径必须为绝对路径'
+
     allowed_roots = [r.strip() for r in (get_config('allowed_roots', '') or '').split(',') if r.strip()]
-    if allowed_roots and not any(str(p).startswith(root) for root in allowed_roots):
-        return False, '路径不在允许范围内'
+    if allowed_roots:
+        allowed = False
+        for root in allowed_roots:
+            root_path = Path(root)
+            if not root_path.is_absolute():
+                continue
+            if _is_path_within_root(p, root_path):
+                allowed = True
+                break
+        if not allowed:
+            return False, '路径不在允许范围内'
     return True, ''
 
 
@@ -107,6 +117,18 @@ def validate_host(host):
 
 def validate_cron_expression(expr):
     return len((expr or '').split()) == 5
+
+
+def _is_path_within_root(path_obj: Path, root_obj: Path):
+    try:
+        path_resolved = path_obj.resolve(strict=False)
+        root_resolved = root_obj.resolve(strict=False)
+    except Exception:
+        return False
+    try:
+        return os.path.commonpath([str(path_resolved), str(root_resolved)]) == str(root_resolved)
+    except Exception:
+        return False
 
 
 def safe_unlink(path_obj):
@@ -379,6 +401,9 @@ def init_system_jobs():
 
 
 def init_app():
+    if app.config['SECRET_KEY'] == 'default-secret-key-for-dev-only':
+        app.logger.warning('Using default SECRET_KEY; set SECRET_KEY in production to avoid session forgery risk.')
+
     with app.app_context():
         db.create_all()
         ensure_compat_columns()
