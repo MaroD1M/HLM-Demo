@@ -1,0 +1,51 @@
+services:
+  hlm:
+    image: ghcr.io/marod1m/hlm-demo:${IMAGE_TAG:-latest}
+    container_name: hlm-demo
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-5000}:5000"
+    environment:
+      SECRET_KEY: ${SECRET_KEY}
+      APP_USERNAME: ${APP_USERNAME:-}
+      APP_PASSWORD: ${APP_PASSWORD:-}
+      REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-10}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ./data/instance:/app/instance
+      - ${DOWNLOADS_PATH}:/downloads:rw
+      - ${LIBRARY_PATH}:/library:rw
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  backup:
+    image: alpine:3.21
+    container_name: hlm-backup
+    profiles: ["backup"]
+    restart: "no"
+    volumes:
+      - ./data/instance:/data/instance:ro
+      - ./data/backups:/data/backups:rw
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      set -e
+      TS=$(date +%Y%m%d-%H%M%S)
+      cp /data/instance/hardlink_manager.db /data/backups/hardlink_manager-${TS}.db
+      ls -1t /data/backups/hardlink_manager-*.db | tail -n +8 | xargs -r rm -f
+      echo "backup done: ${TS}"
