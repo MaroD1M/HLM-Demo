@@ -13,6 +13,15 @@ updates:
       - "security"
     commit-message:
       prefix: "deps"
+    groups:
+      pip-patch-minor:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "python"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
