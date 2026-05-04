@@ -55,6 +55,13 @@ class Downloader(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
+    def set_password(self, password):
+        # qBittorrent API login needs the raw password; keep stored value as-is.
+        self.encrypted_password = (password or '').strip() or None
+
+    def get_password(self):
+        return self.encrypted_password or ''
+
 
 class Notifier(db.Model):
     id = db.Column(db.Integer, primary_key=True)

@@ -102,6 +102,9 @@ services:
     container_name: hlm-demo
     restart: unless-stopped
 
+    # 显式使用 bridge 网络，便于访问 Telegram 等外部服务
+    network_mode: bridge
+
     # 端口映射：宿主机5000 -> 容器5000
     ports:
       - "5000:5000"
@@ -253,6 +256,41 @@ docker compose -f docker-compose.prod.yml --profile backup run --rm backup
 - 建议设置 `APP_USERNAME` / `APP_PASSWORD`
 - 尽量只在内网开放端口
 - 建议定期备份数据库并做异地备份
+
+---
+
+## 🔔 通知文案与日志排查
+
+### Telegram 通知大致长这样
+
+- 测试通知：`Hardlink Manager 测试通知`
+- 删除联动成功：
+
+```text
+删除联动成功
+任务: <任务名>
+种子: <torrent hash>
+匹配: <匹配方式>
+```
+
+> 说明：当前“硬链接成功”默认走操作日志记录，删除联动在启用通知时会推送到 Telegram。
+
+### 容器日志里现在能看到什么
+
+已增强为可在 `docker logs` 中看到：
+- 请求访问日志（访问了哪个路径、来自哪个 IP）
+- 鉴权失败日志（401）
+- 任务操作日志（成功/失败、目标对象、消息）
+
+常用排查命令：
+
+```bash
+docker compose logs -f hlm
+```
+
+如果你要看数据库里的历史操作，页面里也可以查看：
+- `日志` 页面（操作日志）
+- 仪表盘中的“近期执行记录”
 
 ---
 
