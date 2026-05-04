@@ -51,6 +51,15 @@ def create_hardlink_for_file(task, file_path, cache_model, map_model, db, safe_u
     if dest_file.exists():
         if dest_file.samefile(file_path):
             return False, '硬链接已存在'
+
+        # Only replace destination files that are already managed by this app.
+        managed = (
+            cache_model.query.filter_by(dest_path=str(dest_file)).first() is not None
+            or map_model.query.filter_by(dest_path=str(dest_file)).first() is not None
+        )
+        if not managed:
+            return False, '目标存在同名文件且非系统托管，已跳过以防误删'
+
         safe_unlink(dest_file)
 
     os.link(file_path, dest_file)

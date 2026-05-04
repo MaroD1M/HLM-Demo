@@ -85,6 +85,9 @@ window.HLMAjax={
             const panel=document.getElementById(data.target);
             if(panel){panel.innerHTML=data.html;}
             document.querySelectorAll('.modal.show').forEach((m)=>{const inst=bootstrap.Modal.getInstance(m);if(inst){inst.hide();}});
+            document.querySelectorAll('.modal-backdrop').forEach((b)=>b.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.removeProperty('padding-right');
             document.querySelectorAll('form').forEach((f)=>{if(f.classList.contains('js-ajax-form')) f.reset&&f.reset();});
             window.HLMAjax.bind();if(window.bindCronPreview) window.bindCronPreview();
           }
