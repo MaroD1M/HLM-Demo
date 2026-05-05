@@ -16,6 +16,16 @@ class HardlinkTask(db.Model):
     create_folder = db.Column(db.Boolean, default=True)
     use_cache = db.Column(db.Boolean, default=True)
     min_file_age_seconds = db.Column(db.Integer, default=300)
+    # Built-in delete-linkage options (replacing standalone delete-monitor task for normal usage)
+    monitor_source_delete = db.Column(db.Boolean, default=True)
+    monitor_dest_delete = db.Column(db.Boolean, default=True)
+    delete_downloader_id = db.Column(db.Integer, db.ForeignKey('downloader.id'))
+    delete_notifier_id = db.Column(db.Integer, db.ForeignKey('notifier.id'))
+    delete_cooldown_seconds = db.Column(db.Integer, default=120)
+    delete_max_deletes_per_run = db.Column(db.Integer, default=20)
+    delete_dry_run = db.Column(db.Boolean, default=False)
+    delete_notify_on_delete = db.Column(db.Boolean, default=True)
+    delete_notify_on_risky_delete = db.Column(db.Boolean, default=True)
     enabled = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
@@ -29,6 +39,9 @@ class HardlinkTask(db.Model):
 
     def get_exclude_dirs_list(self):
         return [d.strip().lower() for d in (self.exclude_dirs or '').split(',') if d.strip()]
+
+    delete_downloader = db.relationship('Downloader', foreign_keys=[delete_downloader_id], lazy='joined')
+    delete_notifier = db.relationship('Notifier', foreign_keys=[delete_notifier_id], lazy='joined')
 
 
 class DeleteMonitorTask(db.Model):
