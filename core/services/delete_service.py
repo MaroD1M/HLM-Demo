@@ -53,6 +53,26 @@ def _policy_enabled(get_config, key, default='false'):
     return str(get_config(key, default)).lower() == 'true'
 
 
+def _notify_enabled(get_config, source_type):
+    # global switch first, then source-specific switch.
+    if not _policy_enabled(get_config, 'notify_on_delete', 'true'):
+        return False
+    if source_type == 'manual':
+        return _policy_enabled(get_config, 'manual_notify_on_delete', 'true')
+    return _policy_enabled(get_config, 'downloader_notify_on_delete', 'true')
+
+
+def _task_notify_on_delete_enabled(task, get_config, source_type):
+    task_switch = getattr(task, 'notify_on_delete', True)
+    return bool(task_switch) and _notify_enabled(get_config, source_type)
+
+
+def _task_notify_on_risky_enabled(task, get_config):
+    global_switch = _policy_enabled(get_config, 'notify_on_risky_delete', 'true')
+    task_switch = bool(getattr(task, 'notify_on_risky_delete', True))
+    return global_switch and task_switch
+
+
 def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_config, send_notification, create_pending_action):
     now = datetime.now(UTC)
     hits = []
@@ -80,7 +100,7 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
     deleted_torrents = 0
     pending_count = 0
     strict_mode = _policy_enabled(get_config, 'delete_match_strict_mode', 'true')
-    notify_risky = _policy_enabled(get_config, 'notify_on_risky_delete', 'true')
+    notify_risky = _task_notify_on_risky_enabled(task, get_config)
 
     for row, deleted_path_str in hits:
         src = str(row.source_path or '')
@@ -98,16 +118,24 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
             policy_key = 'manual_dest_delete_delete_source' if source_type == 'manual' else 'downloader_dest_delete_delete_source'
             action_label = 'dest_deleted'
 
+        counterpart_removed = None
         if counterpart and _policy_enabled(get_config, policy_key, 'true'):
-            removed = _safe_unlink_file(counterpart)
-            if removed:
+            counterpart_removed = _safe_unlink_file(counterpart)
+            if counterpart_removed:
                 log_operation('linked_file_deleted', 'FileLinkMap', row.id, task.name, f'{action_label} -> delete_counterpart: {counterpart}')
             else:
                 log_operation('linked_file_delete_skip', 'FileLinkMap', row.id, task.name, f'{action_label} -> counterpart_missing_or_failed: {counterpart}')
 
-        # Manual source: never delete torrent task.
+        # Manual source: never delete torrent task, but should still notify if enabled.
         if source_type == 'manual':
             log_operation('delete_detected_manual', 'DeleteMonitorTask', task.id, task.name, f'手动来源删除: {deleted_path_str}')
+            if task.notifier and _task_notify_on_delete_enabled(task, get_config, source_type):
+                msg = f'📌 删除联动提醒（手动来源）\n任务：{task.name}\n触发路径：{deleted_path_str}\n对侧处理：'
+                if counterpart:
+                    msg += f"已删除({counterpart})" if counterpart_removed else f"未删除/不存在({counterpart})"
+                else:
+                    msg += '无'
+                send_notification(task.notifier, msg)
             continue
 
         # Downloader source: optional torrent deletion.
@@ -135,7 +163,7 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
             create_pending_action(task, row, deleted_path_str, torrent_hash, match_by, '疑似误删风险，需人工确认')
             log_operation('torrent_delete_pending', 'DeleteMonitorTask', task.id, task.name, f'已加入待确认: {torrent_hash}, by={match_by}, file={deleted_path_str}', False)
             if notify_risky and task.notifier:
-                send_notification(task.notifier, f'疑似误删风险，已转人工确认\n任务: {task.name}\n匹配: {match_by}\n路径: {deleted_path_str}\n种子: {torrent_hash}')
+                send_notification(task.notifier, f'⚠️ 疑似误删，已进入待确认\n任务：{task.name}\n匹配方式：{match_by}\n路径：{deleted_path_str}\n种子：{torrent_hash}')
             continue
 
         if task.dry_run:
@@ -147,8 +175,8 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
             row.torrent_hash = torrent_hash
             deleted_torrents += 1
             log_operation('torrent_deleted', 'DeleteMonitorTask', task.id, task.name, f'删除种子 {torrent_hash}, by={match_by}, file={deleted_path_str}')
-            if _policy_enabled(get_config, 'notify_on_delete', 'true') and task.notifier:
-                send_notification(task.notifier, f'删除联动成功\n任务: {task.name}\n种子: {torrent_hash}\n匹配: {match_by}')
+            if task.notifier and _task_notify_on_delete_enabled(task, get_config, source_type):
+                send_notification(task.notifier, f'✅ 联动完成（下载器来源）\n任务：{task.name}\n种子：{torrent_hash}\n匹配方式：{match_by}\n触发路径：{deleted_path_str}')
         else:
             log_operation('torrent_delete_failed', 'DeleteMonitorTask', task.id, task.name, f'删除失败 {torrent_hash}', False)
 

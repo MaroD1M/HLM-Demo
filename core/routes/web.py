@@ -306,6 +306,8 @@ def init_web_routes(ctx: RouteDeps):
             cooldown_seconds=cooldown,
             max_deletes_per_run=max_deletes,
             dry_run=request.form.get('dry_run') == 'on',
+            notify_on_delete=request.form.get('task_notify_on_delete') == 'on',
+            notify_on_risky_delete=request.form.get('task_notify_on_risky_delete') == 'on',
         )
         db.session.add(task)
         db.session.commit()
@@ -344,6 +346,8 @@ def init_web_routes(ctx: RouteDeps):
         task.cooldown_seconds = cooldown
         task.max_deletes_per_run = max_deletes
         task.dry_run = request.form.get('dry_run') == 'on'
+        task.notify_on_delete = request.form.get('task_notify_on_delete') == 'on'
+        task.notify_on_risky_delete = request.form.get('task_notify_on_risky_delete') == 'on'
         db.session.commit()
         log_operation('delete_task_updated', 'DeleteMonitorTask', task.id, task.name)
 
@@ -826,15 +830,13 @@ def init_web_routes(ctx: RouteDeps):
             val = request.form.get(key)
             if val is not None:
                 set_config(key, val.strip() if isinstance(val, str) else val)
-        flash('设置已保存并生效', 'success')
-        return redirect('/settings')
+        return _json_or_redirect(True, '设置已保存并生效', '/settings')
 
 
     @web_bp.route('/settings/check-update', methods=['POST'])
     def settings_check_update():
         info = get_release_info(force_refresh=True)
-        flash(f"版本检查完成：本地 {info.get('local_version','-')}，远端 {info.get('remote_version','-')}（{info.get('message','-')}）", 'success')
-        return redirect('/settings')
+        return _json_or_redirect(True, f"版本检查完成：本地 {info.get('local_version','-')}，远端 {info.get('remote_version','-')}（{info.get('message','-')}）", '/settings')
 
 
     @web_bp.route('/settings/export', methods=['GET'])
@@ -868,8 +870,7 @@ def init_web_routes(ctx: RouteDeps):
             if k in allowed and v is not None and v != '***':
                 set_config(k, str(v))
                 applied += 1
-        flash(f'配置导入完成，已更新 {applied} 项', 'success')
-        return redirect('/settings')
+        return _json_or_redirect(True, f'配置导入完成，已更新 {applied} 项', '/settings')
 
     @web_bp.route('/diagnostics')
     def diagnostics_page():

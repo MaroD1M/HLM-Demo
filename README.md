@@ -412,3 +412,5 @@ docker-compose.prod.yml
   2. 若需回退版本，恢复升级前备份库；
   3. 再启动旧版本程序。
 - 可在“系统诊断”页面查看当前 `db_schema_version` 与目标版本。
+
+- 映射回填采用“源路径优先 + basename+文件大小”强匹配；`create_folder` 产生的目标目录层级不会作为强匹配依据，避免 `a.mkv -> a/a.mkv` 场景误判。

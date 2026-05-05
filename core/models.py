@@ -41,6 +41,8 @@ class DeleteMonitorTask(db.Model):
     cooldown_seconds = db.Column(db.Integer, default=120)
     max_deletes_per_run = db.Column(db.Integer, default=20)
     dry_run = db.Column(db.Boolean, default=False)
+    notify_on_delete = db.Column(db.Boolean, default=True)
+    notify_on_risky_delete = db.Column(db.Boolean, default=True)
     enabled = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
