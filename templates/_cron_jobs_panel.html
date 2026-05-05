@@ -15,7 +15,7 @@
         {% for j in jobs %}
         <tr>
           <td>{{ j.name }}</td>
-          <td>{{ j.task_type }}</td>
+          <td><div>{{ j.task_type }}</div><div class="small text-muted wrap-any">{{ j.description or "-" }}</div></td>
           <td><code>{{ j.cron_expression }}</code></td>
           <td><small class="text-muted">{{ cron_hints.get(j.id, '-') }}</small></td>
           <td>
