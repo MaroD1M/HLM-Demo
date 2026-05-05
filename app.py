@@ -1335,19 +1335,32 @@ def init_defaults():
 
 
 def init_system_jobs():
-    if not CronJob.query.filter_by(name='系统日志清理').first():
-        db.session.add(CronJob(name='系统日志清理', task_type='clean_logs', cron_expression='0 3 * * *', description='每天凌晨3点自动清理日志'))
-    if not CronJob.query.filter_by(name='系统缓存清理').first():
-        db.session.add(CronJob(name='系统缓存清理', task_type='clean_cache', cron_expression='30 3 * * *', description='每天凌晨3:30清理缓存'))
+    log_job = CronJob.query.filter_by(name='系统日志清理').first()
+    if not log_job:
+        db.session.add(CronJob(name='系统日志清理', task_type='clean_logs', cron_expression='0 3 * * *', description='【系统维护】清理历史执行/操作日志，避免日志表过大导致卡顿', enabled=True))
+
+    cache_job = CronJob.query.filter_by(name='系统缓存清理').first()
+    if not cache_job:
+        # 默认禁用：该任务会清理硬链接缓存与部分映射记录，不建议新手直接开启。
+        db.session.add(CronJob(name='系统缓存清理', task_type='clean_cache', cron_expression='30 3 * * *', description='【系统维护】清理缓存记录（可能影响已处理记录追踪），默认禁用，建议手动按需执行', enabled=False))
+    else:
+        # 历史版本兼容：把系统缓存清理改为默认禁用，避免误清理。
+        cache_job.enabled = False
+        if not cache_job.description or '默认禁用' not in (cache_job.description or ''):
+            cache_job.description = '【系统维护】清理缓存记录（可能影响已处理记录追踪），默认禁用，建议手动按需执行'
+
     backfill_job = CronJob.query.filter_by(name='系统映射回填').first()
     if not backfill_job:
-        db.session.add(CronJob(name='系统映射回填', task_type='backfill_mapping', cron_expression='0 * * * *', description='每60分钟回填文件与种子映射'))
+        db.session.add(CronJob(name='系统映射回填', task_type='backfill_mapping', cron_expression='0 * * * *', description='【系统维护】每60分钟尝试将映射记录关联到下载器种子'))
     else:
         if backfill_job.cron_expression == '*/30 * * * *':
             backfill_job.cron_expression = '0 * * * *'
-            backfill_job.description = '每60分钟回填文件与种子映射'
-    if not CronJob.query.filter_by(name='系统数据库备份').first():
-        db.session.add(CronJob(name='系统数据库备份', task_type='db_backup', cron_expression='0 */6 * * *', description='每6小时执行一次数据库备份'))
+            backfill_job.description = '【系统维护】每60分钟尝试将映射记录关联到下载器种子'
+
+    backup_job = CronJob.query.filter_by(name='系统数据库备份').first()
+    if not backup_job:
+        db.session.add(CronJob(name='系统数据库备份', task_type='db_backup', cron_expression='0 */6 * * *', description='【系统维护】每6小时自动备份数据库'))
+
     db.session.commit()
 
 
