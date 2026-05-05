@@ -61,7 +61,7 @@
         <div class="col-md-6"><label class="form-label">启用 GitHub 版本检查</label><select class="form-select" name="github_version_check_enabled"><option value="true" {% if settings.get('github_version_check_enabled','true')=='true' %}selected{% endif %}>启用</option><option value="false" {% if settings.get('github_version_check_enabled')=='false' %}selected{% endif %}>禁用</option></select></div>
         <div class="col-md-6"><label class="form-label">GitHub 仓库（owner/repo）</label><input class="form-control" name="github_repo" value="{{ settings.get('github_repo','marod1m/HLM-Demo') }}"></div>
         <div class="col-md-6"><label class="form-label">GitHub API Base</label><input class="form-control" name="github_api_base" value="{{ settings.get('github_api_base','https://api.github.com') }}"></div>
-        <div class="col-md-3"><label class="form-label">版本检查缓存(分钟)</label><input class="form-control" type="number" min="1" name="version_check_cache_minutes" value="{{ settings.get('version_check_cache_minutes',30) }}"></div>
+        <div class="col-md-3"><label class="form-label">版本检查缓存(分钟)</label><input class="form-control" type="number" min="1" name="version_check_cache_minutes" value="{{ settings.get('version_check_cache_minutes',720) }}"></div>
         <div class="col-md-9"><label class="form-label">关键操作口令（可选）</label><input class="form-control" type="password" name="critical_action_passphrase" placeholder="留空=不启用；设置后清空日志/清空缓存/确认删种需输入"></div>
         <div class="col-12">
           <div class="alert {{ 'alert-warning' if release and release.get('has_update') else 'alert-secondary' }} py-2 mb-0 wrap-any">

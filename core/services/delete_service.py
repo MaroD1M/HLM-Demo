@@ -73,12 +73,15 @@ def _task_notify_on_risky_enabled(task, get_config):
     return global_switch and task_switch
 
 
-def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_config, send_notification, create_pending_action):
+def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_config, send_notification, create_pending_action, should_stop=None):
     now = datetime.now(UTC)
     hits = []
     monitor_root = (task.directory or '').rstrip('/')
 
     for row in rows:
+        if should_stop and should_stop():
+            log_operation('delete_scan_stopped', 'DeleteMonitorTask', task.id, task.name, '收到停止指令，已中止本轮删除联动', False)
+            break
         deleted_path = _resolve_deleted_path(row, monitor_root)
         if deleted_path is None:
             continue
@@ -103,6 +106,9 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
     notify_risky = _task_notify_on_risky_enabled(task, get_config)
 
     for row, deleted_path_str in hits:
+        if should_stop and should_stop():
+            log_operation('delete_scan_stopped', 'DeleteMonitorTask', task.id, task.name, '收到停止指令，已中止本轮删除联动', False)
+            break
         src = str(row.source_path or '')
         dst = str(row.dest_path or '')
         source_type = (row.source_type or 'manual').strip().lower()

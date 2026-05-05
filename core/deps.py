@@ -38,3 +38,5 @@ class RouteDeps:
     send_telegram_notification: Callable
     delete_torrent: Callable
     get_release_info: Callable
+    request_stop_by_execution: Callable
+    get_running_executions_snapshot: Callable

@@ -137,6 +137,8 @@ class FileLinkMap(db.Model):
     source_type = db.Column(db.String(20), default='manual', index=True)
     last_seen_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), index=True)
     deleted_at = db.Column(db.DateTime)
+    backfill_fail_count = db.Column(db.Integer, default=0, index=True)
+    backfill_last_attempt_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
 
 
