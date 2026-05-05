@@ -40,7 +40,7 @@
     <nav class="nav flex-column">
       <a class="nav-link {% if request.path=='/' %}active{% endif %}" href="/">仪表盘</a>
       <a class="nav-link {% if request.path.startswith('/hardlink') %}active{% endif %}" href="/hardlink">硬链接任务</a>
-      <a class="nav-link {% if request.path.startswith('/delete-monitor') %}active{% endif %}" href="/delete-monitor">删除联动</a>
+      <a class="nav-link {% if request.path.startswith('/delete-monitor') %}active{% endif %}" href="/delete-monitor">疑似误删处理</a>
       <a class="nav-link {% if request.path.startswith('/cron') %}active{% endif %}" href="/cron">定时任务</a>
       <a class="nav-link {% if request.path.startswith('/downloader') %}active{% endif %}" href="/downloader">下载器</a>
       <a class="nav-link {% if request.path.startswith('/notifier') %}active{% endif %}" href="/notifier">通知器</a>
