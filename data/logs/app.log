@@ -1,2 +1,0 @@
-2026-05-05 10:03:38,869 INFO app: startup access_log_enabled=True tz=Asia/Shanghai version=v0.0.9
-2026-05-05 10:03:38,896 INFO app: request method=GET path=/ endpoint=web_bp.dashboard ip=127.0.0.1
