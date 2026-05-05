@@ -63,7 +63,7 @@ def _match_by_filelist(row, downloader, candidate_torrents, list_torrent_files, 
     return result
 
 
-def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_files, log_operation, should_stop=None, max_failures=2):
+def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_files, log_operation, should_stop=None, max_failures=2, allow_global_fallback=True, max_candidates=120):
     """Backfill torrent hash for mapping rows.
 
     Strategy:
@@ -113,6 +113,8 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
 
             # First-pass candidate narrowing (cheap)
             candidates = []
+            matched_hash = None
+            reason = 'candidate_empty'
             for torrent in torrents:
                 t_name = _norm(torrent.get('name', ''))
                 save_path = _norm(torrent.get('save_path', ''))
@@ -127,13 +129,22 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
 
             fallback_mode = False
             if not candidates:
-                # Fallback: if name/path heuristics miss, still try exact file-list matching.
-                # This covers cases where torrent name doesn't contain the final file name.
-                fallback_mode = True
-                candidates = torrents
+                if allow_global_fallback:
+                    # Fallback: only for periodic backfill. Single-row retry should avoid full-scan CPU spikes.
+                    fallback_mode = True
+                    candidates = torrents
+                else:
+                    matched_hash = None
+                    reason = 'candidate_empty_skip_fast'
+                    candidates = []
+
+            if candidates and max_candidates and len(candidates) > int(max_candidates):
+                candidates = candidates[:int(max_candidates)]
 
             # Strong decision by torrent file list exactness.
-            matched_hash, reason = _match_by_filelist(row, downloader, candidates, list_torrent_files, files_cache=files_cache, exact_cache=exact_cache)
+            if candidates:
+                matched_hash, reason = _match_by_filelist(row, downloader, candidates, list_torrent_files, files_cache=files_cache, exact_cache=exact_cache)
+            
             if fallback_mode and reason == 'filelist_no_match':
                 reason = 'candidate_empty_fallback_no_match'
             if matched_hash:

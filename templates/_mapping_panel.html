@@ -41,7 +41,14 @@
                   <form action="/mapping/link/retry" method="POST" class="m-0 js-ajax-form" data-target="mappingPanel">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="map_id" value="{{ m.id }}">
-                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="触发一次回填，尝试与下载器种子建立关联">重试关联</button>
+                    <input type="hidden" name="retry_mode" value="fast">
+                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="快速重试：仅扫描有限候选，优先降低下载器CPU占用">快速重试</button>
+                  </form>
+                  <form action="/mapping/link/retry" method="POST" class="m-0 js-ajax-form" data-target="mappingPanel">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="map_id" value="{{ m.id }}">
+                    <input type="hidden" name="retry_mode" value="deep">
+                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="深度重试：扩大候选并允许全量回退，可能增加下载器负载">深度重试</button>
                   </form>
                   {% endif %}
                   <form action="/mapping/link/reset-fail/{{ m.id }}" method="POST" class="m-0 js-ajax-form" data-target="mappingPanel">
