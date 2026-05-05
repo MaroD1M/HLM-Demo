@@ -682,14 +682,14 @@ def init_web_routes(ctx: RouteDeps):
             mapping_q = mapping_q.filter(FileLinkMap.source_type == 'downloader')
 
         mapping_q = mapping_q.order_by(FileLinkMap.created_at.desc())
-        mapping_pg = mapping_q.paginate(page=page, per_page=100, error_out=False)
+        mapping_pg = mapping_q.paginate(page=page, per_page=50, error_out=False)
 
         cache_q = HardlinkCache.query
         if q:
             like = f"%{q}%"
             cache_q = cache_q.filter((HardlinkCache.source_path.like(like)) | (HardlinkCache.dest_path.like(like)))
         cache_q = cache_q.order_by(HardlinkCache.created_at.desc())
-        cache_pg = cache_q.paginate(page=cache_page, per_page=100, error_out=False)
+        cache_pg = cache_q.paginate(page=cache_page, per_page=50, error_out=False)
 
         return render_template(
             'mapping.html',
@@ -785,14 +785,14 @@ def init_web_routes(ctx: RouteDeps):
         elif success == 'fail':
             log_q = log_q.filter(OperationLog.success.is_(False))
 
-        pagination = log_q.order_by(OperationLog.created_at.desc()).paginate(page=page, per_page=100, error_out=False)
+        pagination = log_q.order_by(OperationLog.created_at.desc()).paginate(page=page, per_page=50, error_out=False)
         operations = [r[0] for r in db.session.query(OperationLog.operation_type).distinct().order_by(OperationLog.operation_type.asc()).all()]
         return render_template(
             'logs.html',
             logs=pagination.items,
             page=page,
             total_pages=max(pagination.pages, 1),
-            executions=JobExecutionLog.query.order_by(JobExecutionLog.started_at.desc()).limit(100).all(),
+            executions=JobExecutionLog.query.order_by(JobExecutionLog.started_at.desc()).limit(50).all(),
             q=q,
             op=op,
             success=success,
