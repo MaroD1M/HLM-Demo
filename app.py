@@ -2,6 +2,7 @@ import os
 import secrets
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
 from datetime import datetime, UTC, timedelta
 from threading import Lock
 from pathlib import Path
@@ -37,11 +38,115 @@ app.config['APP_USERNAME'] = os.environ.get('APP_USERNAME', '').strip()
 app.config['APP_PASSWORD'] = os.environ.get('APP_PASSWORD', '')
 app.config['REQUEST_TIMEOUT_SECONDS'] = int(os.environ.get('REQUEST_TIMEOUT_SECONDS', '10'))
 app.config['ACCESS_LOG_ENABLED'] = os.environ.get('ACCESS_LOG_ENABLED', 'true').lower() == 'true'
+app.config['APP_VERSION'] = (Path(__file__).resolve().parent / 'VERSION').read_text(encoding='utf-8').strip() if (Path(__file__).resolve().parent / 'VERSION').exists() else 'dev'
 
 try:
     APP_TZ = ZoneInfo(os.environ.get('TZ', 'Asia/Shanghai'))
 except Exception:
     APP_TZ = UTC
+
+
+def init_file_logger():
+    log_dir = Path(os.environ.get('APP_LOG_DIR', '/app/data/logs'))
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        # Fallback for local tests/non-container env where /app is not writable.
+        log_dir = Path(__file__).resolve().parent / 'data' / 'logs'
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+    max_mb = int(os.environ.get('APP_LOG_MAX_MB', '10') or '10')
+    backup_count = int(os.environ.get('APP_LOG_BACKUP_COUNT', '5') or '5')
+    log_file = log_dir / 'app.log'
+
+    for h in app.logger.handlers:
+        if isinstance(h, RotatingFileHandler) and Path(getattr(h, 'baseFilename', '')) == log_file:
+            return
+
+    handler = RotatingFileHandler(
+        log_file,
+        maxBytes=max(1, max_mb) * 1024 * 1024,
+        backupCount=max(1, backup_count),
+        encoding='utf-8',
+    )
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s'))
+    app.logger.addHandler(handler)
+
+
+def _outbound_proxies(override=None):
+    proxy = (override or '').strip() or (get_config('proxy_url', '') or '').strip()
+    if not proxy:
+        return None
+    return {'http': proxy, 'https': proxy}
+
+
+def get_release_info(force_refresh=False):
+    local_version = app.config.get('APP_VERSION', 'dev')
+    enabled = str(get_config('github_version_check_enabled', 'true')).lower() == 'true'
+    if not enabled and not force_refresh:
+        return {
+            'local_version': local_version,
+            'remote_version': '-',
+            'has_update': False,
+            'repo': get_config('github_repo', 'marod1m/HLM-Demo'),
+            'checked_at': '-',
+            'message': '已关闭版本检查',
+        }
+
+    repo = (get_config('github_repo', 'marod1m/HLM-Demo') or 'marod1m/HLM-Demo').strip()
+    api_base = (get_config('github_api_base', 'https://api.github.com') or 'https://api.github.com').strip().rstrip('/')
+    url = f"{api_base}/repos/{repo}/releases/latest"
+    checked_at = datetime.now(UTC).isoformat()
+    ttl = int(get_config('version_check_cache_minutes', '30') or '30')
+    if not force_refresh:
+        cache_remote = (get_config('version_check_cached_remote', '') or '').strip()
+        cache_checked = (get_config('version_check_cached_at', '') or '').strip()
+        if cache_remote and cache_checked:
+            try:
+                cached_ts = datetime.fromisoformat(cache_checked.replace('Z', '+00:00'))
+                if cached_ts.tzinfo is None:
+                    cached_ts = cached_ts.replace(tzinfo=UTC)
+                age_min = (datetime.now(UTC) - cached_ts.astimezone(UTC)).total_seconds() / 60
+                if age_min < max(1, ttl):
+                    return {
+                        'local_version': local_version,
+                        'remote_version': cache_remote,
+                        'has_update': bool(cache_remote not in {'-', local_version}),
+                        'repo': repo,
+                        'checked_at': cache_checked,
+                        'message': f'缓存({int(age_min)}分钟内)',
+                    }
+            except Exception:
+                pass
+    try:
+        resp = requests.get(url, timeout=app.config['REQUEST_TIMEOUT_SECONDS'], proxies=_outbound_proxies(), headers={'Accept': 'application/vnd.github+json'})
+        resp.raise_for_status()
+        payload = resp.json() or {}
+        remote = str(payload.get('tag_name') or '').strip() or '-'
+        has_update = bool(remote not in {'-', local_version})
+        set_config('version_check_cached_remote', remote)
+        set_config('version_check_cached_at', checked_at)
+        return {
+            'local_version': local_version,
+            'remote_version': remote,
+            'has_update': has_update,
+            'repo': repo,
+            'checked_at': checked_at,
+            'message': '检查成功',
+        }
+    except Exception as exc:
+        app.logger.warning('github_version_check_failed repo=%s err=%s', repo, exc)
+        return {
+            'local_version': local_version,
+            'remote_version': '-',
+            'has_update': False,
+            'repo': repo,
+            'checked_at': checked_at,
+            'message': f'检查失败: {exc}',
+        }
+
+
 
 db.init_app(app)
 bcrypt.init_app(app)
@@ -53,6 +158,7 @@ AUTH_FAIL_WINDOW_SECONDS = 60
 AUTH_FAIL_MAX_TIMES = 3
 AUTH_BLOCK_SECONDS = 1800
 AUTH_STATE = {}
+APP_BOOTSTRAPPED = False
 
 
 def _get_client_ip():
@@ -259,10 +365,7 @@ def send_telegram_notification(notifier, message):
         if not api_base:
             api_base = 'https://api.telegram.org'
 
-        proxy_url = (get_config('tg_proxy_url', '') or '').strip()
-        proxies = None
-        if proxy_url:
-            proxies = {'http': proxy_url, 'https': proxy_url}
+        proxies = _outbound_proxies(getattr(notifier, 'proxy_url', '') or '')
 
         url = f"{api_base}/bot{notifier.api_key}/sendMessage"
         resp = requests.post(
@@ -281,6 +384,9 @@ def send_telegram_notification(notifier, message):
 
 def qb_session(downloader):
     session_obj = requests.Session()
+    proxies = _outbound_proxies(getattr(downloader, 'proxy_url', '') or '')
+    if proxies:
+        session_obj.proxies.update(proxies)
     if downloader.username and downloader.encrypted_password:
         login_url = f"{downloader.host}:{downloader.port}/api/v2/auth/login"
         resp = session_obj.post(login_url, data={'username': downloader.username, 'password': downloader.get_password()}, timeout=app.config['REQUEST_TIMEOUT_SECONDS'])
@@ -530,8 +636,6 @@ def run_backup_once():
 
 
 def run_cron_job(job_id):
-    app.config['DELETE_TORRENT_FUNC'] = delete_torrent
-
     with app.app_context():
         job = db.session.get(CronJob, job_id)
         if not job or not job.enabled:
@@ -551,6 +655,9 @@ def run_cron_job(job_id):
                 log_operation('cron_executed', 'CronJob', job.id, job.name, f'backfill: {msg}', ok)
                 return ok, msg
             if job.task_type == 'clean_logs':
+                if get_config('auto_clean_logs', 'true') != 'true':
+                    log_operation('cron_skipped', 'CronJob', job.id, job.name, 'auto_clean_logs=off，已跳过日志清理')
+                    return True, '已关闭自动清理日志，跳过执行'
                 retention = int(get_config('log_retention_days', '30'))
                 cutoff = datetime.now(UTC) - timedelta(days=retention)
                 OperationLog.query.filter(OperationLog.created_at < cutoff).delete()
@@ -595,8 +702,26 @@ def update_cron_job(job_id):
     scheduler.add_job(run_cron_job, 'cron', id=key, args=[job_id], minute=parts[0], hour=parts[1], day=parts[2], month=parts[3], day_of_week=parts[4])
 
 
-def ensure_compat_columns():
-    # Lightweight migration for sqlite; keeps existing db usable without Alembic.
+def _ensure_schema_meta_table():
+    db.session.execute(db.text("CREATE TABLE IF NOT EXISTS schema_meta (key VARCHAR(100) PRIMARY KEY, value VARCHAR(200))"))
+
+
+def _get_schema_version():
+    _ensure_schema_meta_table()
+    row = db.session.execute(db.text("SELECT value FROM schema_meta WHERE key='db_schema_version'" )).fetchone()
+    try:
+        return int(row[0]) if row and row[0] is not None else 0
+    except Exception:
+        return 0
+
+
+def _set_schema_version(version):
+    _ensure_schema_meta_table()
+    db.session.execute(db.text("DELETE FROM schema_meta WHERE key='db_schema_version'"))
+    db.session.execute(db.text("INSERT INTO schema_meta(key, value) VALUES ('db_schema_version', :v)"), {'v': str(version)})
+
+
+def _migration_v1():
     needed = {
         'hardlink_task': {
             'exclude_extensions': "ALTER TABLE hardlink_task ADD COLUMN exclude_extensions VARCHAR(500) DEFAULT ''",
@@ -614,21 +739,47 @@ def ensure_compat_columns():
             if col not in existing:
                 db.session.execute(db.text(sql))
 
-    # create pending confirmation table for risky delete linkage decisions.
-    db.session.execute(db.text('''
-        CREATE TABLE IF NOT EXISTS delete_pending_action (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_id INTEGER NOT NULL,
-            file_map_id INTEGER NOT NULL,
-            deleted_path VARCHAR(1000) NOT NULL,
-            torrent_hash VARCHAR(64),
-            match_by VARCHAR(50) DEFAULT 'no_match',
-            status VARCHAR(20) DEFAULT 'pending',
-            reason VARCHAR(500),
-            created_at DATETIME,
-            confirmed_at DATETIME
-        )
-    '''))
+
+def _migration_v2():
+    db.session.execute(db.text("CREATE TABLE IF NOT EXISTS delete_pending_action (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id INTEGER NOT NULL, file_map_id INTEGER NOT NULL, deleted_path VARCHAR(1000) NOT NULL, torrent_hash VARCHAR(64), match_by VARCHAR(50) DEFAULT 'no_match', status VARCHAR(20) DEFAULT 'pending', reason VARCHAR(500), created_at DATETIME, confirmed_at DATETIME)"))
+
+
+def _migration_v3():
+    needed = {
+        'downloader': {
+            'proxy_url': 'ALTER TABLE downloader ADD COLUMN proxy_url VARCHAR(300)',
+        },
+        'notifier': {
+            'proxy_url': 'ALTER TABLE notifier ADD COLUMN proxy_url VARCHAR(300)',
+        },
+        'file_link_map': {
+            'source_type': "ALTER TABLE file_link_map ADD COLUMN source_type VARCHAR(20) DEFAULT 'manual'",
+        },
+    }
+    for table, fields in needed.items():
+        existing = {row[1] for row in db.session.execute(db.text(f'PRAGMA table_info({table})')).fetchall()}
+        for col, sql in fields.items():
+            if col not in existing:
+                db.session.execute(db.text(sql))
+
+    db.session.execute(db.text("UPDATE file_link_map SET source_type = CASE WHEN torrent_hash IS NOT NULL AND TRIM(torrent_hash) <> '' THEN 'downloader' ELSE 'manual' END WHERE source_type IS NULL OR TRIM(source_type) = ''"))
+
+
+def ensure_compat_columns():
+    # Versioned, idempotent migrations. Supports forward upgrades safely.
+    # For downgrades, restore DB from backup before running older code.
+    target = 3
+    current = _get_schema_version()
+    if current > target:
+        app.logger.warning('db schema version %s is newer than app target %s; running in compatibility mode', current, target)
+        return
+
+    migrations = {1: _migration_v1, 2: _migration_v2, 3: _migration_v3}
+    for version in range(current + 1, target + 1):
+        migrations[version]()
+        _set_schema_version(version)
+        app.logger.info('db migration applied: v%s', version)
+
     db.session.commit()
 
 
@@ -639,16 +790,27 @@ def init_defaults():
         ('default_extensions', '.mkv,.mp4,.avi,.mov,.wmv,.flv', '默认文件扩展名'),
         ('default_exclude_dirs', 'sample,subs', '默认排除目录'),
         ('delete_files_with_torrent', 'false', '删除种子时同时删除文件'),
-        ('delete_delay_seconds', '120', '删除确认冷却秒数'),
-        ('notify_on_hardlink', 'false', '启用硬链接通知'),
         ('notify_on_delete', 'true', '启用删除通知'),
         ('notify_on_risky_delete', 'true', '疑似误删风险通知'),
         ('delete_match_strict_mode', 'true', '删除联动仅精确匹配自动执行'),
+        ('manual_dest_delete_delete_source', 'true', '手动来源：删除目标后自动删除源文件'),
+        ('manual_source_delete_delete_dest', 'true', '手动来源：删除源文件后自动删除目标文件'),
+        ('downloader_dest_delete_delete_source', 'true', '下载器来源：删除目标后自动删除源文件'),
+        ('downloader_source_delete_delete_dest', 'true', '下载器来源：删除源文件后自动删除目标文件'),
+        ('downloader_dest_delete_delete_torrent', 'true', '下载器来源：删除目标后自动删种'),
+        ('downloader_source_delete_delete_torrent', 'true', '下载器来源：删除源后自动删种'),
         ('allowed_roots', '', '允许访问的路径根目录，逗号分隔'),
-        ('tg_proxy_url', '', 'Telegram请求代理地址，如http://127.0.0.1:7890'),
         ('tg_api_base', 'https://api.telegram.org', 'Telegram API基础地址'),
         ('backup_dir', '/app/data/backups', '数据库备份目录'),
         ('backup_keep_last', '7', '数据库备份保留数量'),
+        ('github_version_check_enabled', 'true', '启用GitHub版本检查'),
+        ('github_repo', 'marod1m/HLM-Demo', 'GitHub仓库 owner/repo'),
+        ('github_api_base', 'https://api.github.com', 'GitHub API基础地址'),
+        ('proxy_url', 'http://127.0.0.7:7890', '统一外网代理地址（Telegram/GitHub），留空则直连'),
+        ('app_log_max_mb', '10', '应用日志单文件大小上限（MB）'),
+        ('app_log_backup_count', '5', '应用日志滚动保留文件数'),
+        ('version_check_cache_minutes', '30', '版本检查缓存分钟数'),
+        ('critical_action_passphrase', '', '关键操作口令（留空=不启用）'),
     ]
     for key, value, desc in default_configs:
         if not AppConfig.query.filter_by(key=key).first():
@@ -668,7 +830,7 @@ def init_system_jobs():
 
 
 def init_app():
-    app.logger.info('startup access_log_enabled=%s tz=%s', app.config.get('ACCESS_LOG_ENABLED'), os.environ.get('TZ', ''))
+    global APP_BOOTSTRAPPED
     if app.config['SECRET_KEY'] == 'default-secret-key-for-dev-only':
         app.logger.warning('Using default SECRET_KEY; set SECRET_KEY in production to avoid session forgery risk.')
 
@@ -676,8 +838,14 @@ def init_app():
         db.create_all()
         ensure_compat_columns()
         init_defaults()
+        os.environ['APP_LOG_MAX_MB'] = str(get_config('app_log_max_mb', os.environ.get('APP_LOG_MAX_MB', '10')) or '10')
+        os.environ['APP_LOG_BACKUP_COUNT'] = str(get_config('app_log_backup_count', os.environ.get('APP_LOG_BACKUP_COUNT', '5')) or '5')
+        init_file_logger()
+        app.logger.info('startup access_log_enabled=%s tz=%s version=%s', app.config.get('ACCESS_LOG_ENABLED'), os.environ.get('TZ', ''), app.config.get('APP_VERSION'))
         init_system_jobs()
         start_cron_scheduler()
+        if APP_BOOTSTRAPPED:
+            return
         app.register_blueprint(init_api_routes(HardlinkTask, DeleteMonitorTask))
         app.register_blueprint(init_web_routes(RouteDeps(
             HardlinkTask=HardlinkTask,
@@ -710,7 +878,10 @@ def init_app():
             update_cron_job=update_cron_job,
             list_torrents=list_torrents,
             send_telegram_notification=send_telegram_notification,
+            delete_torrent=delete_torrent,
+            get_release_info=get_release_info,
         )))
+        APP_BOOTSTRAPPED = True
 
 
 if __name__ == '__main__':

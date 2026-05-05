@@ -36,3 +36,5 @@ class RouteDeps:
     update_cron_job: Callable
     list_torrents: Callable
     send_telegram_notification: Callable
+    delete_torrent: Callable
+    get_release_info: Callable

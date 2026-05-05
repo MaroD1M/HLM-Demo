@@ -17,11 +17,16 @@ services:
       REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-10}
       # 时区
       TZ: ${TZ:-Asia/Shanghai}
+      # 应用日志分割（避免日志过大）
+      APP_LOG_MAX_MB: ${APP_LOG_MAX_MB:-10}
+      APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
     volumes:
       # 必须：数据库与运行状态
       - ./data/instance:/app/instance
       # 建议：数据库备份目录
       - ./data/backups:/app/data/backups
+      # 建议：应用文件日志目录（配合日志分割）
+      - ./data/logs:/app/data/logs
       # 推荐：只映射一个“媒体根目录”，任务里自行填写子目录
       # 例如：源目录 /media/downloads，目标目录 /media/library
       - ${MEDIA_ROOT:-./data/media}:/media

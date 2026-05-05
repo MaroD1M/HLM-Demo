@@ -43,6 +43,7 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, log_operation):
             if len(candidates) == 1:
                 row.torrent_hash = candidates[0].get('hash')
                 row.downloader_id = downloader.id
+                row.source_type = 'downloader'
                 matched += 1
                 log_operation('backfill_matched', 'FileLinkMap', row.id, probe.name, f'hash={row.torrent_hash}')
             elif len(candidates) > 1:

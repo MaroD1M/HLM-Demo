@@ -1,7 +1,7 @@
 <div class="card p-3">
   <table class="table">
     <thead>
-      <tr><th>名称</th><th>类型</th><th>Chat ID</th><th>状态</th><th>操作</th></tr>
+      <tr><th>名称</th><th>类型</th><th>Chat ID</th><th>代理</th><th>状态</th><th>操作</th></tr>
     </thead>
     <tbody>
     {% for n in notifiers %}
@@ -9,6 +9,7 @@
         <td>{{ n.name }}</td>
         <td>{{ n.type }}</td>
         <td>{{ n.chat_id or '-' }}</td>
+        <td><small>{{ n.proxy_url or '全局' }}</small></td>
         <td>{% if n.enabled %}<span class="badge text-bg-success">启用</span>{% else %}<span class="badge text-bg-secondary">禁用</span>{% endif %}</td>
         <td>
           <form class="d-inline js-ajax-form" action="/notifier/test/{{ n.id }}" method="POST" data-target="notifierJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">测试</button></form>
@@ -28,7 +29,7 @@
                 <div class="mb-2"><label class="form-label">名称</label><input class="form-control" name="name" value="{{ n.name }}" required></div>
                 <div class="mb-2"><label class="form-label">类型</label><select class="form-select" name="type"><option value="telegram" {% if n.type=='telegram' %}selected{% endif %}>Telegram</option></select></div>
                 <div class="mb-2"><label class="form-label">Bot Token</label><input class="form-control" name="api_key" value="{{ n.api_key }}" required></div>
-                <div class="mb-2"><label class="form-label">Chat ID</label><input class="form-control" name="chat_id" value="{{ n.chat_id or '' }}"></div>
+                <div class="mb-2"><label class="form-label">Chat ID</label><input class="form-control" name="chat_id" value="{{ n.chat_id or '' }}"></div><div class="mb-2"><label class="form-label">任务代理(可选)</label><input class="form-control" name="proxy_url" value="{{ n.proxy_url or '' }}" placeholder="留空=使用全局proxy_url"></div>
               </div>
               <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="submit" class="btn btn-brand">保存修改</button></div>
             </form>

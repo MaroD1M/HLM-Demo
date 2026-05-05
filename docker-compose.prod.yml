@@ -17,11 +17,14 @@ services:
       REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-10}
       # 时区
       TZ: ${TZ:-Asia/Shanghai}
+      APP_LOG_MAX_MB: ${APP_LOG_MAX_MB:-10}
+      APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
     volumes:
       # 必须：数据库与运行状态
       - ./data/instance:/app/instance
       # 建议：数据库备份目录
       - ./data/backups:/app/data/backups
+      - ./data/logs:/app/data/logs
       # 推荐：单目录映射，程序内自定义子目录
       - ${MEDIA_ROOT}:/media:rw
       # 可选（非必要）：如需双目录固定映射可取消注释
