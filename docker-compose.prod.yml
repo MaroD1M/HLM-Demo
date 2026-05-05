@@ -15,8 +15,12 @@ services:
       APP_PASSWORD: ${APP_PASSWORD:-}
       # 可选：HTTP 请求超时（秒）
       REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-10}
+      # 访问日志（写入容器stdout，群晖日志页可见）
+      ACCESS_LOG_ENABLED: ${ACCESS_LOG_ENABLED:-true}
       # 时区
       TZ: ${TZ:-Asia/Shanghai}
+      # 关闭Python输出缓冲，确保群晖容器日志实时可见
+      PYTHONUNBUFFERED: "1"
       APP_LOG_MAX_MB: ${APP_LOG_MAX_MB:-10}
       APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
     volumes:

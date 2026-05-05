@@ -31,6 +31,17 @@ logging.basicConfig(
 )
 app.logger.setLevel(logging.INFO)
 
+
+def init_console_logger():
+    # Ensure logs are always visible in container stdout (e.g., Synology Container Manager).
+    has_stream = any(isinstance(h, logging.StreamHandler) for h in app.logger.handlers)
+    if not has_stream:
+        sh = logging.StreamHandler(sys.stdout)
+        sh.setLevel(logging.INFO)
+        sh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s'))
+        app.logger.addHandler(sh)
+    app.logger.propagate = True
+
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default-secret-key-for-dev-only')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///hardlink_manager.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -837,16 +848,27 @@ def _migration_v4():
             if col not in existing:
                 db.session.execute(db.text(sql))
 
+def _migration_v5():
+    # Add commonly used indexes to speed up logs/mapping pages on larger datasets.
+    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_operation_log_created_at ON operation_log(created_at)'))
+    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_operation_log_type ON operation_log(operation_type)'))
+    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_operation_log_success_created ON operation_log(success, created_at)'))
+    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_file_link_map_created_at ON file_link_map(created_at)'))
+    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_hardlink_cache_created_at ON hardlink_cache(created_at)'))
+    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_delete_pending_status_created ON delete_pending_action(status, created_at)'))
+    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_job_execution_started_at ON job_execution_log(started_at)'))
+
+
 def ensure_compat_columns():
     # Versioned, idempotent migrations. Supports forward upgrades safely.
     # For downgrades, restore DB from backup before running older code.
-    target = 4
+    target = 5
     current = _get_schema_version()
     if current > target:
         app.logger.warning('db schema version %s is newer than app target %s; running in compatibility mode', current, target)
         return
 
-    migrations = {1: _migration_v1, 2: _migration_v2, 3: _migration_v3, 4: _migration_v4}
+    migrations = {1: _migration_v1, 2: _migration_v2, 3: _migration_v3, 4: _migration_v4, 5: _migration_v5}
     for version in range(current + 1, target + 1):
         migrations[version]()
         _set_schema_version(version)
