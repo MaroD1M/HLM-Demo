@@ -30,6 +30,7 @@ def init_web_routes(ctx: RouteDeps):
     run_hardlink_once = ctx.run_hardlink_once
     run_delete_once = ctx.run_delete_once
     run_backfill_once = ctx.run_backfill_once
+    run_backfill_for_map_id = ctx.run_backfill_for_map_id
     run_backup_once = ctx.run_backup_once
     run_cron_job = ctx.run_cron_job
     update_cron_job = ctx.update_cron_job
@@ -686,13 +687,12 @@ def init_web_routes(ctx: RouteDeps):
         return _json_or_redirect(True, '通知器已删除', '/notifier', html=html, target='notifierJobsPanel')
 
 
-    @web_bp.route('/mapping')
-    def mapping_list():
-        page = max(request.args.get('page', 1, type=int), 1)
-        cache_page = max(request.args.get('cache_page', 1, type=int), 1)
-        q = (request.args.get('q') or '').strip()
-        hash_state = (request.args.get('hash_state') or 'all').strip()
-        source_type = (request.args.get('source_type') or 'all').strip()
+    def _mapping_payload(page=None, cache_page=None, q=None, hash_state=None, source_type=None):
+        page = max(page if page is not None else request.args.get('page', 1, type=int), 1)
+        cache_page = max(cache_page if cache_page is not None else request.args.get('cache_page', 1, type=int), 1)
+        q = (q if q is not None else request.args.get('q') or '').strip()
+        hash_state = (hash_state if hash_state is not None else request.args.get('hash_state') or 'all').strip()
+        source_type = (source_type if source_type is not None else request.args.get('source_type') or 'all').strip()
 
         mapping_q = FileLinkMap.query
         if q:
@@ -721,18 +721,23 @@ def init_web_routes(ctx: RouteDeps):
         cache_q = cache_q.order_by(HardlinkCache.created_at.desc())
         cache_pg = cache_q.paginate(page=cache_page, per_page=50, error_out=False)
 
-        return render_template(
-            'mapping.html',
-            mappings=mapping_pg.items,
-            map_page=page,
-            map_total_pages=max(mapping_pg.pages, 1),
-            caches=cache_pg.items,
-            cache_page=cache_page,
-            cache_total_pages=max(cache_pg.pages, 1),
-            q=q,
-            hash_state=hash_state,
-            source_type=source_type,
-        )
+        return {
+            'mappings': mapping_pg.items,
+            'map_page': page,
+            'map_total_pages': max(mapping_pg.pages, 1),
+            'caches': cache_pg.items,
+            'cache_page': cache_page,
+            'cache_total_pages': max(cache_pg.pages, 1),
+            'q': q,
+            'hash_state': hash_state,
+            'source_type': source_type,
+        }
+
+
+    @web_bp.route('/mapping')
+    def mapping_list():
+        payload = _mapping_payload()
+        return render_template('mapping.html', **payload)
 
 
     @web_bp.route('/mapping/link/bulk-delete', methods=['POST'])
@@ -758,7 +763,9 @@ def init_web_routes(ctx: RouteDeps):
             db.session.delete(row)
             count += 1
         db.session.commit()
-        return _json_or_redirect(True, f'已批量删除 {count} 条映射记录', '/mapping')
+        payload = _mapping_payload()
+        html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, f'已批量删除 {count} 条映射记录', '/mapping', html=html, target='mappingPanel')
 
     @web_bp.route('/mapping/link/clear', methods=['POST'])
     def mapping_link_clear():
@@ -767,7 +774,9 @@ def init_web_routes(ctx: RouteDeps):
         count = FileLinkMap.query.delete()
         db.session.commit()
         log_operation('mapping_cleared', 'FileLinkMap', None, '全部映射', f'清理 {count} 条映射记录')
-        return _json_or_redirect(True, f'已清理 {count} 条映射记录', '/mapping')
+        payload = _mapping_payload()
+        html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, f'已清理 {count} 条映射记录', '/mapping', html=html, target='mappingPanel')
 
 
     @web_bp.route('/mapping/link/delete', methods=['POST'])
@@ -783,7 +792,9 @@ def init_web_routes(ctx: RouteDeps):
         db.session.delete(row)
         db.session.commit()
         log_operation('mapping_record_deleted', 'FileLinkMap', map_id, src, f'手动删除映射: {dst}')
-        return _json_or_redirect(True, '映射记录已删除', '/mapping')
+        payload = _mapping_payload()
+        html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, '映射记录已删除', '/mapping', html=html, target='mappingPanel')
 
     @web_bp.route('/mapping/link/retry', methods=['POST'])
     def mapping_link_retry():
@@ -794,21 +805,33 @@ def init_web_routes(ctx: RouteDeps):
         if not row:
             return _json_or_redirect(False, '映射记录不存在', '/mapping', status=404)
         if row.torrent_hash:
-            return _json_or_redirect(True, '该映射已关联种子，无需重试', '/mapping')
+            payload = _mapping_payload()
+            html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
+            return _json_or_redirect(True, '该映射已关联种子，无需重试', '/mapping', html=html, target='mappingPanel')
 
-        if not row.downloader_id:
-            d = Downloader.query.filter_by(enabled=True).order_by(Downloader.id.asc()).first()
-            if d:
-                row.downloader_id = d.id
-                db.session.commit()
-
-        ok, msg = run_backfill_once(row.downloader_id)
+        ok, msg = run_backfill_for_map_id(map_id)
         db.session.refresh(row)
+        payload = _mapping_payload()
+        html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
         if ok and row.torrent_hash:
             log_operation('mapping_retry_linked', 'FileLinkMap', row.id, row.source_path, f'已关联 hash={row.torrent_hash}')
-            return _json_or_redirect(True, f'重试成功：已关联种子（{row.torrent_hash}）', '/mapping')
+            return _json_or_redirect(True, f'重试成功：已关联种子（{row.torrent_hash}）', '/mapping', html=html, target='mappingPanel')
 
-        return _json_or_redirect(False, f'重试完成但未关联成功：{msg}', '/mapping', status=400)
+        return _json_or_redirect(False, f'重试完成但未关联成功：{msg}', '/mapping', html=html, target='mappingPanel', status=400)
+
+    @web_bp.route('/mapping/link/reset-fail/<int:map_id>', methods=['POST'])
+    def mapping_link_reset_fail(map_id):
+        row = db.session.get(FileLinkMap, map_id)
+        if not row:
+            return _json_or_redirect(False, '映射记录不存在', '/mapping', status=404)
+        row.backfill_fail_count = 0
+        row.backfill_last_attempt_at = None
+        db.session.commit()
+        log_operation('mapping_backfill_fail_reset', 'FileLinkMap', row.id, row.source_path, '手动重置回填失败计数')
+        payload = _mapping_payload()
+        html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, '回填失败计数已重置，可再次参与回填', '/mapping', html=html, target='mappingPanel')
+
 
     @web_bp.route('/mapping/cache/delete', methods=['POST'])
     def mapping_cache_delete():
@@ -821,7 +844,9 @@ def init_web_routes(ctx: RouteDeps):
         db.session.delete(row)
         db.session.commit()
         log_operation('cache_record_deleted', 'HardlinkCache', row.id, source_path, '手动删除缓存记录')
-        return _json_or_redirect(True, '缓存记录已删除，可再次硬链接', '/mapping')
+        payload = _mapping_payload()
+        html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, '缓存记录已删除，可再次硬链接', '/mapping', html=html, target='mappingPanel')
 
     @web_bp.route('/mapping/cache/bulk-delete', methods=['POST'])
     def mapping_cache_bulk_delete():
@@ -846,7 +871,9 @@ def init_web_routes(ctx: RouteDeps):
             db.session.delete(row)
             count += 1
         db.session.commit()
-        return _json_or_redirect(True, f'已批量删除 {count} 条缓存记录', '/mapping')
+        payload = _mapping_payload()
+        html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, f'已批量删除 {count} 条缓存记录', '/mapping', html=html, target='mappingPanel')
 
 
     @web_bp.route('/mapping/cache/clear', methods=['POST'])
@@ -856,7 +883,9 @@ def init_web_routes(ctx: RouteDeps):
         count = HardlinkCache.query.delete()
         db.session.commit()
         log_operation('cache_cleared', 'HardlinkCache', None, '全部缓存', f'清理 {count} 条缓存')
-        return _json_or_redirect(True, f'已清理 {count} 条缓存', '/mapping')
+        payload = _mapping_payload()
+        html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, f'已清理 {count} 条缓存', '/mapping', html=html, target='mappingPanel')
 
     @web_bp.route('/logs')
     def logs_list():

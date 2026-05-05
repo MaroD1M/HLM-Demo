@@ -30,6 +30,7 @@ class RouteDeps:
     run_hardlink_once: Callable
     run_delete_once: Callable
     run_backfill_once: Callable
+    run_backfill_for_map_id: Callable
     run_backup_once: Callable
     run_backup_task: Callable
     run_cron_job: Callable

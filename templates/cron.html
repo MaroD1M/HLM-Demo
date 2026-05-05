@@ -88,22 +88,39 @@
 {% block scripts %}
 <script>
 function updateTargetField(){
-  const t=document.getElementById('task_type').value;
+  const typeEl=document.getElementById('task_type');
   const wrap=document.getElementById('target_wrap');
   const label=document.getElementById('target_label');
   const select=document.getElementById('target_id');
+  if(!typeEl || !wrap || !label || !select) return;
+
+  const prev=String(select.value || '');
+  const t=String(typeEl.value || '');
+
+  const hardlinkOptions=[{v:'',l:'选择硬链接任务'},{% for task in hardlink_tasks %}{v:'{{ task.id }}',l:'{{ task.name|e }}'},{% endfor %}];
+  const deleteOptions=[{v:'',l:'选择删除监控任务'},{% for task in delete_tasks %}{v:'{{ task.id }}',l:'{{ task.name|e }}'},{% endfor %}];
+
+  let options=[];
   if(t==='batch_hardlink'){
     wrap.style.display='block';
     label.innerText='关联硬链接任务';
-    select.innerHTML=`<option value="">选择硬链接任务</option>{% for task in hardlink_tasks %}<option value="{{ task.id }}">{{ task.name }}</option>{% endfor %}`;
+    options=hardlinkOptions;
+    select.required=true;
   }else if(t==='delete_scan'){
     wrap.style.display='block';
     label.innerText='关联删除监控任务';
-    select.innerHTML=`<option value="">选择删除监控任务</option>{% for task in delete_tasks %}<option value="{{ task.id }}">{{ task.name }}</option>{% endfor %}`;
+    options=deleteOptions;
+    select.required=true;
   }else{
     wrap.style.display='none';
-    select.innerHTML='<option value="">无</option>';
+    label.innerText='关联任务';
+    options=[{v:'',l:'无'}];
+    select.required=false;
   }
+
+  select.innerHTML=options.map(o=>`<option value="${o.v}">${o.l}</option>`).join('');
+  const canKeep=options.some(o=>o.v===prev);
+  select.value=canKeep?prev:'';
 }
 
 function explainCron(expr){
@@ -142,14 +159,37 @@ function bindCronPreview(){
     const target=document.getElementById(targetId);
     if(!target) return;
     const update=()=>{ target.textContent=explainCron(el.value); };
-    el.addEventListener('input', update);
+    if(!el.dataset.cronBound){
+      el.addEventListener('input', update);
+      el.dataset.cronBound='1';
+    }
     update();
   });
 }
 
-updateTargetField();
-bindCronPreview();
+function initCronAddModal(){
+  const modalEl=document.getElementById('addCronModal');
+  const form=modalEl ? modalEl.querySelector('form') : null;
+  const typeEl=document.getElementById('task_type');
+  if(typeEl && !typeEl.dataset.bound){
+    typeEl.addEventListener('change', updateTargetField);
+    typeEl.dataset.bound='1';
+  }
 
+  if(modalEl && window.bootstrap){
+    modalEl.addEventListener('show.bs.modal', ()=>{
+      if(form){
+        form.reset();
+      }
+      updateTargetField();
+      bindCronPreview();
+    });
+  }
 
+  updateTargetField();
+  bindCronPreview();
+}
+
+window.addEventListener('DOMContentLoaded', initCronAddModal);
 </script>
 {% endblock %}
