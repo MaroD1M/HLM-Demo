@@ -101,18 +101,24 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
                 if name_hit or path_hit:
                     candidates.append(torrent)
 
+            fallback_mode = False
             if not candidates:
-                skipped += 1
-                log_operation('backfill_skipped', 'FileLinkMap', row.id, probe.name, '候选种子为空', False)
-                continue
+                # Fallback: if name/path heuristics miss, still try exact file-list matching.
+                # This covers cases where torrent name doesn't contain the final file name.
+                fallback_mode = True
+                candidates = torrents
 
             # Strong decision by torrent file list exactness.
             matched_hash, reason = _match_by_filelist(row, downloader, candidates, list_torrent_files)
+            if fallback_mode and reason == 'filelist_no_match':
+                reason = 'candidate_empty_fallback_no_match'
             if matched_hash:
                 row.torrent_hash = matched_hash
                 row.downloader_id = downloader.id
                 row.source_type = 'downloader'
                 matched += 1
+                if fallback_mode and reason == 'filelist_exact':
+                    reason = 'candidate_empty_fallback_matched'
                 log_operation('backfill_matched', 'FileLinkMap', row.id, probe.name, f'hash={matched_hash};reason={reason}')
                 continue
 

@@ -705,6 +705,41 @@ def init_web_routes(ctx: RouteDeps):
         )
 
 
+    @web_bp.route('/mapping/link/bulk-delete', methods=['POST'])
+    def mapping_link_bulk_delete():
+        map_ids = request.form.getlist('map_ids')
+        ids = []
+        for v in map_ids:
+            try:
+                ids.append(int(v))
+            except Exception:
+                continue
+        ids = sorted(set([i for i in ids if i > 0]))
+        if not ids:
+            return _json_or_redirect(False, '请先勾选要删除的映射记录', '/mapping', status=400)
+
+        rows = FileLinkMap.query.filter(FileLinkMap.id.in_(ids)).all()
+        if not rows:
+            return _json_or_redirect(False, '未找到可删除的映射记录', '/mapping', status=404)
+
+        count = 0
+        for row in rows:
+            log_operation('mapping_record_deleted', 'FileLinkMap', row.id, row.source_path, f'批量删除映射: {row.dest_path}')
+            db.session.delete(row)
+            count += 1
+        db.session.commit()
+        return _json_or_redirect(True, f'已批量删除 {count} 条映射记录', '/mapping')
+
+    @web_bp.route('/mapping/link/clear', methods=['POST'])
+    def mapping_link_clear():
+        if not _critical_guard():
+            return _json_or_redirect(False, '关键操作口令错误', '/mapping', status=403)
+        count = FileLinkMap.query.delete()
+        db.session.commit()
+        log_operation('mapping_cleared', 'FileLinkMap', None, '全部映射', f'清理 {count} 条映射记录')
+        return _json_or_redirect(True, f'已清理 {count} 条映射记录', '/mapping')
+
+
     @web_bp.route('/mapping/link/delete', methods=['POST'])
     def mapping_link_delete():
         map_id = request.form.get('map_id', type=int)
@@ -757,6 +792,32 @@ def init_web_routes(ctx: RouteDeps):
         db.session.commit()
         log_operation('cache_record_deleted', 'HardlinkCache', row.id, source_path, '手动删除缓存记录')
         return _json_or_redirect(True, '缓存记录已删除，可再次硬链接', '/mapping')
+
+    @web_bp.route('/mapping/cache/bulk-delete', methods=['POST'])
+    def mapping_cache_bulk_delete():
+        cache_ids = request.form.getlist('cache_ids')
+        ids = []
+        for v in cache_ids:
+            try:
+                ids.append(int(v))
+            except Exception:
+                continue
+        ids = sorted(set([i for i in ids if i > 0]))
+        if not ids:
+            return _json_or_redirect(False, '请先勾选要删除的缓存记录', '/mapping', status=400)
+
+        rows = HardlinkCache.query.filter(HardlinkCache.id.in_(ids)).all()
+        if not rows:
+            return _json_or_redirect(False, '未找到可删除的缓存记录', '/mapping', status=404)
+
+        count = 0
+        for row in rows:
+            log_operation('cache_record_deleted', 'HardlinkCache', row.id, row.source_path, '批量删除缓存记录')
+            db.session.delete(row)
+            count += 1
+        db.session.commit()
+        return _json_or_redirect(True, f'已批量删除 {count} 条缓存记录', '/mapping')
+
 
     @web_bp.route('/mapping/cache/clear', methods=['POST'])
     def mapping_cache_clear():

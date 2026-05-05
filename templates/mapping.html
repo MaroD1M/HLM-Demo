@@ -3,18 +3,23 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <h3 class="mb-0">文件映射与缓存管理</h3>
-  <form action="/mapping/cache/clear" method="POST" onsubmit="return confirm('确认清空全部缓存记录吗？')" class="d-flex gap-2 align-items-center flex-wrap">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input class="form-control form-control-sm" style="width:180px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
-    <button class="btn btn-outline-danger" data-bs-toggle="tooltip" title="仅清理硬链接缓存，不删除真实文件">清空全部缓存</button>
-  </form>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    <form action="/mapping/link/clear" method="POST" onsubmit="return confirm('确认清空全部映射记录吗？仅删除数据库映射，不删除真实文件。')" class="d-flex gap-2 align-items-center flex-wrap">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input class="form-control form-control-sm" style="width:180px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
+      <button class="btn btn-outline-warning" data-bs-toggle="tooltip" title="仅清理文件映射记录，不删除真实文件">清空全部映射</button>
+    </form>
+    <form action="/mapping/cache/clear" method="POST" onsubmit="return confirm('确认清空全部缓存记录吗？')" class="d-flex gap-2 align-items-center flex-wrap">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input class="form-control form-control-sm" style="width:180px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
+      <button class="btn btn-outline-danger" data-bs-toggle="tooltip" title="仅清理硬链接缓存，不删除真实文件">清空全部缓存</button>
+    </form>
+  </div>
 </div>
 
 <div class="card p-3 mb-3">
   <form class="row g-2 js-ajax-filter" data-target="mappingPanel" method="GET" action="/mapping">
-    <div class="col-md-5">
-      <input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索路径 / hash">
-    </div>
+    <div class="col-md-5"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索路径 / hash"></div>
     <div class="col-md-3">
       <select class="form-select" name="hash_state">
         <option value="all" {% if hash_state=='all' %}selected{% endif %}>全部关联状态</option>
@@ -29,49 +34,36 @@
         <option value="downloader" {% if source_type=='downloader' %}selected{% endif %}>下载器文件</option>
       </select>
     </div>
-    <div class="col-md-2 d-flex gap-2">
-      <button class="btn btn-brand" type="submit">筛选</button>
-      <a class="btn btn-outline-secondary" href="/mapping">重置</a>
-    </div>
+    <div class="col-md-2 d-flex gap-2"><button class="btn btn-brand" type="submit">筛选</button><a class="btn btn-outline-secondary" href="/mapping">重置</a></div>
   </form>
 </div>
 
 <div id="mappingPanel" class="row g-3">
   <div class="col-lg-7">
     <div class="card p-3 h-100">
-      <h5>
-        文件映射（关联关系）
-        <i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="可查看源文件、目标文件、种子 hash 与来源；支持重试关联或删除映射记录。"></i>
-      </h5>
+      <h5>文件映射（关联关系）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单删、批量删、全选/反选。"></i></h5>
+      <form id="mapBulkForm" action="/mapping/link/bulk-delete" method="POST" class="d-none">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      </form>
+      <div class="mb-2 d-flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleAllByClass('map-check', true)">全选</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleAllByClass('map-check', false)">取消全选</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="invertByClass('map-check')">反选</button>
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="submitBulkSelection('mapBulkForm','map-check','map_ids','确认批量删除选中的映射记录？仅删除数据库映射，不删除真实文件。')">批量删除映射</button>
+      </div>
+
       <div class="table-responsive">
         <table class="table table-sm align-middle">
-          <thead>
-            <tr>
-              <th>源文件</th>
-              <th>目标文件</th>
-              <th>来源</th>
-              <th>关联状态</th>
-              <th>下载器 ID</th>
-              <th>种子 Hash</th>
-              <th>操作</th>
-            </tr>
-          </thead>
+          <thead><tr><th><input type="checkbox" onclick="toggleAllByClass('map-check', this.checked)"></th><th>源文件</th><th>目标文件</th><th>来源</th><th>关联状态</th><th>下载器 ID</th><th>种子 Hash</th><th>操作</th></tr></thead>
           <tbody>
             {% if mappings %}
               {% for m in mappings %}
               <tr>
+                <td><input class="form-check-input map-check" type="checkbox" value="{{ m.id }}"></td>
                 <td class="wrap-any"><small>{{ m.source_path }}</small></td>
                 <td class="wrap-any"><small>{{ m.dest_path }}</small></td>
-                <td>
-                  <span class="badge bg-light text-dark">{{ '下载器文件' if (m.source_type or 'manual')=='downloader' else '手动文件' }}</span>
-                </td>
-                <td>
-                  {% if m.torrent_hash %}
-                    <span class="badge text-bg-success">已关联</span>
-                  {% else %}
-                    <span class="badge text-bg-secondary">未关联</span>
-                  {% endif %}
-                </td>
+                <td><span class="badge bg-light text-dark">{{ '下载器文件' if (m.source_type or 'manual')=='downloader' else '手动文件' }}</span></td>
+                <td>{% if m.torrent_hash %}<span class="badge text-bg-success">已关联</span>{% else %}<span class="badge text-bg-secondary">未关联</span>{% endif %}</td>
                 <td>{{ m.downloader_id or '-' }}</td>
                 <td class="wrap-any"><code>{{ m.torrent_hash or '-' }}</code></td>
                 <td class="d-flex gap-1 flex-wrap">
@@ -91,7 +83,7 @@
               </tr>
               {% endfor %}
             {% else %}
-              <tr><td colspan="7" class="text-muted">暂无映射记录</td></tr>
+              <tr><td colspan="8" class="text-muted">暂无映射记录</td></tr>
             {% endif %}
           </tbody>
         </table>
@@ -99,12 +91,8 @@
       <div class="d-flex justify-content-between align-items-center">
         <small class="text-muted">第 {{ map_page }} / {{ map_total_pages }} 页</small>
         <div>
-          {% if map_page>1 %}
-            <a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page-1 }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}">上一页</a>
-          {% endif %}
-          {% if map_page<map_total_pages %}
-            <a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page+1 }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}">下一页</a>
-          {% endif %}
+          {% if map_page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page-1 }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}">上一页</a>{% endif %}
+          {% if map_page<map_total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page+1 }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}">下一页</a>{% endif %}
         </div>
       </div>
     </div>
@@ -112,19 +100,25 @@
 
   <div class="col-lg-5">
     <div class="card p-3 h-100">
-      <h5>
-        硬链接缓存（命中后跳过）
-        <i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="删除缓存后，源文件可再次参与硬链接。"></i>
-      </h5>
+      <h5>硬链接缓存（命中后跳过）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单删、批量删、全选/反选。"></i></h5>
+      <form id="cacheBulkForm" action="/mapping/cache/bulk-delete" method="POST" class="d-none">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      </form>
+      <div class="mb-2 d-flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleAllByClass('cache-check', true)">全选</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleAllByClass('cache-check', false)">取消全选</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="invertByClass('cache-check')">反选</button>
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="submitBulkSelection('cacheBulkForm','cache-check','cache_ids','确认批量删除选中的缓存记录？删除后这些源文件可再次硬链接。')">批量删除缓存</button>
+      </div>
+
       <div class="table-responsive">
         <table class="table table-sm align-middle">
-          <thead>
-            <tr><th>源文件</th><th>目标文件</th><th>操作</th></tr>
-          </thead>
+          <thead><tr><th><input type="checkbox" onclick="toggleAllByClass('cache-check', this.checked)"></th><th>源文件</th><th>目标文件</th><th>操作</th></tr></thead>
           <tbody>
             {% if caches %}
               {% for c in caches %}
               <tr>
+                <td><input class="form-check-input cache-check" type="checkbox" value="{{ c.id }}"></td>
                 <td class="wrap-any"><small>{{ c.source_path }}</small></td>
                 <td class="wrap-any"><small>{{ c.dest_path }}</small></td>
                 <td>
@@ -137,7 +131,7 @@
               </tr>
               {% endfor %}
             {% else %}
-              <tr><td colspan="3" class="text-muted">暂无缓存记录</td></tr>
+              <tr><td colspan="4" class="text-muted">暂无缓存记录</td></tr>
             {% endif %}
           </tbody>
         </table>
@@ -145,15 +139,41 @@
       <div class="d-flex justify-content-between align-items-center">
         <small class="text-muted">第 {{ cache_page }} / {{ cache_total_pages }} 页</small>
         <div>
-          {% if cache_page>1 %}
-            <a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page }}&cache_page={{ cache_page-1 }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}">上一页</a>
-          {% endif %}
-          {% if cache_page<cache_total_pages %}
-            <a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page }}&cache_page={{ cache_page+1 }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}">下一页</a>
-          {% endif %}
+          {% if cache_page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page }}&cache_page={{ cache_page-1 }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}">上一页</a>{% endif %}
+          {% if cache_page<cache_total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page }}&cache_page={{ cache_page+1 }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}">下一页</a>{% endif %}
         </div>
       </div>
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.toggleAllByClass = function(cls, checked){
+  document.querySelectorAll('.' + cls).forEach((el)=>{el.checked=!!checked;});
+};
+window.invertByClass = function(cls){
+  document.querySelectorAll('.' + cls).forEach((el)=>{el.checked=!el.checked;});
+};
+window.submitBulkSelection = function(formId, checkboxClass, fieldName, confirmText){
+  const form=document.getElementById(formId);
+  if(!form) return;
+  form.querySelectorAll(`input[name="${fieldName}"]`).forEach((el)=>el.remove());
+  const checked=document.querySelectorAll('.' + checkboxClass + ':checked');
+  if(!checked.length){
+    window.HLMNotice && window.HLMNotice('请先勾选要删除的记录','warning');
+    return;
+  }
+  if(confirmText && !window.confirm(confirmText)) return;
+  checked.forEach((el)=>{
+    const input=document.createElement('input');
+    input.type='hidden';
+    input.name=fieldName;
+    input.value=el.value;
+    form.appendChild(input);
+  });
+  form.submit();
+};
+</script>
 {% endblock %}
