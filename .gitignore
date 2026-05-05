@@ -30,3 +30,7 @@ data/instance/*
 !data/instance/.gitkeep
 data/backups/*
 !data/backups/.gitkeep
+
+# Runtime logs
+data/logs/*
+!data/logs/.gitkeep
