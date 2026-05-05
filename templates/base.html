@@ -10,7 +10,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
   <style>
-    :root { --ink:#102027; --muted:#5e7383; --paper:#f4f7fb; --panel:#fff; --line:#d8e1ea; --brand:#0b7a75; --brand2:#0c4f66; }
+    :root { --ink:#102027; --muted:#5e7383; --paper:#f5f8ff; --panel:#fff; --line:#d8e1ea; --brand:#10a37f; --brand2:#0d5f7a; --accent:#ff8a3d; }
     *{font-family:"Manrope",sans-serif}
     body{color:var(--ink);background:radial-gradient(900px 380px at -8% -10%,#d9f7f1 0%,transparent 60%),radial-gradient(700px 360px at 108% 0%,#d7edf7 0%,transparent 58%),var(--paper);min-height:100vh}
     .shell{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
@@ -18,15 +18,18 @@
     .brand{font-weight:800;letter-spacing:.4px;margin-bottom:18px}
     .nav-link{color:#cce6ea;border-radius:12px;margin:4px 0}
     .nav-link:hover,.nav-link.active{background:rgba(255,255,255,.13);color:#fff}
-    .main{padding:24px}
-    .card{border:1px solid var(--line);border-radius:16px;box-shadow:0 10px 26px rgba(12,32,54,.05);background:var(--panel)}
+    .main{padding:24px;animation:fadeIn .25s ease-out}
+    .card{border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 26px rgba(12,32,54,.06);background:var(--panel);transition:transform .18s ease,box-shadow .18s ease}.card:hover{transform:translateY(-2px);box-shadow:0 16px 30px rgba(12,32,54,.1)}
     .muted{color:var(--muted)}
-    .btn-brand{background:#0b7a75;border-color:#0b7a75;color:#fff}
-    .btn-brand:hover{background:#086863;border-color:#086863;color:#fff}
+    .btn-brand{background:linear-gradient(120deg,var(--brand2),var(--brand));border-color:var(--brand2);color:#fff}
+    .btn-brand:hover{filter:brightness(1.03);color:#fff}
     .wrap-any{white-space:normal!important;word-break:break-word;overflow-wrap:anywhere}
     .section-card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,#ffffff,#f9fcff);padding:14px}
     .section-title{font-weight:700;color:#0c4f66}
     .hint-icon{color:#0c4f66;cursor:help;margin-left:4px}
+    #liveFeedback{position:sticky;top:10px;z-index:1055}
+    #liveFeedback .alert{box-shadow:0 8px 24px rgba(12,32,54,.18)}
+    @keyframes fadeIn{from{opacity:.0;transform:translateY(4px)}to{opacity:1;transform:none}}
     @media (max-width:960px){.shell{grid-template-columns:1fr}.side{height:auto;position:relative}.main{padding:16px}}
   </style>
 </head>
@@ -67,6 +70,7 @@ window.HLMNotice=function(msg,level){
   const box=document.getElementById('liveFeedback');
   if(!box||!msg) return;
   box.innerHTML=`<div class="alert alert-${level} alert-dismissible fade show" role="alert">${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
+  window.setTimeout(()=>{const a=box.querySelector('.alert'); if(a){a.classList.remove('show'); a.classList.add('hide'); setTimeout(()=>{if(box.contains(a)) a.remove();},250);}},2600);
 };
 
 window.HLMAjax={
@@ -76,13 +80,16 @@ window.HLMAjax={
       form.dataset.bound='1';
       form.addEventListener('submit', async (e)=>{
         e.preventDefault();
-        const confirmMsg=form.getAttribute('data-confirm');
+        const submitter=e.submitter || form.querySelector('button[type="submit"],button:not([type])');
+        const action=(submitter && submitter.getAttribute('formaction')) || form.action;
+        const method=((submitter && submitter.getAttribute('formmethod')) || form.method || 'POST').toUpperCase();
+        const confirmMsg=form.getAttribute('data-confirm') || (submitter && submitter.getAttribute('data-confirm'));
         if(confirmMsg && !window.confirm(confirmMsg)) return;
-        const btn=form.querySelector('button[type="submit"],button:not([type])');
+        const btn=submitter;
         const old=btn?btn.textContent:'';
         if(btn){btn.disabled=true;btn.textContent='处理中...';}
         try{
-          const res=await fetch(form.action,{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'},body:new FormData(form)});
+          const res=await fetch(action,{method:method,headers:{'X-Requested-With':'XMLHttpRequest'},body:new FormData(form)});
           const data=await res.json();
           window.HLMNotice(data.message|| (data.ok ? '操作成功' : '操作失败'), data.ok ? 'success' : 'danger');
           if(!res.ok||!data.ok){return;}

@@ -2,8 +2,8 @@
 {% block title %}设置 - Hardlink Manager{% endblock %}
 {% block content %}
 <h3 class="mb-3">系统设置</h3>
-<div class="card p-3">
-  <form action="/settings/save" method="POST">
+<div class="card p-3" id="settingsPagePanel">
+  <form class="js-ajax-form" data-target="settingsPagePanel" action="/settings/save" method="POST">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
     <div class="section-card mb-3">
@@ -30,19 +30,19 @@
         <div class="col-md-4"><label class="form-label">删种同时删文件</label><select class="form-select" name="delete_files_with_torrent"><option value="true" {% if settings.get('delete_files_with_torrent')=='true' %}selected{% endif %}>是</option><option value="false" {% if settings.get('delete_files_with_torrent')=='false' %}selected{% endif %}>否</option></select></div>
         <div class="col-md-4"><label class="form-label">删除通知</label><select class="form-select" name="notify_on_delete"><option value="true" {% if settings.get('notify_on_delete')=='true' %}selected{% endif %}>开</option><option value="false" {% if settings.get('notify_on_delete')=='false' %}selected{% endif %}>关</option></select></div>
         <div class="col-md-4"><label class="form-label">疑似误删通知</label><select class="form-select" name="notify_on_risky_delete"><option value="true" {% if settings.get('notify_on_risky_delete','true')=='true' %}selected{% endif %}>开（推荐）</option><option value="false" {% if settings.get('notify_on_risky_delete')=='false' %}selected{% endif %}>关</option></select></div>
-        <div class="col-md-4"><label class="form-label">删除匹配策略</label><select class="form-select" name="delete_match_strict_mode"><option value="true" {% if settings.get('delete_match_strict_mode','true')=='true' %}selected{% endif %}>严格</option><option value="false" {% if settings.get('delete_match_strict_mode')=='false' %}selected{% endif %}>宽松</option></select></div>
+        <div class="col-md-4"><label class="form-label">自动删种匹配策略</label><select class="form-select" name="delete_match_strict_mode"><option value="true" {% if settings.get('delete_match_strict_mode','true')=='true' %}selected{% endif %}>严格（仅精确匹配自动删种）</option><option value="false" {% if settings.get('delete_match_strict_mode')=='false' %}selected{% endif %}>宽松（名称/路径匹配也可自动删种）</option></select></div>
       </div>
     </div>
 
     <div class="section-card mb-3">
-      <div class="section-title mb-2">来源感知联动策略<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="手动文件=手动复制到源目录；下载器文件=可关联到种子。按来源分别控制双向删除。"></i></div>
+      <div class="section-title mb-2">来源感知联动策略<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="按文件来源分别控制联动策略：手动文件=手动复制到源目录；下载器文件=可关联到种子。全局通知开关 + 任务通知开关都开启时才会发通知。"></i></div>
       <div class="row g-3">
-        <div class="col-md-6"><label class="form-label">manual：删除目标后删源</label><select class="form-select" name="manual_dest_delete_delete_source"><option value="true" {% if settings.get('manual_dest_delete_delete_source','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('manual_dest_delete_delete_source')=='false' %}selected{% endif %}>关闭</option></select></div>
-        <div class="col-md-6"><label class="form-label">manual：删除源后删目标</label><select class="form-select" name="manual_source_delete_delete_dest"><option value="true" {% if settings.get('manual_source_delete_delete_dest','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('manual_source_delete_delete_dest')=='false' %}selected{% endif %}>关闭</option></select></div>
-        <div class="col-md-4"><label class="form-label">downloader：删目标后删源</label><select class="form-select" name="downloader_dest_delete_delete_source"><option value="true" {% if settings.get('downloader_dest_delete_delete_source','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_dest_delete_delete_source')=='false' %}selected{% endif %}>关闭</option></select></div>
-        <div class="col-md-4"><label class="form-label">downloader：删源后删目标</label><select class="form-select" name="downloader_source_delete_delete_dest"><option value="true" {% if settings.get('downloader_source_delete_delete_dest','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_source_delete_delete_dest')=='false' %}selected{% endif %}>关闭</option></select></div>
-        <div class="col-md-4"><label class="form-label">downloader：删目标后删种</label><select class="form-select" name="downloader_dest_delete_delete_torrent"><option value="true" {% if settings.get('downloader_dest_delete_delete_torrent','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_dest_delete_delete_torrent')=='false' %}selected{% endif %}>关闭</option></select></div>
-        <div class="col-md-4"><label class="form-label">downloader：删源后删种</label><select class="form-select" name="downloader_source_delete_delete_torrent"><option value="true" {% if settings.get('downloader_source_delete_delete_torrent','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_source_delete_delete_torrent')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-6"><label class="form-label">手动文件：删除目标后删除源文件</label><select class="form-select" name="manual_dest_delete_delete_source"><option value="true" {% if settings.get('manual_dest_delete_delete_source','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('manual_dest_delete_delete_source')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-6"><label class="form-label">手动文件：删除源文件后删除目标</label><select class="form-select" name="manual_source_delete_delete_dest"><option value="true" {% if settings.get('manual_source_delete_delete_dest','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('manual_source_delete_delete_dest')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-4"><label class="form-label">下载器文件：删除目标后删除源文件</label><select class="form-select" name="downloader_dest_delete_delete_source"><option value="true" {% if settings.get('downloader_dest_delete_delete_source','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_dest_delete_delete_source')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-4"><label class="form-label">下载器文件：删除源文件后删除目标</label><select class="form-select" name="downloader_source_delete_delete_dest"><option value="true" {% if settings.get('downloader_source_delete_delete_dest','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_source_delete_delete_dest')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-4"><label class="form-label">下载器文件：删除目标后删除种子</label><select class="form-select" name="downloader_dest_delete_delete_torrent"><option value="true" {% if settings.get('downloader_dest_delete_delete_torrent','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_dest_delete_delete_torrent')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-4"><label class="form-label">下载器文件：删除源文件后删除种子</label><select class="form-select" name="downloader_source_delete_delete_torrent"><option value="true" {% if settings.get('downloader_source_delete_delete_torrent','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_source_delete_delete_torrent')=='false' %}selected{% endif %}>关闭</option></select></div>
       </div>
     </div>
 
@@ -83,7 +83,7 @@
     <div class="mt-3 d-flex gap-2 flex-wrap">
       <button class="btn btn-brand" type="submit" name="action" value="save">保存全部设置</button>
       <button class="btn btn-outline-primary" type="submit" formaction="/settings/check-update" formmethod="post" name="action" value="check">立即检查新版本</button>
-      <span class="text-muted align-self-center">保存与检查独立执行。</span>
+      <span class="text-muted align-self-center">保存与检查独立执行；提交后自动保存并提示，无需刷新页面。</span>
     </div>
   </form>
 </div>
@@ -92,7 +92,7 @@
   <h6 class="mb-3">配置导入/导出<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="导出会自动隐藏关键口令；导入只覆盖支持的配置项。"></i></h6>
   <div class="d-flex flex-wrap gap-2 align-items-center">
     <a class="btn btn-outline-secondary" href="/settings/export">导出配置</a>
-    <form action="/settings/import" method="POST" enctype="multipart/form-data" class="d-flex gap-2">
+    <form class="js-ajax-form" data-target="settingsPagePanel" action="/settings/import" method="POST" enctype="multipart/form-data" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input class="form-control" type="file" name="config_file" accept="application/json" required>
       <button class="btn btn-outline-primary" type="submit">导入配置</button>

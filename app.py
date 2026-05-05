@@ -421,6 +421,24 @@ def list_torrents(downloader):
         return None
 
 
+
+
+def list_torrent_files(downloader, torrent_hash):
+    if not downloader or not downloader.enabled:
+        return None
+    if downloader.type != 'qbittorrent':
+        return []
+    try:
+        sess = qb_session(downloader)
+        url = f"{downloader.host}:{downloader.port}/api/v2/torrents/files"
+        resp = sess.get(url, params={'hash': torrent_hash}, timeout=app.config['REQUEST_TIMEOUT_SECONDS'])
+        resp.raise_for_status()
+        payload = resp.json()
+        return payload if isinstance(payload, list) else []
+    except Exception as exc:
+        app.logger.error(f'list torrent files failed: {exc}')
+        return None
+
 def delete_torrent(downloader, torrent_hash):
     if downloader.type != 'qbittorrent':
         return False
@@ -447,6 +465,14 @@ def scan_hardlink_task(task_id):
 
     created = 0
     scanned = 0
+    failed = 0
+    cache_hit = 0
+    skipped_ext = 0
+    skipped_blacklist = 0
+    skipped_exclude_dir = 0
+    skipped_unstable = 0
+    skipped_existing = 0
+
     for file_path in source.rglob('*'):
         if not file_path.is_file() or file_path.is_symlink():
             continue
@@ -455,13 +481,33 @@ def scan_hardlink_task(task_id):
             ok, msg = svc_create_hardlink_for_file(task, file_path, HardlinkCache, FileLinkMap, db, safe_unlink)
             if ok:
                 created += 1
+            else:
+                text = str(msg or '')
+                if '命中缓存' in text:
+                    cache_hit += 1
+                elif '扩展名不匹配' in text:
+                    skipped_ext += 1
+                elif '黑名单' in text:
+                    skipped_blacklist += 1
+                elif '排除目录' in text:
+                    skipped_exclude_dir += 1
+                elif '写入中' in text:
+                    skipped_unstable += 1
+                elif '已存在' in text or '同名文件' in text:
+                    skipped_existing += 1
         except Exception as exc:
+            failed += 1
             db.session.rollback()
             log_operation('hardlink_failed', 'HardlinkTask', task.id, task.name, f'{file_path}: {exc}', False)
 
     db.session.commit()
-    log_operation('hardlink_scan', 'HardlinkTask', task.id, task.name, f'扫描 {scanned} 个文件，创建 {created} 个硬链接')
-    return True, f'扫描 {scanned}，创建 {created}'
+    summary = (
+        f'扫描 {scanned}，成功 {created}，失败 {failed}；'
+        f'缓存命中 {cache_hit}，扩展名不匹配 {skipped_ext}，黑名单 {skipped_blacklist}，'
+        f'排除目录 {skipped_exclude_dir}，写入中跳过 {skipped_unstable}，已存在跳过 {skipped_existing}'
+    )
+    log_operation('hardlink_scan', 'HardlinkTask', task.id, task.name, summary)
+    return True, summary
 
 
 def try_match_torrent_by_mapping_or_name(deleted_path: Path, downloader: Downloader):
@@ -547,7 +593,7 @@ def scan_backfill_task(downloader_id=None, limit=500):
             return db.session.get(Downloader, did)
         return Downloader.query.filter_by(enabled=True, type='qbittorrent').first()
 
-    matched, conflicts, skipped = scan_backfill_rows(rows, resolve_downloader, list_torrents, log_operation)
+    matched, conflicts, skipped = scan_backfill_rows(rows, resolve_downloader, list_torrents, list_torrent_files, log_operation)
     db.session.commit()
     return True, f'回填成功 {matched}，冲突 {conflicts}，跳过 {skipped}'
 def _start_execution(job_name, job_type, source='manual', target_id=None):
@@ -776,16 +822,31 @@ def _migration_v3():
     db.session.execute(db.text("UPDATE file_link_map SET source_type = CASE WHEN torrent_hash IS NOT NULL AND TRIM(torrent_hash) <> '' THEN 'downloader' ELSE 'manual' END WHERE source_type IS NULL OR TRIM(source_type) = ''"))
 
 
+
+
+def _migration_v4():
+    needed = {
+        'delete_monitor_task': {
+            'notify_on_delete': 'ALTER TABLE delete_monitor_task ADD COLUMN notify_on_delete BOOLEAN DEFAULT 1',
+            'notify_on_risky_delete': 'ALTER TABLE delete_monitor_task ADD COLUMN notify_on_risky_delete BOOLEAN DEFAULT 1',
+        },
+    }
+    for table, fields in needed.items():
+        existing = {row[1] for row in db.session.execute(db.text(f'PRAGMA table_info({table})')).fetchall()}
+        for col, sql in fields.items():
+            if col not in existing:
+                db.session.execute(db.text(sql))
+
 def ensure_compat_columns():
     # Versioned, idempotent migrations. Supports forward upgrades safely.
     # For downgrades, restore DB from backup before running older code.
-    target = 3
+    target = 4
     current = _get_schema_version()
     if current > target:
         app.logger.warning('db schema version %s is newer than app target %s; running in compatibility mode', current, target)
         return
 
-    migrations = {1: _migration_v1, 2: _migration_v2, 3: _migration_v3}
+    migrations = {1: _migration_v1, 2: _migration_v2, 3: _migration_v3, 4: _migration_v4}
     for version in range(current + 1, target + 1):
         migrations[version]()
         _set_schema_version(version)
