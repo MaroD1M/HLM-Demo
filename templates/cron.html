@@ -53,7 +53,7 @@
             <label class="form-label">任务类型</label>
             <select class="form-select" name="task_type" id="task_type" onchange="updateTargetField()">
               <option value="batch_hardlink">批量创建硬链接</option>
-              <option value="delete_scan">删除扫描联动</option>
+              
               <option value="backfill_mapping">映射回填任务</option>
               <option value="clean_logs">清理日志</option>
               <option value="clean_cache">清理缓存</option>
@@ -98,18 +98,12 @@ function updateTargetField(){
   const t=String(typeEl.value || '');
 
   const hardlinkOptions=[{v:'',l:'选择硬链接任务'},{% for task in hardlink_tasks %}{v:'{{ task.id }}',l:'{{ task.name|e }}'},{% endfor %}];
-  const deleteOptions=[{v:'',l:'选择删除监控任务'},{% for task in delete_tasks %}{v:'{{ task.id }}',l:'{{ task.name|e }}'},{% endfor %}];
 
   let options=[];
   if(t==='batch_hardlink'){
     wrap.style.display='block';
     label.innerText='关联硬链接任务';
     options=hardlinkOptions;
-    select.required=true;
-  }else if(t==='delete_scan'){
-    wrap.style.display='block';
-    label.innerText='关联删除监控任务';
-    options=deleteOptions;
     select.required=true;
   }else{
     wrap.style.display='none';

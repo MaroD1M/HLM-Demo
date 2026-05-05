@@ -1,13 +1,14 @@
 <div class="card p-3">
   <div class="table-responsive">
     <table class="table">
-      <thead><tr><th>名称</th><th>源目录</th><th>目标目录</th><th>状态</th><th>操作</th></tr></thead>
+      <thead><tr><th>名称</th><th>源目录</th><th>目标目录</th><th>删除联动</th><th>状态</th><th>操作</th></tr></thead>
       <tbody>
       {% for t in tasks %}
       <tr>
         <td>{{ t.name }}</td>
         <td>{{ t.source_dir }}</td>
         <td>{{ t.dest_dir }}</td>
+        <td><small>{{ "源删" if t.monitor_source_delete else "" }} {{ "目标删" if t.monitor_dest_delete else "" }}{% if t.delete_dry_run %} / 试运行{% endif %}</small></td>
         <td>{% if t.enabled %}<span class="badge text-bg-success">启用</span>{% else %}<span class="badge text-bg-secondary">禁用</span>{% endif %}</td>
         <td>
           <form class="d-inline js-ajax-form" action="/hardlink/execute/{{ t.id }}" method="POST" data-target="hardlinkJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">立即执行</button></form>
@@ -39,6 +40,21 @@
         <div class="col-md-6 d-flex align-items-end gap-3">
           <div class="form-check"><input class="form-check-input" type="checkbox" name="create_folder" {% if t.create_folder %}checked{% endif %}><label class="form-check-label">按源目录建同名文件夹</label></div>
           <div class="form-check"><input class="form-check-input" type="checkbox" name="use_cache" {% if t.use_cache %}checked{% endif %}><label class="form-check-label">启用缓存</label></div>
+        </div>
+
+        <div class="col-12"><hr><h6 class="mb-2">删除联动（内建于本任务）</h6></div>
+        <div class="col-md-6 d-flex align-items-end gap-3">
+          <div class="form-check"><input class="form-check-input" type="checkbox" name="monitor_source_delete" {% if t.monitor_source_delete %}checked{% endif %}><label class="form-check-label">监控源目录删除</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" name="monitor_dest_delete" {% if t.monitor_dest_delete %}checked{% endif %}><label class="form-check-label">监控目标目录删除</label></div>
+        </div>
+        <div class="col-md-6"><label class="form-label">删除联动下载器（可选）</label><select class="form-select" name="delete_downloader_id"><option value="">不关联</option>{% for d in downloaders %}<option value="{{ d.id }}" {% if t.delete_downloader_id==d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
+        <div class="col-md-6"><label class="form-label">删除联动通知器（可选）</label><select class="form-select" name="delete_notifier_id"><option value="">不关联</option>{% for n in notifiers %}<option value="{{ n.id }}" {% if t.delete_notifier_id==n.id %}selected{% endif %}>{{ n.name }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label">删除冷却(秒)</label><input class="form-control" type="number" name="delete_cooldown_seconds" value="{{ t.delete_cooldown_seconds or 120 }}" min="0"></div>
+        <div class="col-md-3"><label class="form-label">单次最大删除</label><input class="form-control" type="number" name="delete_max_deletes_per_run" value="{{ t.delete_max_deletes_per_run or 20 }}" min="1"></div>
+        <div class="col-md-6 d-flex align-items-end gap-3">
+          <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_dry_run" {% if t.delete_dry_run %}checked{% endif %}><label class="form-check-label">仅记录不执行（试运行）</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_notify_on_delete" {% if t.delete_notify_on_delete %}checked{% endif %}><label class="form-check-label">成功通知</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_notify_on_risky_delete" {% if t.delete_notify_on_risky_delete %}checked{% endif %}><label class="form-check-label">风险通知</label></div>
         </div>
       </div>
       <div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-brand" type="submit">保存修改</button></div>

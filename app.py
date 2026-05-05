@@ -572,6 +572,97 @@ def create_pending_delete_action(task, row, deleted_path, torrent_hash, match_by
     return pending
 
 
+def scan_delete_for_hardlink_task(task_id, should_stop=None):
+    task = db.session.get(HardlinkTask, task_id)
+    if not task or not task.enabled:
+        return False, '任务不存在或已禁用'
+
+    downloader = db.session.get(Downloader, task.delete_downloader_id) if task.delete_downloader_id else None
+    notifier = db.session.get(Notifier, task.delete_notifier_id) if task.delete_notifier_id else None
+
+    class _ProxyTask:
+        pass
+
+    deleted_torrents = 0
+    hit_total = 0
+    pending_total = 0
+
+    legacy_task = DeleteMonitorTask.query.filter_by(name=f'[兼容]硬链接任务#{task.id}').first()
+    if not legacy_task:
+        legacy_task = DeleteMonitorTask(
+            name=f'[兼容]硬链接任务#{task.id}',
+            directory=task.source_dir,
+            downloader_id=task.delete_downloader_id,
+            notifier_id=task.delete_notifier_id,
+            events='unlink,unlinkDir',
+            cooldown_seconds=int(task.delete_cooldown_seconds or 120),
+            max_deletes_per_run=int(task.delete_max_deletes_per_run or 20),
+            dry_run=bool(task.delete_dry_run),
+            notify_on_delete=bool(task.delete_notify_on_delete),
+            notify_on_risky_delete=bool(task.delete_notify_on_risky_delete),
+            enabled=False,
+        )
+        db.session.add(legacy_task)
+        db.session.flush()
+
+    def _create_pending_action(_proxy_task, row, deleted_path, torrent_hash, match_by, reason):
+        pending = DeletePendingAction(
+            task_id=legacy_task.id,
+            file_map_id=row.id,
+            deleted_path=deleted_path,
+            torrent_hash=torrent_hash,
+            match_by=match_by,
+            status='pending',
+            reason=reason,
+        )
+        db.session.add(pending)
+        return pending
+
+    def _run_for_root(root_dir):
+        nonlocal deleted_torrents, hit_total, pending_total
+        proxy = _ProxyTask()
+        proxy.id = task.id
+        proxy.name = f'{task.name}:删除联动'
+        proxy.directory = root_dir
+        proxy.downloader = downloader
+        proxy.notifier = notifier
+        proxy.cooldown_seconds = int(task.delete_cooldown_seconds or 120)
+        proxy.max_deletes_per_run = int(task.delete_max_deletes_per_run or 20)
+        proxy.dry_run = bool(task.delete_dry_run)
+        proxy.notify_on_delete = bool(task.delete_notify_on_delete)
+        proxy.notify_on_risky_delete = bool(task.delete_notify_on_risky_delete)
+
+        rows = FileLinkMap.query.filter(FileLinkMap.task_id == task.id, FileLinkMap.deleted_at.is_(None)).all()
+        ok, deleted_cnt, hit_cnt, pending_cnt = scan_delete_rows(
+            proxy,
+            rows,
+            try_match_torrent_by_mapping_or_name,
+            delete_torrent,
+            log_operation,
+            get_config,
+            send_telegram_notification,
+            _create_pending_action,
+            should_stop=should_stop,
+        )
+        deleted_torrents += int(deleted_cnt or 0)
+        hit_total += int(hit_cnt or 0)
+        pending_total += int(pending_cnt or 0)
+        return ok
+
+    if task.monitor_source_delete:
+        if not _run_for_root(task.source_dir):
+            db.session.commit()
+            return False, f'删除联动已阻断：检测删除 {hit_total}，删种 {deleted_torrents}，待确认 {pending_total}'
+
+    if task.monitor_dest_delete:
+        if not _run_for_root(task.dest_dir):
+            db.session.commit()
+            return False, f'删除联动已阻断：检测删除 {hit_total}，删种 {deleted_torrents}，待确认 {pending_total}'
+
+    db.session.commit()
+    return True, f'删除联动完成：检测删除 {hit_total}，联动删种 {deleted_torrents}，待确认 {pending_total}'
+
+
 def scan_delete_task(task_id, should_stop=None):
     task = db.session.get(DeleteMonitorTask, task_id)
     if not task or not task.enabled:
@@ -731,7 +822,13 @@ def run_hardlink_once(task_id):
         return False, '任务不存在'
 
     def _runner(stop_checker=None):
-        return scan_hardlink_task(task_id, should_stop=stop_checker)
+        del_ok, del_msg = scan_delete_for_hardlink_task(task_id, should_stop=stop_checker)
+        if not del_ok:
+            return False, f'删除联动阶段失败：{del_msg}'
+        hl_ok, hl_msg = scan_hardlink_task(task_id, should_stop=stop_checker)
+        if not hl_ok:
+            return False, f'{del_msg}；硬链接阶段失败：{hl_msg}'
+        return True, f'{del_msg}；{hl_msg}'
 
     return execute_with_guard(f'hardlink:{task_id}', task.name, 'batch_hardlink', _runner, source='manual', target_id=task_id)
 
@@ -838,7 +935,13 @@ def run_cron_job(job_id):
 
         def _runner(stop_checker=None):
             if job.task_type in {'batch_hardlink', 'hardlink_scan'}:
-                ok, msg = scan_hardlink_task(job.target_id, should_stop=stop_checker)
+                del_ok, del_msg = scan_delete_for_hardlink_task(job.target_id, should_stop=stop_checker)
+                if not del_ok:
+                    msg = f'删除联动阶段失败: {del_msg}'
+                    log_operation('cron_executed', 'CronJob', job.id, job.name, f'hardlink_scan: {msg}', False)
+                    return False, msg
+                ok, msg2 = scan_hardlink_task(job.target_id, should_stop=stop_checker)
+                msg = f'{del_msg}; {msg2}'
                 log_operation('cron_executed', 'CronJob', job.id, job.name, f'hardlink_scan: {msg}', ok)
                 return ok, msg
             if job.task_type in {'delete_scan', 'delete_monitor_scan'}:
@@ -901,19 +1004,32 @@ def _ensure_schema_meta_table():
     db.session.execute(db.text("CREATE TABLE IF NOT EXISTS schema_meta (key VARCHAR(100) PRIMARY KEY, value VARCHAR(200))"))
 
 
-def _get_schema_version():
+def _get_schema_meta_value(key, default=''):
     _ensure_schema_meta_table()
-    row = db.session.execute(db.text("SELECT value FROM schema_meta WHERE key='db_schema_version'" )).fetchone()
+    row = db.session.execute(db.text("SELECT value FROM schema_meta WHERE key=:k"), {'k': key}).fetchone()
+    return str(row[0]) if row and row[0] is not None else default
+
+
+def _set_schema_meta_value(key, value):
+    _ensure_schema_meta_table()
+    db.session.execute(db.text("DELETE FROM schema_meta WHERE key=:k"), {'k': key})
+    db.session.execute(db.text("INSERT INTO schema_meta(key, value) VALUES (:k, :v)"), {'k': key, 'v': str(value)})
+
+
+def _delete_schema_meta_key(key):
+    _ensure_schema_meta_table()
+    db.session.execute(db.text("DELETE FROM schema_meta WHERE key=:k"), {'k': key})
+
+
+def _get_schema_version():
     try:
-        return int(row[0]) if row and row[0] is not None else 0
+        return int(_get_schema_meta_value('db_schema_version', '0') or '0')
     except Exception:
         return 0
 
 
 def _set_schema_version(version):
-    _ensure_schema_meta_table()
-    db.session.execute(db.text("DELETE FROM schema_meta WHERE key='db_schema_version'"))
-    db.session.execute(db.text("INSERT INTO schema_meta(key, value) VALUES ('db_schema_version', :v)"), {'v': str(version)})
+    _set_schema_meta_value('db_schema_version', str(version))
 
 
 def _migration_v1():
@@ -1001,16 +1117,79 @@ def _migration_v6():
     db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_file_link_map_backfill_fail_count ON file_link_map(backfill_fail_count)"))
 
 
+def pre_migration_backup_if_needed(target_schema):
+    # Create one-off backup on first run of a new app version before schema migration.
+    current_version = app.config.get('APP_VERSION', 'dev')
+    last_version = _get_schema_meta_value('last_app_version', '')
+    current_schema = _get_schema_version()
+
+    if current_schema >= target_schema:
+        return True, '当前数据库结构已是目标版本，无需升级前备份'
+    if last_version == current_version:
+        return True, '当前版本已执行过启动流程，无需重复升级前备份'
+
+    backup_done_for = _get_schema_meta_value('pre_migration_backup_for_version', '')
+    backup_path_done = _get_schema_meta_value('pre_migration_backup_path', '')
+    if backup_done_for == current_version and backup_path_done:
+        return True, f'已存在本版本升级前备份: {backup_path_done}'
+
+    db_file = Path(app.instance_path) / 'hardlink_manager.db'
+    if not db_file.exists():
+        return True, '数据库文件尚不存在，跳过升级前备份'
+
+    backup_base = (get_config('backup_dir', '/app/data/backups') or '/app/data/backups').strip()
+    backup_dir = str(Path(backup_base) / 'migration-pre')
+
+    keep_last = int(get_config('backup_keep_last', '7') or '7')
+    ok, msg, backup_path = run_sqlite_backup(str(db_file), backup_dir, keep_last=max(1, keep_last))
+    if not ok:
+        _set_schema_meta_value('last_migration_status', 'backup_failed')
+        _set_schema_meta_value('last_migration_error', msg)
+        db.session.commit()
+        return False, msg
+
+    stamped = datetime.now(UTC).isoformat()
+    _set_schema_meta_value('pre_migration_backup_for_version', current_version)
+    _set_schema_meta_value('pre_migration_backup_path', backup_path or '-')
+    _set_schema_meta_value('pre_migration_backup_at', stamped)
+    _set_schema_meta_value('last_migration_status', 'backup_ok')
+    _delete_schema_meta_key('last_migration_error')
+    db.session.commit()
+    app.logger.info('pre migration backup created for %s: %s', current_version, backup_path)
+    return True, f'升级前备份完成: {backup_path}'
+
+
+def _migration_v7():
+    needed = {
+        'hardlink_task': {
+            'monitor_source_delete': 'ALTER TABLE hardlink_task ADD COLUMN monitor_source_delete BOOLEAN DEFAULT 1',
+            'monitor_dest_delete': 'ALTER TABLE hardlink_task ADD COLUMN monitor_dest_delete BOOLEAN DEFAULT 1',
+            'delete_downloader_id': 'ALTER TABLE hardlink_task ADD COLUMN delete_downloader_id INTEGER',
+            'delete_notifier_id': 'ALTER TABLE hardlink_task ADD COLUMN delete_notifier_id INTEGER',
+            'delete_cooldown_seconds': 'ALTER TABLE hardlink_task ADD COLUMN delete_cooldown_seconds INTEGER DEFAULT 120',
+            'delete_max_deletes_per_run': 'ALTER TABLE hardlink_task ADD COLUMN delete_max_deletes_per_run INTEGER DEFAULT 20',
+            'delete_dry_run': 'ALTER TABLE hardlink_task ADD COLUMN delete_dry_run BOOLEAN DEFAULT 0',
+            'delete_notify_on_delete': 'ALTER TABLE hardlink_task ADD COLUMN delete_notify_on_delete BOOLEAN DEFAULT 1',
+            'delete_notify_on_risky_delete': 'ALTER TABLE hardlink_task ADD COLUMN delete_notify_on_risky_delete BOOLEAN DEFAULT 1',
+        },
+    }
+    for table, fields in needed.items():
+        existing = {row[1] for row in db.session.execute(db.text(f'PRAGMA table_info({table})')).fetchall()}
+        for col, sql in fields.items():
+            if col not in existing:
+                db.session.execute(db.text(sql))
+
+
 def ensure_compat_columns():
     # Versioned, idempotent migrations. Supports forward upgrades safely.
     # For downgrades, restore DB from backup before running older code.
-    target = 6
+    target = 7
     current = _get_schema_version()
     if current > target:
         app.logger.warning('db schema version %s is newer than app target %s; running in compatibility mode', current, target)
         return
 
-    migrations = {1: _migration_v1, 2: _migration_v2, 3: _migration_v3, 4: _migration_v4, 5: _migration_v5, 6: _migration_v6}
+    migrations = {1: _migration_v1, 2: _migration_v2, 3: _migration_v3, 4: _migration_v4, 5: _migration_v5, 6: _migration_v6, 7: _migration_v7}
     for version in range(current + 1, target + 1):
         migrations[version]()
         _set_schema_version(version)
@@ -1096,8 +1275,15 @@ def init_app():
 
     with app.app_context():
         db.create_all()
-        ensure_compat_columns()
         init_defaults()
+        backup_ok, backup_msg = pre_migration_backup_if_needed(target_schema=7)
+        if not backup_ok:
+            app.logger.error('pre migration backup failed: %s', backup_msg)
+            raise RuntimeError(f'升级前备份失败，已中止启动: {backup_msg}')
+        ensure_compat_columns()
+        _set_schema_meta_value('last_app_version', app.config.get('APP_VERSION', 'dev'))
+        _set_schema_meta_value('last_migration_status', 'success')
+        db.session.commit()
         os.environ['APP_LOG_MAX_MB'] = str(get_config('app_log_max_mb', os.environ.get('APP_LOG_MAX_MB', '10')) or '10')
         os.environ['APP_LOG_BACKUP_COUNT'] = str(get_config('app_log_backup_count', os.environ.get('APP_LOG_BACKUP_COUNT', '5')) or '5')
         init_file_logger()

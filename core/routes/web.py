@@ -61,9 +61,33 @@ def init_web_routes(ctx: RouteDeps):
     def _hardlink_payload():
         return {
             'tasks': HardlinkTask.query.all(),
+            'downloaders': Downloader.query.all(),
+            'notifiers': Notifier.query.all(),
             'default_extensions': get_config('default_extensions', '.mkv,.mp4,.avi,.mov,.wmv,.flv'),
             'default_exclude_dirs': get_config('default_exclude_dirs', 'sample,subs'),
         }
+
+    def _resolve_pending_executor(pending):
+        # Compatible with legacy DeleteMonitorTask pending records and new hardlink built-in linkage records.
+        task_name = '-'
+        downloader = None
+        notifier = None
+        if pending.task_id:
+            dm = db.session.get(DeleteMonitorTask, pending.task_id)
+            if dm:
+                task_name = dm.name
+                downloader = getattr(dm, 'downloader', None)
+                notifier = getattr(dm, 'notifier', None)
+                return task_name, downloader, notifier
+
+        fmap = db.session.get(FileLinkMap, pending.file_map_id) if pending.file_map_id else None
+        if fmap and fmap.task_id:
+            ht = db.session.get(HardlinkTask, fmap.task_id)
+            if ht:
+                task_name = ht.name
+                downloader = db.session.get(Downloader, ht.delete_downloader_id) if ht.delete_downloader_id else None
+                notifier = db.session.get(Notifier, ht.delete_notifier_id) if ht.delete_notifier_id else None
+        return task_name, downloader, notifier
 
     def _delete_payload():
         pending_q = (request.args.get('pending_q') or '').strip()
@@ -81,7 +105,6 @@ def init_web_routes(ctx: RouteDeps):
 
         pending_actions = pending_actions_q.order_by(DeletePendingAction.created_at.desc()).limit(200).all()
         return {
-            'tasks': DeleteMonitorTask.query.all(),
             'downloaders': Downloader.query.all(),
             'notifiers': Notifier.query.all(),
             'pending_actions': pending_actions,
@@ -197,6 +220,15 @@ def init_web_routes(ctx: RouteDeps):
         exclude_dirs = request.form.get('exclude_dirs', '').strip() or get_config('default_exclude_dirs', 'sample,subs')
         create_folder = request.form.get('create_folder') == 'on'
         use_cache = request.form.get('use_cache') == 'on'
+        monitor_source_delete = request.form.get('monitor_source_delete') == 'on'
+        monitor_dest_delete = request.form.get('monitor_dest_delete') == 'on'
+        delete_downloader_id = request.form.get('delete_downloader_id', type=int)
+        delete_notifier_id = request.form.get('delete_notifier_id', type=int)
+        delete_cooldown_seconds = request.form.get('delete_cooldown_seconds', type=int)
+        delete_max_deletes_per_run = request.form.get('delete_max_deletes_per_run', type=int)
+        delete_dry_run = request.form.get('delete_dry_run') == 'on'
+        delete_notify_on_delete = request.form.get('delete_notify_on_delete') == 'on'
+        delete_notify_on_risky_delete = request.form.get('delete_notify_on_risky_delete') == 'on'
 
         if not name:
             return _json_or_redirect(False, '任务名称不能为空', '/hardlink', status=400)
@@ -208,6 +240,10 @@ def init_web_routes(ctx: RouteDeps):
         min_file_age = request.form.get('min_file_age_seconds', type=int)
         if min_file_age is None or min_file_age < 0 or min_file_age > 86400:
             return _json_or_redirect(False, '最小文件年龄必须在 0-86400 秒之间', '/hardlink', status=400)
+        if delete_cooldown_seconds is None or delete_cooldown_seconds < 0 or delete_cooldown_seconds > 86400:
+            return _json_or_redirect(False, '删除联动冷却秒数必须在 0-86400 秒之间', '/hardlink', status=400)
+        if delete_max_deletes_per_run is None or delete_max_deletes_per_run < 1 or delete_max_deletes_per_run > 1000:
+            return _json_or_redirect(False, '删除联动单次最大删除必须在 1-1000 之间', '/hardlink', status=400)
 
         task = HardlinkTask(
             name=name,
@@ -219,6 +255,15 @@ def init_web_routes(ctx: RouteDeps):
             create_folder=create_folder,
             use_cache=use_cache,
             min_file_age_seconds=min_file_age,
+            monitor_source_delete=monitor_source_delete,
+            monitor_dest_delete=monitor_dest_delete,
+            delete_downloader_id=delete_downloader_id,
+            delete_notifier_id=delete_notifier_id,
+            delete_cooldown_seconds=delete_cooldown_seconds,
+            delete_max_deletes_per_run=delete_max_deletes_per_run,
+            delete_dry_run=delete_dry_run,
+            delete_notify_on_delete=delete_notify_on_delete,
+            delete_notify_on_risky_delete=delete_notify_on_risky_delete,
         )
         db.session.add(task)
         db.session.commit()
@@ -242,6 +287,15 @@ def init_web_routes(ctx: RouteDeps):
         exclude_extensions = request.form.get('exclude_extensions', '')
         create_folder = request.form.get('create_folder') == 'on'
         use_cache = request.form.get('use_cache') == 'on'
+        monitor_source_delete = request.form.get('monitor_source_delete') == 'on'
+        monitor_dest_delete = request.form.get('monitor_dest_delete') == 'on'
+        delete_downloader_id = request.form.get('delete_downloader_id', type=int)
+        delete_notifier_id = request.form.get('delete_notifier_id', type=int)
+        delete_cooldown_seconds = request.form.get('delete_cooldown_seconds', type=int)
+        delete_max_deletes_per_run = request.form.get('delete_max_deletes_per_run', type=int)
+        delete_dry_run = request.form.get('delete_dry_run') == 'on'
+        delete_notify_on_delete = request.form.get('delete_notify_on_delete') == 'on'
+        delete_notify_on_risky_delete = request.form.get('delete_notify_on_risky_delete') == 'on'
         min_file_age = request.form.get('min_file_age_seconds', type=int)
 
         if not name:
@@ -252,6 +306,10 @@ def init_web_routes(ctx: RouteDeps):
                 return _json_or_redirect(False, f'{label}无效: {msg}', '/hardlink', status=400)
         if min_file_age is None or min_file_age < 0 or min_file_age > 86400:
             return _json_or_redirect(False, '最小文件年龄必须在 0-86400 秒之间', '/hardlink', status=400)
+        if delete_cooldown_seconds is None or delete_cooldown_seconds < 0 or delete_cooldown_seconds > 86400:
+            return _json_or_redirect(False, '删除联动冷却秒数必须在 0-86400 秒之间', '/hardlink', status=400)
+        if delete_max_deletes_per_run is None or delete_max_deletes_per_run < 1 or delete_max_deletes_per_run > 1000:
+            return _json_or_redirect(False, '删除联动单次最大删除必须在 1-1000 之间', '/hardlink', status=400)
 
         task.name = name
         task.source_dir = source_dir
@@ -262,6 +320,15 @@ def init_web_routes(ctx: RouteDeps):
         task.create_folder = create_folder
         task.use_cache = use_cache
         task.min_file_age_seconds = min_file_age
+        task.monitor_source_delete = monitor_source_delete
+        task.monitor_dest_delete = monitor_dest_delete
+        task.delete_downloader_id = delete_downloader_id
+        task.delete_notifier_id = delete_notifier_id
+        task.delete_cooldown_seconds = delete_cooldown_seconds
+        task.delete_max_deletes_per_run = delete_max_deletes_per_run
+        task.delete_dry_run = delete_dry_run
+        task.delete_notify_on_delete = delete_notify_on_delete
+        task.delete_notify_on_risky_delete = delete_notify_on_risky_delete
         db.session.commit()
         log_operation('hardlink_task_updated', 'HardlinkTask', task.id, task.name)
 
@@ -318,111 +385,28 @@ def init_web_routes(ctx: RouteDeps):
         return render_template('delete_monitor.html', **_delete_payload())
 
     @web_bp.route('/delete-monitor/add', methods=['POST'])
-    def delete_monitor_add():
-        name = (request.form.get('name') or '').strip()
-        directory = str(Path(request.form.get('directory', '')))
-        if not name:
-            return _json_or_redirect(False, '任务名称不能为空', '/delete-monitor', status=400)
-        ok, msg = validate_path(directory)
-        if not ok:
-            return _json_or_redirect(False, f'监控目录无效: {msg}', '/delete-monitor', status=400)
-        cooldown = request.form.get('cooldown_seconds', type=int)
-        max_deletes = request.form.get('max_deletes_per_run', type=int)
-        if cooldown is None or cooldown < 0 or cooldown > 86400:
-            return _json_or_redirect(False, '冷却秒数必须在 0-86400 之间', '/delete-monitor', status=400)
-        if max_deletes is None or max_deletes < 1 or max_deletes > 1000:
-            return _json_or_redirect(False, '单次最大删除必须在 1-1000 之间', '/delete-monitor', status=400)
-
-        task = DeleteMonitorTask(
-            name=name,
-            directory=directory,
-            downloader_id=request.form.get('downloader_id') or None,
-            notifier_id=request.form.get('notifier_id') or None,
-            events=request.form.get('events', 'unlink'),
-            cooldown_seconds=cooldown,
-            max_deletes_per_run=max_deletes,
-            dry_run=request.form.get('dry_run') == 'on',
-            notify_on_delete=request.form.get('task_notify_on_delete') == 'on',
-            notify_on_risky_delete=request.form.get('task_notify_on_risky_delete') == 'on',
-        )
-        db.session.add(task)
-        db.session.commit()
-        log_operation('delete_task_created', 'DeleteMonitorTask', task.id, task.name)
-        payload = _delete_payload()
-        html = render_template('_delete_jobs_panel.html', **payload) if _wants_json() else None
-        return _json_or_redirect(True, '删除监控任务已添加（定时扫描模式）', '/delete-monitor', html=html, target='deleteJobsPanel')
+    def delete_monitor_add_legacy():
+        return _json_or_redirect(False, '删除联动任务入口已收敛，请到硬链接任务中配置删除联动', '/delete-monitor', status=400)
 
 
     @web_bp.route('/delete-monitor/update/<int:task_id>', methods=['POST'])
-    def delete_monitor_update(task_id):
-        task = db.session.get(DeleteMonitorTask, task_id)
-        if not task:
-            return _json_or_redirect(False, '任务不存在', '/delete-monitor', status=404)
+    def delete_monitor_update_legacy(task_id):
+        return _json_or_redirect(False, '删除联动任务入口已收敛，请到硬链接任务中配置删除联动', '/delete-monitor', status=400)
 
-        name = (request.form.get('name') or '').strip()
-        directory = str(Path(request.form.get('directory', '')))
-        if not name:
-            return _json_or_redirect(False, '任务名称不能为空', '/delete-monitor', status=400)
-        ok, msg = validate_path(directory)
-        if not ok:
-            return _json_or_redirect(False, f'监控目录无效: {msg}', '/delete-monitor', status=400)
-
-        cooldown = request.form.get('cooldown_seconds', type=int)
-        max_deletes = request.form.get('max_deletes_per_run', type=int)
-        if cooldown is None or cooldown < 0 or cooldown > 86400:
-            return _json_or_redirect(False, '冷却秒数必须在 0-86400 之间', '/delete-monitor', status=400)
-        if max_deletes is None or max_deletes < 1 or max_deletes > 1000:
-            return _json_or_redirect(False, '单次最大删除必须在 1-1000 之间', '/delete-monitor', status=400)
-
-        task.name = name
-        task.directory = directory
-        task.events = request.form.get('events', 'unlink')
-        task.downloader_id = request.form.get('downloader_id') or None
-        task.notifier_id = request.form.get('notifier_id') or None
-        task.cooldown_seconds = cooldown
-        task.max_deletes_per_run = max_deletes
-        task.dry_run = request.form.get('dry_run') == 'on'
-        task.notify_on_delete = request.form.get('task_notify_on_delete') == 'on'
-        task.notify_on_risky_delete = request.form.get('task_notify_on_risky_delete') == 'on'
-        db.session.commit()
-        log_operation('delete_task_updated', 'DeleteMonitorTask', task.id, task.name)
-
-        payload = _delete_payload()
-        html = render_template('_delete_jobs_panel.html', **payload) if _wants_json() else None
-        return _json_or_redirect(True, '删除联动任务已更新并生效', '/delete-monitor', html=html, target='deleteJobsPanel')
 
     @web_bp.route('/delete-monitor/run/<int:task_id>', methods=['POST'])
-    def delete_monitor_run(task_id):
-        ok, msg = run_delete_once(task_id)
-        task = db.session.get(DeleteMonitorTask, task_id)
-        log_operation('delete_manual_run', 'DeleteMonitorTask', task_id, task.name if task else '-', msg, ok)
-        if _wants_json():
-            payload = _delete_payload()
-            html = render_template('_delete_jobs_panel.html', **payload)
-            return _json_or_redirect(ok, msg, '/delete-monitor', html=html if ok else None, target='deleteJobsPanel', status=200 if ok else 400)
-        return _json_or_redirect(ok, msg, '/delete-monitor')
+    def delete_monitor_run_legacy(task_id):
+        return _json_or_redirect(False, '独立删除任务已收敛，请改为执行硬链接任务', '/delete-monitor', status=400)
+
 
     @web_bp.route('/delete-monitor/toggle/<int:task_id>', methods=['POST'])
-    def delete_monitor_toggle(task_id):
-        task = db.session.get(DeleteMonitorTask, task_id)
-        if not task:
-            return _json_or_redirect(False, '任务不存在', '/delete-monitor', status=404)
-        task.enabled = not task.enabled
-        db.session.commit()
-        payload = _delete_payload()
-        html = render_template('_delete_jobs_panel.html', **payload) if _wants_json() else None
-        return _json_or_redirect(True, f'任务 {task.name} 已{"启用" if task.enabled else "禁用"}', '/delete-monitor', html=html, target='deleteJobsPanel')
+    def delete_monitor_toggle_legacy(task_id):
+        return _json_or_redirect(False, '独立删除任务已收敛，请到硬链接任务中配置', '/delete-monitor', status=400)
+
 
     @web_bp.route('/delete-monitor/delete/<int:task_id>', methods=['POST'])
-    def delete_monitor_delete(task_id):
-        task = db.session.get(DeleteMonitorTask, task_id)
-        if not task:
-            return _json_or_redirect(False, '任务不存在', '/delete-monitor', status=404)
-        db.session.delete(task)
-        db.session.commit()
-        payload = _delete_payload()
-        html = render_template('_delete_jobs_panel.html', **payload) if _wants_json() else None
-        return _json_or_redirect(True, '任务已删除', '/delete-monitor', html=html, target='deleteJobsPanel')
+    def delete_monitor_delete_legacy(task_id):
+        return _json_or_redirect(False, '独立删除任务已收敛，请到硬链接任务中配置', '/delete-monitor', status=400)
 
 
     @web_bp.route('/delete-monitor/pending/confirm/<int:pending_id>', methods=['POST'])
@@ -433,9 +417,9 @@ def init_web_routes(ctx: RouteDeps):
         if not pending or pending.status != 'pending':
             return _json_or_redirect(False, '待确认记录不存在或已处理', '/delete-monitor', status=404)
 
-        task = db.session.get(DeleteMonitorTask, pending.task_id)
-        if not task or not task.downloader:
-            return _json_or_redirect(False, '关联任务或下载器不可用', '/delete-monitor', status=400)
+        task_name, downloader, _notifier = _resolve_pending_executor(pending)
+        if not downloader:
+            return _json_or_redirect(False, '关联下载器不可用', '/delete-monitor', status=400)
 
         torrent_hash = (pending.torrent_hash or '').strip()
         if not torrent_hash:
@@ -444,12 +428,12 @@ def init_web_routes(ctx: RouteDeps):
             db.session.commit()
             return _json_or_redirect(False, '待确认记录缺少种子哈希，已驳回', '/delete-monitor', status=400)
 
-        ok = delete_torrent_func(task.downloader, torrent_hash)
+        ok = delete_torrent_func(downloader, torrent_hash)
         pending.status = 'confirmed' if ok else 'failed'
         pending.confirmed_at = db.func.now()
         db.session.commit()
 
-        log_operation('pending_delete_confirmed' if ok else 'pending_delete_failed', 'DeletePendingAction', pending.id, task.name, f'手动确认删除种子 {torrent_hash}', ok)
+        log_operation('pending_delete_confirmed' if ok else 'pending_delete_failed', 'DeletePendingAction', pending.id, task_name, f'手动确认删除种子 {torrent_hash}', ok)
         payload = _delete_payload()
         html = render_template('_delete_jobs_panel.html', **payload) if _wants_json() else None
         return _json_or_redirect(ok, '已确认删除并执行' if ok else '执行删除失败', '/delete-monitor', html=html if ok else None, target='deleteJobsPanel', status=200 if ok else 400)
@@ -486,15 +470,15 @@ def init_web_routes(ctx: RouteDeps):
                 done += 1
                 continue
 
-            task = db.session.get(DeleteMonitorTask, pending.task_id)
+            task_name, downloader, _notifier = _resolve_pending_executor(pending)
             torrent_hash = (pending.torrent_hash or '').strip()
-            if not task or not task.downloader or not torrent_hash:
+            if not downloader or not torrent_hash:
                 pending.status = 'failed'
                 pending.confirmed_at = db.func.now()
                 failed += 1
                 continue
 
-            ok = delete_torrent_func(task.downloader, torrent_hash)
+            ok = delete_torrent_func(downloader, torrent_hash)
             pending.status = 'confirmed' if ok else 'failed'
             pending.confirmed_at = db.func.now()
             if ok:
@@ -1013,7 +997,7 @@ def init_web_routes(ctx: RouteDeps):
             current_schema = str(row[0]) if row and row[0] is not None else '0'
         except Exception:
             current_schema = '0'
-        checks.append(('数据库结构版本', True, f'current={current_schema}, target=6'))
+        checks.append(('数据库结构版本', True, f'current={current_schema}, target=7'))
 
         checks.append(('代理配置', True, (get_config('proxy_url','') or '').strip() or '未设置（直连）'))
         checks.append(('应用版本', True, get_release_info().get('local_version','-')))
@@ -1070,13 +1054,11 @@ def init_web_routes(ctx: RouteDeps):
         if not validate_cron_expression(cron_expression):
             return _json_or_redirect(False, 'Cron 表达式格式错误（应为 5 段，例如 0 3 * * *）', '/cron', status=400)
 
-        allowed_types = {'batch_hardlink', 'delete_scan', 'backfill_mapping', 'clean_logs', 'clean_cache', 'db_backup'}
+        allowed_types = {'batch_hardlink', 'backfill_mapping', 'clean_logs', 'clean_cache', 'db_backup'}
         if task_type not in allowed_types:
             return _json_or_redirect(False, '不支持的任务类型', '/cron', status=400)
         if task_type == 'batch_hardlink' and (not target_id or not db.session.get(HardlinkTask, target_id)):
             return _json_or_redirect(False, '请选择有效的硬链接任务', '/cron', status=400)
-        if task_type == 'delete_scan' and (not target_id or not db.session.get(DeleteMonitorTask, target_id)):
-            return _json_or_redirect(False, '请选择有效的删除监控任务', '/cron', status=400)
         if task_type in {'clean_logs', 'clean_cache', 'backfill_mapping', 'db_backup'}:
             target_id = None
 
@@ -1106,13 +1088,11 @@ def init_web_routes(ctx: RouteDeps):
         if not validate_cron_expression(cron_expression):
             return _json_or_redirect(False, 'Cron 表达式格式错误（应为 5 段，例如 0 3 * * *）', '/cron', status=400)
 
-        allowed_types = {'batch_hardlink', 'delete_scan', 'backfill_mapping', 'clean_logs', 'clean_cache', 'db_backup'}
+        allowed_types = {'batch_hardlink', 'backfill_mapping', 'clean_logs', 'clean_cache', 'db_backup'}
         if task_type not in allowed_types:
             return _json_or_redirect(False, '不支持的任务类型', '/cron', status=400)
         if task_type == 'batch_hardlink' and (not target_id or not db.session.get(HardlinkTask, target_id)):
             return _json_or_redirect(False, '请选择有效的硬链接任务', '/cron', status=400)
-        if task_type == 'delete_scan' and (not target_id or not db.session.get(DeleteMonitorTask, target_id)):
-            return _json_or_redirect(False, '请选择有效的删除监控任务', '/cron', status=400)
         if task_type in {'clean_logs', 'clean_cache', 'backfill_mapping', 'db_backup'}:
             target_id = None
 
@@ -1138,8 +1118,6 @@ def init_web_routes(ctx: RouteDeps):
 
         if c.task_type == 'batch_hardlink':
             ok, msg = run_hardlink_once(c.target_id)
-        elif c.task_type == 'delete_scan':
-            ok, msg = run_delete_once(c.target_id)
         elif c.task_type == 'backfill_mapping':
             ok, msg = run_backfill_once(c.target_id)
         elif c.task_type == 'db_backup':
