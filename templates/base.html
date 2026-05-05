@@ -118,7 +118,7 @@ window.HLMAjax={
             document.body.classList.remove('modal-open');
             document.body.style.removeProperty('padding-right');
             document.querySelectorAll('.modal form.js-ajax-form').forEach((f)=>{ if(f.hasAttribute('data-keep-values')) return; try{f.reset&&f.reset();}catch(_){}});
-            window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();
+            window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();if(window.bindMappingPanel) window.bindMappingPanel();
           }
         }catch(err){
           const msg=(err&&err.message&&String(err.message).startsWith('NON_JSON_'))
@@ -156,6 +156,7 @@ window.HLMAjax.bindFilters=function(){
           window.HLMAjax.bind();
           window.HLMAjax.bindFilters();
           if(window.bindCronPreview) window.bindCronPreview();
+          if(window.bindMappingPanel) window.bindMappingPanel();
           window.HLMNotice && window.HLMNotice('筛选已更新','success');
         }
       }catch(_){window.HLMNotice && window.HLMNotice('筛选失败，请稍后重试','danger');}

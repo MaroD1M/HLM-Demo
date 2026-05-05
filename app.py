@@ -745,6 +745,54 @@ def run_backfill_once(downloader_id=None):
     return execute_with_guard(run_key, '映射回填', 'backfill_mapping', _runner, source='manual', target_id=downloader_id)
 
 
+def run_backfill_for_map_id(map_id):
+    row = db.session.get(FileLinkMap, map_id)
+    if not row:
+        return False, '映射记录不存在'
+    if row.torrent_hash:
+        return True, '该映射已关联种子，无需重试'
+
+    if not row.downloader_id:
+        d = Downloader.query.filter_by(enabled=True, type='qbittorrent').order_by(Downloader.id.asc()).first()
+        if d:
+            row.downloader_id = d.id
+            db.session.commit()
+
+    def resolve_downloader(did):
+        if did:
+            return db.session.get(Downloader, did)
+        return Downloader.query.filter_by(enabled=True, type='qbittorrent').first()
+
+    run_key = f'backfill:single:{map_id}'
+
+    def _runner(stop_checker=None):
+        target = db.session.get(FileLinkMap, map_id)
+        if not target:
+            return False, '映射记录不存在'
+        if target.torrent_hash:
+            return True, '该映射已关联种子，无需重试'
+        matched, conflicts, skipped = scan_backfill_rows(
+            [target],
+            resolve_downloader,
+            list_torrents,
+            list_torrent_files,
+            log_operation,
+            should_stop=stop_checker,
+            max_failures=2,
+        )
+        db.session.commit()
+        db.session.refresh(target)
+        if target.torrent_hash:
+            return True, f'单条回填成功：hash={target.torrent_hash}'
+        if conflicts:
+            return False, '单条回填未成功：检测到候选冲突，请检查下载器内同名同大小文件'
+        if skipped:
+            return False, '单条回填未成功：未命中可用种子或已达到跳过阈值'
+        return False, '单条回填未成功：未匹配到候选种子'
+
+    return execute_with_guard(run_key, '单条映射回填', 'backfill_mapping_single', _runner, source='manual', target_id=map_id)
+
+
 def run_backup_once():
     def _runner(stop_checker=None):
         return run_backup_task()
@@ -1035,6 +1083,7 @@ def init_app():
             run_hardlink_once=run_hardlink_once,
             run_delete_once=run_delete_once,
             run_backfill_once=run_backfill_once,
+            run_backfill_for_map_id=run_backfill_for_map_id,
             run_backup_once=run_backup_once,
             run_backup_task=run_backup_task,
             run_cron_job=run_cron_job,
