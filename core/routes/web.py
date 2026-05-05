@@ -231,7 +231,7 @@ def init_web_routes(ctx: RouteDeps):
 
         payload = _hardlink_payload()
         html = render_template('_hardlink_jobs_panel.html', **payload) if _wants_json() else None
-        return _json_or_redirect(True, '硬链接任务已更新', '/hardlink', html=html, target='hardlinkJobsPanel')
+        return _json_or_redirect(True, '硬链接任务已更新并生效', '/hardlink', html=html, target='hardlinkJobsPanel')
 
     @web_bp.route('/hardlink/toggle/<int:task_id>', methods=['POST'])
     def hardlink_toggle(task_id):
@@ -349,7 +349,7 @@ def init_web_routes(ctx: RouteDeps):
 
         payload = _delete_payload()
         html = render_template('_delete_jobs_panel.html', **payload) if _wants_json() else None
-        return _json_or_redirect(True, '删除联动任务已更新', '/delete-monitor', html=html, target='deleteJobsPanel')
+        return _json_or_redirect(True, '删除联动任务已更新并生效', '/delete-monitor', html=html, target='deleteJobsPanel')
 
     @web_bp.route('/delete-monitor/run/<int:task_id>', methods=['POST'])
     def delete_monitor_run(task_id):
@@ -553,7 +553,7 @@ def init_web_routes(ctx: RouteDeps):
         log_operation('downloader_updated', 'Downloader', d.id, d.name)
         payload = _downloader_payload()
         html = render_template('_downloader_jobs_panel.html', **payload) if _wants_json() else None
-        return _json_or_redirect(True, '下载器已更新', '/downloader', html=html, target='downloaderJobsPanel')
+        return _json_or_redirect(True, '下载器已更新并生效', '/downloader', html=html, target='downloaderJobsPanel')
 
     @web_bp.route('/downloader/toggle/<int:downloader_id>', methods=['POST'])
     def downloader_toggle(downloader_id):
@@ -627,7 +627,7 @@ def init_web_routes(ctx: RouteDeps):
         log_operation('notifier_updated', 'Notifier', n.id, n.name)
         payload = _notifier_payload()
         html = render_template('_notifier_jobs_panel.html', **payload) if _wants_json() else None
-        return _json_or_redirect(True, '通知器已更新', '/notifier', html=html, target='notifierJobsPanel')
+        return _json_or_redirect(True, '通知器已更新并生效', '/notifier', html=html, target='notifierJobsPanel')
 
     @web_bp.route('/notifier/toggle/<int:notifier_id>', methods=['POST'])
     def notifier_toggle(notifier_id):
@@ -699,6 +699,47 @@ def init_web_routes(ctx: RouteDeps):
             hash_state=hash_state,
             source_type=source_type,
         )
+
+
+    @web_bp.route('/mapping/link/delete', methods=['POST'])
+    def mapping_link_delete():
+        map_id = request.form.get('map_id', type=int)
+        if not map_id:
+            return _json_or_redirect(False, 'map_id 不能为空', '/mapping', status=400)
+        row = db.session.get(FileLinkMap, map_id)
+        if not row:
+            return _json_or_redirect(False, '映射记录不存在', '/mapping', status=404)
+        src = row.source_path
+        dst = row.dest_path
+        db.session.delete(row)
+        db.session.commit()
+        log_operation('mapping_record_deleted', 'FileLinkMap', map_id, src, f'手动删除映射: {dst}')
+        return _json_or_redirect(True, '映射记录已删除', '/mapping')
+
+    @web_bp.route('/mapping/link/retry', methods=['POST'])
+    def mapping_link_retry():
+        map_id = request.form.get('map_id', type=int)
+        if not map_id:
+            return _json_or_redirect(False, 'map_id 不能为空', '/mapping', status=400)
+        row = db.session.get(FileLinkMap, map_id)
+        if not row:
+            return _json_or_redirect(False, '映射记录不存在', '/mapping', status=404)
+        if row.torrent_hash:
+            return _json_or_redirect(True, '该映射已关联种子，无需重试', '/mapping')
+
+        if not row.downloader_id:
+            d = Downloader.query.filter_by(enabled=True).order_by(Downloader.id.asc()).first()
+            if d:
+                row.downloader_id = d.id
+                db.session.commit()
+
+        ok, msg = run_backfill_once(row.downloader_id)
+        db.session.refresh(row)
+        if ok and row.torrent_hash:
+            log_operation('mapping_retry_linked', 'FileLinkMap', row.id, row.source_path, f'已关联 hash={row.torrent_hash}')
+            return _json_or_redirect(True, f'重试成功：已关联种子（{row.torrent_hash}）', '/mapping')
+
+        return _json_or_redirect(False, f'重试完成但未关联成功：{msg}', '/mapping', status=400)
 
     @web_bp.route('/mapping/cache/delete', methods=['POST'])
     def mapping_cache_delete():
@@ -785,7 +826,7 @@ def init_web_routes(ctx: RouteDeps):
             val = request.form.get(key)
             if val is not None:
                 set_config(key, val.strip() if isinstance(val, str) else val)
-        flash('设置已保存', 'success')
+        flash('设置已保存并生效', 'success')
         return redirect('/settings')
 
 
@@ -868,7 +909,7 @@ def init_web_routes(ctx: RouteDeps):
                 d_exists = Path(row.dest_path or '').exists()
                 if (not s_exists) or (not d_exists):
                     hits += 1
-        return _json_or_redirect(True, f'预演完成：当前疑似可触发联动 {hits} 条', '/delete-monitor')
+        return _json_or_redirect(True, f'预演完成：当前可能触发联动 {hits} 条（仅预估，不执行删除）', '/delete-monitor')
 
     @web_bp.route('/cron')
     def cron_list():

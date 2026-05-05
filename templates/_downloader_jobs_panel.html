@@ -31,7 +31,7 @@
                 <div class="mb-2"><label class="form-label">主机</label><input class="form-control" name="host" value="{{ d.host }}" required></div>
                 <div class="mb-2"><label class="form-label">端口</label><input class="form-control" type="number" name="port" value="{{ d.port }}" required></div>
                 <div class="mb-2"><label class="form-label">用户名</label><input class="form-control" name="username" value="{{ d.username or '' }}"></div>
-                <div class="mb-2"><label class="form-label">密码（留空=不修改）</label><input class="form-control" type="password" name="password"></div><div class="mb-2"><label class="form-label">任务代理(可选)</label><input class="form-control" name="proxy_url" value="{{ d.proxy_url or '' }}" placeholder="留空=使用全局proxy_url"></div>
+                <div class="mb-2"><label class="form-label">密码（留空=不修改）</label><input class="form-control" type="password" name="password"></div><div class="mb-2"><label class="form-label">任务代理(可选)</label><input class="form-control" name="proxy_url" value="{{ d.proxy_url or '' }}" placeholder="留空=使用系统设置中的统一代理"></div>
               </div>
               <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="submit" class="btn btn-brand">保存修改</button></div>
             </form>

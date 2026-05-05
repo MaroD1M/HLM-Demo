@@ -23,6 +23,10 @@
     .muted{color:var(--muted)}
     .btn-brand{background:#0b7a75;border-color:#0b7a75;color:#fff}
     .btn-brand:hover{background:#086863;border-color:#086863;color:#fff}
+    .wrap-any{white-space:normal!important;word-break:break-word;overflow-wrap:anywhere}
+    .section-card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,#ffffff,#f9fcff);padding:14px}
+    .section-title{font-weight:700;color:#0c4f66}
+    .hint-icon{color:#0c4f66;cursor:help;margin-left:4px}
     @media (max-width:960px){.shell{grid-template-columns:1fr}.side{height:auto;position:relative}.main{padding:16px}}
   </style>
 </head>
@@ -99,6 +103,10 @@ window.HLMAjax={
   }
 };
 window.addEventListener('DOMContentLoaded',()=>window.HLMAjax.bind());
+window.addEventListener('DOMContentLoaded',()=>{
+  const nodes=[].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+  nodes.forEach((el)=>new bootstrap.Tooltip(el));
+});
 </script>
 {% block scripts %}{% endblock %}
 </body>

@@ -121,9 +121,20 @@ def get_release_info(force_refresh=False):
                 pass
     try:
         resp = requests.get(url, timeout=app.config['REQUEST_TIMEOUT_SECONDS'], proxies=_outbound_proxies(), headers={'Accept': 'application/vnd.github+json'})
-        resp.raise_for_status()
-        payload = resp.json() or {}
-        remote = str(payload.get('tag_name') or '').strip() or '-'
+        if resp.status_code == 404:
+            # Fallback: some repos only use tags without GitHub Release objects.
+            tag_url = f"{api_base}/repos/{repo}/tags"
+            tag_resp = requests.get(tag_url, timeout=app.config['REQUEST_TIMEOUT_SECONDS'], proxies=_outbound_proxies(), headers={'Accept': 'application/vnd.github+json'})
+            tag_resp.raise_for_status()
+            tags = tag_resp.json() or []
+            remote = str(tags[0].get('name') if tags else '-').strip() or '-'
+            msg = '检查成功（Tag模式）'
+        else:
+            resp.raise_for_status()
+            payload = resp.json() or {}
+            remote = str(payload.get('tag_name') or '').strip() or '-'
+            msg = '检查成功（Release模式）'
+
         has_update = bool(remote not in {'-', local_version})
         set_config('version_check_cached_remote', remote)
         set_config('version_check_cached_at', checked_at)
@@ -133,7 +144,7 @@ def get_release_info(force_refresh=False):
             'has_update': has_update,
             'repo': repo,
             'checked_at': checked_at,
-            'message': '检查成功',
+            'message': msg,
         }
     except Exception as exc:
         app.logger.warning('github_version_check_failed repo=%s err=%s', repo, exc)
@@ -806,7 +817,7 @@ def init_defaults():
         ('github_version_check_enabled', 'true', '启用GitHub版本检查'),
         ('github_repo', 'marod1m/HLM-Demo', 'GitHub仓库 owner/repo'),
         ('github_api_base', 'https://api.github.com', 'GitHub API基础地址'),
-        ('proxy_url', 'http://127.0.0.7:7890', '统一外网代理地址（Telegram/GitHub），留空则直连'),
+        ('proxy_url', 'http://127.0.0.1:7890', '统一外网代理地址（Telegram/GitHub），留空则直连'),
         ('app_log_max_mb', '10', '应用日志单文件大小上限（MB）'),
         ('app_log_backup_count', '5', '应用日志滚动保留文件数'),
         ('version_check_cache_minutes', '30', '版本检查缓存分钟数'),
