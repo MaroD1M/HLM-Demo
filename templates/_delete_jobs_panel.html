@@ -15,31 +15,35 @@
           <form class="d-inline js-ajax-form" action="/delete-monitor/delete/{{ t.id }}" method="POST" data-target="deleteJobsPanel" data-confirm="确认删除该删除联动任务？"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>
         </td>
       </tr>
-
-      <div class="modal fade" id="editDeleteModal{{ t.id }}" tabindex="-1">
-        <div class="modal-dialog"><div class="modal-content">
-          <form class="js-ajax-form" data-target="deleteJobsPanel" action="/delete-monitor/update/{{ t.id }}" method="POST">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <div class="modal-header"><h5 class="modal-title">修改删除联动任务：{{ t.name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-            <div class="modal-body">
-              <div class="mb-2"><label class="form-label">任务名称</label><input class="form-control" name="name" value="{{ t.name }}" required></div>
-              <div class="mb-2"><label class="form-label">监控目录</label><input class="form-control" name="directory" value="{{ t.directory }}" required></div>
-              <div class="mb-2"><label class="form-label">事件</label><select class="form-select" name="events"><option value="unlink" {% if t.events=='unlink' %}selected{% endif %}>文件删除</option><option value="unlinkDir" {% if t.events=='unlinkDir' %}selected{% endif %}>目录删除</option><option value="unlink,unlinkDir" {% if t.events=='unlink,unlinkDir' %}selected{% endif %}>两者</option></select></div>
-              <div class="mb-2"><label class="form-label">下载器</label><select class="form-select" name="downloader_id"><option value="">不关联</option>{% for d in downloaders %}<option value="{{ d.id }}" {% if t.downloader_id==d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
-              <div class="mb-2"><label class="form-label">通知器</label><select class="form-select" name="notifier_id"><option value="">不关联</option>{% for n in notifiers %}<option value="{{ n.id }}" {% if t.notifier_id==n.id %}selected{% endif %}>{{ n.name }}</option>{% endfor %}</select></div>
-              <div class="mb-2"><label class="form-label">冷却秒数</label><input class="form-control" type="number" name="cooldown_seconds" value="{{ t.cooldown_seconds }}" min="0"></div>
-              <div class="mb-2"><label class="form-label">单次最大删除</label><input class="form-control" type="number" name="max_deletes_per_run" value="{{ t.max_deletes_per_run }}" min="1"></div>
-              <div class="form-check"><input class="form-check-input" type="checkbox" name="dry_run" id="dry_run_{{ t.id }}" {% if t.dry_run %}checked{% endif %}><label class="form-check-label" for="dry_run_{{ t.id }}">仅记录不执行（试运行）</label></div><div class="form-check"><input class="form-check-input" type="checkbox" name="task_notify_on_delete" id="task_notify_on_delete_{{ t.id }}" {% if t.notify_on_delete %}checked{% endif %}><label class="form-check-label" for="task_notify_on_delete_{{ t.id }}">任务成功通知</label></div><div class="form-check"><input class="form-check-input" type="checkbox" name="task_notify_on_risky_delete" id="task_notify_on_risky_delete_{{ t.id }}" {% if t.notify_on_risky_delete %}checked{% endif %}><label class="form-check-label" for="task_notify_on_risky_delete_{{ t.id }}">任务风险通知</label></div>
-            </div>
-            <div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-brand" type="submit">保存修改</button></div>
-          </form>
-        </div></div>
-      </div>
       {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
+
+{% for t in tasks %}
+<div class="modal fade" id="editDeleteModal{{ t.id }}" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <form class="js-ajax-form" data-target="deleteJobsPanel" action="/delete-monitor/update/{{ t.id }}" method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="modal-header"><h5 class="modal-title">修改删除联动任务：{{ t.name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="mb-2"><label class="form-label">任务名称</label><input class="form-control" name="name" value="{{ t.name }}" required></div>
+        <div class="mb-2"><label class="form-label">监控目录</label><input class="form-control" name="directory" value="{{ t.directory }}" required></div>
+        <div class="mb-2"><label class="form-label">事件</label><select class="form-select" name="events"><option value="unlink" {% if t.events=='unlink' %}selected{% endif %}>文件删除</option><option value="unlinkDir" {% if t.events=='unlinkDir' %}selected{% endif %}>目录删除</option><option value="unlink,unlinkDir" {% if t.events=='unlink,unlinkDir' %}selected{% endif %}>两者</option></select></div>
+        <div class="mb-2"><label class="form-label">下载器</label><select class="form-select" name="downloader_id"><option value="">不关联</option>{% for d in downloaders %}<option value="{{ d.id }}" {% if t.downloader_id==d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
+        <div class="mb-2"><label class="form-label">通知器</label><select class="form-select" name="notifier_id"><option value="">不关联</option>{% for n in notifiers %}<option value="{{ n.id }}" {% if t.notifier_id==n.id %}selected{% endif %}>{{ n.name }}</option>{% endfor %}</select></div>
+        <div class="mb-2"><label class="form-label">冷却秒数</label><input class="form-control" type="number" name="cooldown_seconds" value="{{ t.cooldown_seconds }}" min="0"></div>
+        <div class="mb-2"><label class="form-label">单次最大删除</label><input class="form-control" type="number" name="max_deletes_per_run" value="{{ t.max_deletes_per_run }}" min="1"></div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" name="dry_run" id="dry_run_{{ t.id }}" {% if t.dry_run %}checked{% endif %}><label class="form-check-label" for="dry_run_{{ t.id }}">仅记录不执行（试运行）</label></div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" name="task_notify_on_delete" id="task_notify_on_delete_{{ t.id }}" {% if t.notify_on_delete %}checked{% endif %}><label class="form-check-label" for="task_notify_on_delete_{{ t.id }}">任务成功通知</label></div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" name="task_notify_on_risky_delete" id="task_notify_on_risky_delete_{{ t.id }}" {% if t.notify_on_risky_delete %}checked{% endif %}><label class="form-check-label" for="task_notify_on_risky_delete_{{ t.id }}">任务风险通知</label></div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-brand" type="submit">保存修改</button></div>
+    </form>
+  </div></div>
+</div>
+{% endfor %}
 
 <div class="card p-3 mt-3 border-warning">
   <div class="d-flex justify-content-between align-items-center mb-2">
@@ -47,7 +51,7 @@
     <small class="text-muted">支持筛选、勾选与批量处理</small>
   </div>
 
-  <form class="row g-2 mb-3" method="GET" action="/delete-monitor">
+  <form class="row g-2 mb-3 js-ajax-filter" data-target="deleteJobsPanel" method="GET" action="/delete-monitor">
     <div class="col-md-6"><input class="form-control" name="pending_q" value="{{ pending_q or '' }}" placeholder="按路径/种子/原因搜索"></div>
     <div class="col-md-3">
       <select class="form-select" name="pending_match">

@@ -41,42 +41,44 @@
             </form>
           </td>
         </tr>
-
-        <div class="modal fade" id="editCronModal{{ j.id }}" tabindex="-1">
-          <div class="modal-dialog">
-            <div class="modal-content">
-              <form class="js-ajax-form" action="/cron/update/{{ j.id }}" method="POST" data-target="cronJobsPanel">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <div class="modal-header">
-                  <h5 class="modal-title">修改计划：{{ j.name }}</h5>
-                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                  <div class="mb-2">
-                    <label class="form-label">任务名称</label>
-                    <input class="form-control" name="name" value="{{ j.name }}" required>
-                  </div>
-                  <div class="mb-2">
-                    <label class="form-label">Cron 表达式</label>
-                    <input class="form-control cron-input" name="custom_cron" value="{{ j.cron_expression }}" required data-preview-target="cronPreview{{ j.id }}">
-                    <div class="form-text">格式：分 时 日 月 周（24小时制）</div>
-                  </div>
-                  <div class="mb-2">
-                    <label class="form-label">说明</label>
-                    <textarea class="form-control" name="description">{{ j.description or '' }}</textarea>
-                  </div>
-                  <div class="alert alert-secondary py-2 mb-0" id="cronPreview{{ j.id }}">{{ cron_hints.get(j.id, '自定义 Cron（可参考下方示例）') }}</div>
-                </div>
-                <div class="modal-footer">
-                  <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">取消</button>
-                  <button class="btn btn-brand" type="submit">保存修改</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
+
+{% for j in jobs %}
+<div class="modal fade" id="editCronModal{{ j.id }}" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form class="js-ajax-form" action="/cron/update/{{ j.id }}" method="POST" data-target="cronJobsPanel">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="modal-header">
+          <h5 class="modal-title">修改计划：{{ j.name }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label">任务名称</label>
+            <input class="form-control" name="name" value="{{ j.name }}" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Cron 表达式</label>
+            <input class="form-control cron-input" name="custom_cron" value="{{ j.cron_expression }}" required data-preview-target="cronPreview{{ j.id }}">
+            <div class="form-text">格式：分 时 日 月 周（24小时制）</div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">说明</label>
+            <textarea class="form-control" name="description">{{ j.description or '' }}</textarea>
+          </div>
+          <div class="alert alert-secondary py-2 mb-0" id="cronPreview{{ j.id }}">{{ cron_hints.get(j.id, '自定义 Cron（可参考下方示例）') }}</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">取消</button>
+          <button class="btn btn-brand" type="submit">保存修改</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
