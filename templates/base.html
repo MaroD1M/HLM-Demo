@@ -88,8 +88,10 @@ window.HLMAjax={
       form.addEventListener('submit', async (e)=>{
         e.preventDefault();
         const submitter=e.submitter || form.__lastSubmitter || form.querySelector('button[type="submit"],button:not([type])');
-        const action=(submitter && submitter.getAttribute('formaction')) || form.action;
-        const method=((submitter && submitter.getAttribute('formmethod')) || form.method || 'POST').toUpperCase();
+        const formActionAttr=(typeof form.getAttribute==='function' ? form.getAttribute('action') : '') || '';
+        const formMethodAttr=(typeof form.getAttribute==='function' ? form.getAttribute('method') : '') || '';
+        const action=(submitter && submitter.getAttribute('formaction')) || formActionAttr || (typeof form.action==='string' ? form.action : window.location.pathname);
+        const method=((submitter && submitter.getAttribute('formmethod')) || formMethodAttr || (typeof form.method==='string' ? form.method : 'POST') || 'POST').toUpperCase();
         const confirmMsg=form.getAttribute('data-confirm') || (submitter && submitter.getAttribute('data-confirm'));
         if(confirmMsg && !window.confirm(confirmMsg)) return;
         const btn=submitter;
@@ -97,7 +99,15 @@ window.HLMAjax={
         if(btn){btn.disabled=true;btn.textContent='处理中...';}
         try{
           const res=await fetch(action,{method:method,headers:{'X-Requested-With':'XMLHttpRequest'},body:new FormData(form)});
-          const data=await res.json();
+          const ctype=(res.headers.get('content-type')||'').toLowerCase();
+          let data=null;
+          if(ctype.includes('application/json')){
+            data=await res.json();
+          }else{
+            const text=await res.text();
+            const short=text ? text.slice(0,120).replace(/\s+/g,' ') : '';
+            throw new Error(`NON_JSON_${res.status}:${short}`);
+          }
           window.HLMNotice(data.message|| (data.ok ? '操作成功' : '操作失败'), data.ok ? 'success' : 'danger');
           if(!res.ok||!data.ok){return;}
           if(data.target&&data.html){
@@ -110,7 +120,12 @@ window.HLMAjax={
             document.querySelectorAll('.modal form.js-ajax-form').forEach((f)=>{ if(f.hasAttribute('data-keep-values')) return; try{f.reset&&f.reset();}catch(_){}});
             window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();
           }
-        }catch(_){window.HLMNotice('网络异常，请稍后重试','danger');}
+        }catch(err){
+          const msg=(err&&err.message&&String(err.message).startsWith('NON_JSON_'))
+            ? `请求失败：服务返回非JSON响应（${String(err.message).replace('NON_JSON_','')}）`
+            : '网络异常，请稍后重试';
+          window.HLMNotice(msg,'danger');
+        }
         finally{if(btn){btn.disabled=false;btn.textContent=old;}}
       });
     });
