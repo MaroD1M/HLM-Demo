@@ -146,7 +146,8 @@ window.HLMAjax.bindFilters=function(){
       if(btn){btn.disabled=true;btn.textContent='筛选中...';}
       try{
         const qs=new URLSearchParams(new FormData(form)).toString();
-        const res=await fetch(form.action + (qs ? ('?' + qs) : ''), {headers:{'X-Requested-With':'XMLHttpRequest'}});
+        const filterAction=(typeof form.getAttribute==='function' ? form.getAttribute('action') : '') || (typeof form.action==='string' ? form.action : window.location.pathname);
+        const res=await fetch(filterAction + (qs ? ('?' + qs) : ''), {headers:{'X-Requested-With':'XMLHttpRequest'}});
         const text=await res.text();
         const doc=new DOMParser().parseFromString(text,'text/html');
         const newer=doc.getElementById(targetId);
