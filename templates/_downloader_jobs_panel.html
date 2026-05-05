@@ -18,27 +18,30 @@
           <form class="d-inline js-ajax-form" action="/downloader/delete/{{ d.id }}" method="POST" data-target="downloaderJobsPanel" data-confirm="确认删除该下载器？"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>
         </td>
       </tr>
-
-      <div class="modal fade" id="editDownloaderModal{{ d.id }}" tabindex="-1">
-        <div class="modal-dialog">
-          <div class="modal-content">
-            <form class="js-ajax-form" data-target="downloaderJobsPanel" action="/downloader/update/{{ d.id }}" method="POST">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <div class="modal-header"><h5 class="modal-title">修改下载器：{{ d.name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-              <div class="modal-body">
-                <div class="mb-2"><label class="form-label">名称</label><input class="form-control" name="name" value="{{ d.name }}" required></div>
-                <div class="mb-2"><label class="form-label">类型</label><select class="form-select" name="type"><option value="qbittorrent" {% if d.type=='qbittorrent' %}selected{% endif %}>qBittorrent</option></select></div>
-                <div class="mb-2"><label class="form-label">主机</label><input class="form-control" name="host" value="{{ d.host }}" required></div>
-                <div class="mb-2"><label class="form-label">端口</label><input class="form-control" type="number" name="port" value="{{ d.port }}" required></div>
-                <div class="mb-2"><label class="form-label">用户名</label><input class="form-control" name="username" value="{{ d.username or '' }}"></div>
-                <div class="mb-2"><label class="form-label">密码（留空=不修改）</label><input class="form-control" type="password" name="password"></div><div class="mb-2"><label class="form-label">任务代理(可选)</label><input class="form-control" name="proxy_url" value="{{ d.proxy_url or '' }}" placeholder="留空=使用系统设置中的统一代理"></div>
-              </div>
-              <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="submit" class="btn btn-brand">保存修改</button></div>
-            </form>
-          </div>
-        </div>
-      </div>
     {% endfor %}
     </tbody>
   </table>
 </div>
+
+{% for d in downloaders %}
+<div class="modal fade" id="editDownloaderModal{{ d.id }}" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form class="js-ajax-form" data-target="downloaderJobsPanel" action="/downloader/update/{{ d.id }}" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="modal-header"><h5 class="modal-title">修改下载器：{{ d.name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="mb-2"><label class="form-label">名称</label><input class="form-control" name="name" value="{{ d.name }}" required></div>
+          <div class="mb-2"><label class="form-label">类型</label><select class="form-select" name="type"><option value="qbittorrent" {% if d.type=='qbittorrent' %}selected{% endif %}>qBittorrent</option></select></div>
+          <div class="mb-2"><label class="form-label">主机</label><input class="form-control" name="host" value="{{ d.host }}" required></div>
+          <div class="mb-2"><label class="form-label">端口</label><input class="form-control" type="number" name="port" value="{{ d.port }}" required></div>
+          <div class="mb-2"><label class="form-label">用户名</label><input class="form-control" name="username" value="{{ d.username or '' }}"></div>
+          <div class="mb-2"><label class="form-label">密码（留空=不修改）</label><input class="form-control" type="password" name="password"></div>
+          <div class="mb-2"><label class="form-label">任务代理(可选)</label><input class="form-control" name="proxy_url" value="{{ d.proxy_url or '' }}" placeholder="留空=使用系统设置中的统一代理"></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="submit" class="btn btn-brand">保存修改</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}

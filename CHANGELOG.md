@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.0.11] - 2026-05-05
+
+### Fixed
+- 修复编辑弹窗频繁闪动与无法关闭问题：将定时任务等面板中的弹窗结构统一移出表格循环区域，避免无效 DOM 导致的 Bootstrap Modal 状态异常。
+- 修复任务编辑交互稳定性：弹窗提交后可正常关闭，不再需要整页刷新。
+
+### Changed
+- 模板结构统一重构：`downloader/notifier/delete_monitor/logs/mapping` 页面改为可维护的多行语义化结构，降低后续改动引发回归的概率。
+- 新增弹窗命名统一：新增窗口 ID 改为语义化唯一命名（如 `addDownloaderModal`、`addNotifierModal`、`addDeleteMonitorModal`）。
+- 日志与映射页面增强空状态提示与排版一致性，长文本展示与页面可读性进一步优化。
+
 ## [v0.0.10] - 2026-05-05
 
 ### Added

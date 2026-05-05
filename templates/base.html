@@ -75,12 +75,19 @@ window.HLMNotice=function(msg,level){
 
 window.HLMAjax={
   bind(){
+
+    document.querySelectorAll('form.js-ajax-form button[type="submit"],form.js-ajax-form button:not([type])').forEach((btn)=>{
+      if(btn.dataset.boundClick==='1') return;
+      btn.dataset.boundClick='1';
+      btn.addEventListener('click', ()=>{ if(btn.form){ btn.form.__lastSubmitter = btn; } });
+    });
+
     document.querySelectorAll('.js-ajax-form').forEach((form)=>{
       if(form.dataset.bound==='1') return;
       form.dataset.bound='1';
       form.addEventListener('submit', async (e)=>{
         e.preventDefault();
-        const submitter=e.submitter || form.querySelector('button[type="submit"],button:not([type])');
+        const submitter=e.submitter || form.__lastSubmitter || form.querySelector('button[type="submit"],button:not([type])');
         const action=(submitter && submitter.getAttribute('formaction')) || form.action;
         const method=((submitter && submitter.getAttribute('formmethod')) || form.method || 'POST').toUpperCase();
         const confirmMsg=form.getAttribute('data-confirm') || (submitter && submitter.getAttribute('data-confirm'));
@@ -100,8 +107,8 @@ window.HLMAjax={
             document.querySelectorAll('.modal-backdrop').forEach((b)=>b.remove());
             document.body.classList.remove('modal-open');
             document.body.style.removeProperty('padding-right');
-            document.querySelectorAll('form').forEach((f)=>{if(f.classList.contains('js-ajax-form')) f.reset&&f.reset();});
-            window.HLMAjax.bind();if(window.bindCronPreview) window.bindCronPreview();
+            document.querySelectorAll('.modal form.js-ajax-form').forEach((f)=>{ if(f.hasAttribute('data-keep-values')) return; try{f.reset&&f.reset();}catch(_){}});
+            window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();
           }
         }catch(_){window.HLMNotice('网络异常，请稍后重试','danger');}
         finally{if(btn){btn.disabled=false;btn.textContent=old;}}
@@ -109,7 +116,39 @@ window.HLMAjax={
     });
   }
 };
-window.addEventListener('DOMContentLoaded',()=>window.HLMAjax.bind());
+
+window.HLMAjax.bindFilters=function(){
+  document.querySelectorAll('form.js-ajax-filter').forEach((form)=>{
+    if(form.dataset.filterBound==='1') return;
+    form.dataset.filterBound='1';
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const targetId=form.getAttribute('data-target');
+      const target=document.getElementById(targetId||'');
+      if(!target) return form.submit();
+      const btn=form.querySelector('button[type="submit"],button:not([type])');
+      const old=btn?btn.textContent:'';
+      if(btn){btn.disabled=true;btn.textContent='筛选中...';}
+      try{
+        const qs=new URLSearchParams(new FormData(form)).toString();
+        const res=await fetch(form.action + (qs ? ('?' + qs) : ''), {headers:{'X-Requested-With':'XMLHttpRequest'}});
+        const text=await res.text();
+        const doc=new DOMParser().parseFromString(text,'text/html');
+        const newer=doc.getElementById(targetId);
+        if(newer){
+          target.innerHTML=newer.innerHTML;
+          window.HLMAjax.bind();
+          window.HLMAjax.bindFilters();
+          if(window.bindCronPreview) window.bindCronPreview();
+          window.HLMNotice && window.HLMNotice('筛选已更新','success');
+        }
+      }catch(_){window.HLMNotice && window.HLMNotice('筛选失败，请稍后重试','danger');}
+      finally{if(btn){btn.disabled=false;btn.textContent=old;}}
+    });
+  });
+};
+
+window.addEventListener('DOMContentLoaded',()=>{window.HLMAjax.bind();window.HLMAjax.bindFilters();});
 window.addEventListener('DOMContentLoaded',()=>{
   const nodes=[].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
   nodes.forEach((el)=>new bootstrap.Tooltip(el));

@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block title %}日志 - Hardlink Manager{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <h3 class="mb-0">日志与执行历史</h3>
-  <form action="/logs/clear" method="POST" onsubmit="return confirm('确认清空操作日志？')" class="d-flex gap-2">
+  <form action="/logs/clear" method="POST" onsubmit="return confirm('确认清空操作日志？')" class="d-flex gap-2 flex-wrap">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input class="form-control form-control-sm" style="max-width:220px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
     <button class="btn btn-outline-danger">清空操作日志</button>
@@ -11,8 +11,10 @@
 </div>
 
 <div class="card p-3 mb-3">
-  <form class="row g-2" method="GET" action="/logs">
-    <div class="col-md-4"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索消息/目标/类型"></div>
+  <form class="row g-2 js-ajax-filter" data-target="logsPanel" method="GET" action="/logs">
+    <div class="col-md-4">
+      <input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索消息 / 目标 / 类型">
+    </div>
     <div class="col-md-3">
       <select class="form-select" name="op">
         <option value="">全部类型</option>
@@ -28,12 +30,107 @@
         <option value="fail" {% if success=='fail' %}selected{% endif %}>仅失败</option>
       </select>
     </div>
-    <div class="col-md-2 d-flex gap-2"><button class="btn btn-brand w-50" type="submit">筛选</button><a class="btn btn-outline-secondary w-50" href="/logs">重置</a></div>
+    <div class="col-md-2 d-flex gap-2">
+      <button class="btn btn-brand w-50" type="submit">筛选</button>
+      <a class="btn btn-outline-secondary w-50" href="/logs">重置</a>
+    </div>
   </form>
 </div>
 
-<div class="row g-3">
-  <div class="col-lg-6"><div class="card p-3"><h5>操作日志</h5><div class="table-responsive"><table class="table"><thead><tr><th>时间</th><th>类型</th><th>目标</th><th>结果</th><th>消息</th></tr></thead><tbody>{% for log in logs %}<tr><td>{{ fmt_dt(log.created_at) }}</td><td class="wrap-any">{{ log.operation_type }}</td><td class="wrap-any">{{ log.target_name or '-' }}</td><td>{% if log.success %}<span class="badge text-bg-success">成功</span>{% else %}<span class="badge text-bg-danger">失败</span>{% endif %}</td><td class="wrap-any"><small>{{ log.message or '-' }}</small></td></tr>{% endfor %}</tbody></table></div><div class="d-flex justify-content-between align-items-center"><small class="text-muted">第 {{ page }} / {{ total_pages }} 页</small><div>{% if page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page-1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}">上一页</a>{% endif %} {% if page<total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page+1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}">下一页</a>{% endif %}</div></div></div></div>
-  <div class="col-lg-6"><div class="card p-3"><h5>任务执行历史</h5><div class="table-responsive"><table class="table"><thead><tr><th>开始时间</th><th>任务</th><th>来源</th><th>状态</th><th>耗时</th><th>消息</th></tr></thead><tbody>{% for e in executions %}<tr><td>{{ fmt_dt(e.started_at) }}</td><td class="wrap-any">{{ e.job_name }}</td><td>{{ e.source }}</td><td>{% if e.status=='success' %}<span class="badge text-bg-success">成功</span>{% elif e.status=='failed' %}<span class="badge text-bg-danger">失败</span>{% else %}<span class="badge text-bg-secondary">运行中</span>{% endif %}</td><td>{{ e.duration_ms or 0 }}ms</td><td class="wrap-any"><small>{{ e.message or '-' }}</small></td></tr>{% endfor %}</tbody></table></div></div></div>
+<div id="logsPanel" class="row g-3">
+  <div class="col-lg-6">
+    <div class="card p-3 h-100">
+      <h5 class="mb-3">操作日志</h5>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>类型</th>
+              <th>目标</th>
+              <th>结果</th>
+              <th>消息</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if logs %}
+              {% for log in logs %}
+              <tr>
+                <td>{{ fmt_dt(log.created_at) }}</td>
+                <td class="wrap-any">{{ log.operation_type }}</td>
+                <td class="wrap-any">{{ log.target_name or '-' }}</td>
+                <td>
+                  {% if log.success %}
+                    <span class="badge text-bg-success">成功</span>
+                  {% else %}
+                    <span class="badge text-bg-danger">失败</span>
+                  {% endif %}
+                </td>
+                <td class="wrap-any"><small>{{ log.message or '-' }}</small></td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="5" class="text-muted">暂无操作日志</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between align-items-center">
+        <small class="text-muted">第 {{ page }} / {{ total_pages }} 页</small>
+        <div>
+          {% if page>1 %}
+            <a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page-1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}">上一页</a>
+          {% endif %}
+          {% if page<total_pages %}
+            <a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page+1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}">下一页</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card p-3 h-100">
+      <h5 class="mb-3">任务执行历史</h5>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>开始时间</th>
+              <th>任务</th>
+              <th>来源</th>
+              <th>状态</th>
+              <th>耗时</th>
+              <th>消息</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if executions %}
+              {% for e in executions %}
+              <tr>
+                <td>{{ fmt_dt(e.started_at) }}</td>
+                <td class="wrap-any">{{ e.job_name }}</td>
+                <td>{{ e.source }}</td>
+                <td>
+                  {% if e.status=='success' %}
+                    <span class="badge text-bg-success">成功</span>
+                  {% elif e.status=='failed' %}
+                    <span class="badge text-bg-danger">失败</span>
+                  {% else %}
+                    <span class="badge text-bg-secondary">运行中</span>
+                  {% endif %}
+                </td>
+                <td>{{ e.duration_ms or 0 }}ms</td>
+                <td class="wrap-any"><small>{{ e.message or '-' }}</small></td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="6" class="text-muted">暂无任务执行历史</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
