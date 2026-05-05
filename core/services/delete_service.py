@@ -38,6 +38,21 @@ def _resolve_deleted_path(row, monitor_root):
     return ''
 
 
+def _safe_unlink_file(path_text):
+    try:
+        p = Path(path_text)
+        if p.exists() and p.is_file():
+            p.unlink()
+            return True
+    except Exception:
+        return False
+    return False
+
+
+def _policy_enabled(get_config, key, default='false'):
+    return str(get_config(key, default)).lower() == 'true'
+
+
 def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_config, send_notification, create_pending_action):
     now = datetime.now(UTC)
     hits = []
@@ -64,16 +79,52 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
 
     deleted_torrents = 0
     pending_count = 0
-    strict_mode = get_config('delete_match_strict_mode', 'true') == 'true'
-    notify_risky = get_config('notify_on_risky_delete', 'true') == 'true'
+    strict_mode = _policy_enabled(get_config, 'delete_match_strict_mode', 'true')
+    notify_risky = _policy_enabled(get_config, 'notify_on_risky_delete', 'true')
 
     for row, deleted_path_str in hits:
-        deleted_path = Path(deleted_path_str)
-        if not task.downloader:
-            log_operation('delete_detected_no_downloader', 'DeleteMonitorTask', task.id, task.name, f'检测到删除: {deleted_path_str}')
+        src = str(row.source_path or '')
+        dst = str(row.dest_path or '')
+        source_type = (row.source_type or 'manual').strip().lower()
+
+        # Determine which side was deleted and optionally remove the counterpart file.
+        deleted_is_source = bool(src and deleted_path_str == src)
+        if deleted_is_source:
+            counterpart = dst
+            policy_key = 'manual_source_delete_delete_dest' if source_type == 'manual' else 'downloader_source_delete_delete_dest'
+            action_label = 'source_deleted'
+        else:
+            counterpart = src
+            policy_key = 'manual_dest_delete_delete_source' if source_type == 'manual' else 'downloader_dest_delete_delete_source'
+            action_label = 'dest_deleted'
+
+        if counterpart and _policy_enabled(get_config, policy_key, 'true'):
+            removed = _safe_unlink_file(counterpart)
+            if removed:
+                log_operation('linked_file_deleted', 'FileLinkMap', row.id, task.name, f'{action_label} -> delete_counterpart: {counterpart}')
+            else:
+                log_operation('linked_file_delete_skip', 'FileLinkMap', row.id, task.name, f'{action_label} -> counterpart_missing_or_failed: {counterpart}')
+
+        # Manual source: never delete torrent task.
+        if source_type == 'manual':
+            log_operation('delete_detected_manual', 'DeleteMonitorTask', task.id, task.name, f'手动来源删除: {deleted_path_str}')
             continue
 
-        torrent_hash, match_by = try_match(deleted_path, task.downloader)
+        # Downloader source: optional torrent deletion.
+        delete_torrent_key = 'downloader_source_delete_delete_torrent' if deleted_is_source else 'downloader_dest_delete_delete_torrent'
+        if not _policy_enabled(get_config, delete_torrent_key, 'true'):
+            log_operation('torrent_delete_disabled', 'DeleteMonitorTask', task.id, task.name, f'策略已禁用删种: {deleted_path_str}')
+            continue
+
+        if not task.downloader:
+            log_operation('delete_detected_no_downloader', 'DeleteMonitorTask', task.id, task.name, f'检测到下载器来源删除但任务未关联下载器: {deleted_path_str}', False)
+            continue
+
+        torrent_hash = (row.torrent_hash or '').strip()
+        match_by = 'mapping_hash'
+        if not torrent_hash:
+            torrent_hash, match_by = try_match(Path(deleted_path_str), task.downloader)
+
         if not torrent_hash:
             log_operation('torrent_match_miss', 'DeleteMonitorTask', task.id, task.name, f'未匹配到种子: {deleted_path_str}')
             continue
@@ -96,7 +147,7 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
             row.torrent_hash = torrent_hash
             deleted_torrents += 1
             log_operation('torrent_deleted', 'DeleteMonitorTask', task.id, task.name, f'删除种子 {torrent_hash}, by={match_by}, file={deleted_path_str}')
-            if get_config('notify_on_delete', 'true') == 'true' and task.notifier:
+            if _policy_enabled(get_config, 'notify_on_delete', 'true') and task.notifier:
                 send_notification(task.notifier, f'删除联动成功\n任务: {task.name}\n种子: {torrent_hash}\n匹配: {match_by}')
         else:
             log_operation('torrent_delete_failed', 'DeleteMonitorTask', task.id, task.name, f'删除失败 {torrent_hash}', False)

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}系统诊断 - Hardlink Manager{% endblock %}
+{% block content %}
+<h3 class="mb-3">系统诊断</h3>
+<div class="card p-3">
+  <div class="table-responsive">
+    <table class="table">
+      <thead><tr><th>检查项</th><th>状态</th><th>详情</th></tr></thead>
+      <tbody>
+      {% for name, ok, detail in checks %}
+        <tr>
+          <td>{{ name }}</td>
+          <td>{% if ok %}<span class="badge text-bg-success">正常</span>{% else %}<span class="badge text-bg-danger">异常</span>{% endif %}</td>
+          <td>{{ detail }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

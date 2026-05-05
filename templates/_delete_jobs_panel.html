@@ -9,6 +9,7 @@
         <td>{% if t.enabled %}<span class="badge text-bg-success">启用</span>{% else %}<span class="badge text-bg-secondary">禁用</span>{% endif %}</td>
         <td>
           <form class="d-inline js-ajax-form" action="/delete-monitor/run/{{ t.id }}" method="POST" data-target="deleteJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">立即执行</button></form>
+          <form class="d-inline js-ajax-form" action="/delete-monitor/preview/{{ t.id }}" method="POST" data-target="deleteJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-secondary">预演</button></form>
           <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editDeleteModal{{ t.id }}">修改</button>
           <form class="d-inline js-ajax-form" action="/delete-monitor/toggle/{{ t.id }}" method="POST" data-target="deleteJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">{{ '禁用' if t.enabled else '启用' }}</button></form>
           <form class="d-inline js-ajax-form" action="/delete-monitor/delete/{{ t.id }}" method="POST" data-target="deleteJobsPanel" data-confirm="确认删除该删除联动任务？"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>
@@ -40,32 +41,86 @@
   </div>
 </div>
 
-
 <div class="card p-3 mt-3 border-warning">
-  <h6 class="mb-2 text-warning">待确认（疑似误删）</h6>
-  {% if pending_actions %}
-  <div class="table-responsive">
-    <table class="table table-sm align-middle">
-      <thead><tr><th>时间</th><th>任务ID</th><th>匹配方式</th><th>路径</th><th>种子</th><th>原因</th><th>操作</th></tr></thead>
-      <tbody>
-      {% for p in pending_actions %}
-      <tr>
-        <td>{{ fmt_dt(p.created_at) }}</td>
-        <td>{{ p.task_id }}</td>
-        <td><span class="badge text-bg-warning">{{ p.match_by }}</span></td>
-        <td><code>{{ p.deleted_path }}</code></td>
-        <td><code>{{ p.torrent_hash or '-' }}</code></td>
-        <td>{{ p.reason or '-' }}</td>
-        <td>
-          <form class="d-inline js-ajax-form" action="/delete-monitor/pending/confirm/{{ p.id }}" method="POST" data-target="deleteJobsPanel" data-confirm="确认执行删种？此操作不可撤销。"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">确认删除</button></form>
-          <form class="d-inline js-ajax-form" action="/delete-monitor/pending/reject/{{ p.id }}" method="POST" data-target="deleteJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-secondary">驳回</button></form>
-        </td>
-      </tr>
-      {% endfor %}
-      </tbody>
-    </table>
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h6 class="mb-0 text-warning">待确认（疑似误删） <span class="badge text-bg-warning">{{ pending_actions|length }}</span></h6>
+    <small class="text-muted">支持筛选、勾选与批量处理</small>
   </div>
+
+  <form class="row g-2 mb-3" method="GET" action="/delete-monitor">
+    <div class="col-md-6"><input class="form-control" name="pending_q" value="{{ pending_q or '' }}" placeholder="按路径/种子/原因搜索"></div>
+    <div class="col-md-3">
+      <select class="form-select" name="pending_match">
+        <option value="all" {% if (pending_match or 'all')=='all' %}selected{% endif %}>全部匹配方式</option>
+        <option value="mapping_hash" {% if pending_match=='mapping_hash' %}selected{% endif %}>mapping_hash</option>
+        <option value="name_match" {% if pending_match=='name_match' %}selected{% endif %}>name_match</option>
+        <option value="path_match" {% if pending_match=='path_match' %}selected{% endif %}>path_match</option>
+        <option value="no_match" {% if pending_match=='no_match' %}selected{% endif %}>no_match</option>
+      </select>
+    </div>
+    <div class="col-md-3 d-flex gap-2">
+      <button class="btn btn-outline-secondary w-50" type="submit">筛选</button>
+      <a class="btn btn-outline-light w-50" href="/delete-monitor">重置</a>
+    </div>
+  </form>
+
+  {% if pending_actions %}
+  <form class="js-ajax-form" action="/delete-monitor/pending/bulk" method="POST" data-target="deleteJobsPanel">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="mb-2"><input class="form-control form-control-sm" type="password" name="critical_passphrase" placeholder="关键操作口令（如已设置）"></div>
+    <div class="mb-2 d-flex gap-2">
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.togglePendingAll(true)">全选</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.togglePendingAll(false)">取消全选</button>
+      <input type="hidden" name="bulk_action" id="bulkActionInput">
+      <button type="button" class="btn btn-sm btn-outline-danger" onclick="window.submitPendingBulk('confirm')">批量确认删除</button>
+      <button type="button" class="btn btn-sm btn-outline-warning" onclick="window.submitPendingBulk('reject')">批量驳回</button>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead><tr><th><input type="checkbox" onclick="window.togglePendingAll(this.checked)"></th><th>时间</th><th>任务ID</th><th>匹配方式</th><th>路径</th><th>种子</th><th>原因</th><th>操作</th></tr></thead>
+        <tbody>
+        {% for p in pending_actions %}
+        <tr>
+          <td><input class="form-check-input pending-check" type="checkbox" name="pending_ids" value="{{ p.id }}"></td>
+          <td>{{ fmt_dt(p.created_at) }}</td>
+          <td>{{ p.task_id }}</td>
+          <td><span class="badge text-bg-warning">{{ p.match_by }}</span></td>
+          <td><code>{{ p.deleted_path }}</code></td>
+          <td><code>{{ p.torrent_hash or '-' }}</code></td>
+          <td>{{ p.reason or '-' }}</td>
+          <td>
+            <form class="d-inline js-ajax-form" action="/delete-monitor/pending/confirm/{{ p.id }}" method="POST" data-target="deleteJobsPanel" data-confirm="确认执行删种？此操作不可撤销。"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="password" name="critical_passphrase" class="form-control form-control-sm d-inline-block" style="width:150px" placeholder="口令(可选)"><button class="btn btn-sm btn-outline-danger">确认删除</button></form>
+            <form class="d-inline js-ajax-form" action="/delete-monitor/pending/reject/{{ p.id }}" method="POST" data-target="deleteJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-secondary">驳回</button></form>
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
   {% else %}
     <div class="text-muted">暂无待确认项</div>
   {% endif %}
 </div>
+
+<script>
+window.togglePendingAll=function(checked){
+  document.querySelectorAll('.pending-check').forEach((el)=>{el.checked=!!checked;});
+};
+window.submitPendingBulk=function(action){
+  const form=document.querySelector('form[action="/delete-monitor/pending/bulk"]');
+  if(!form) return;
+  const checked=document.querySelectorAll('.pending-check:checked').length;
+  if(checked===0){ window.HLMNotice && window.HLMNotice('请先勾选待确认项','warning'); return; }
+  window.HLMNotice && window.HLMNotice(`已选择 ${checked} 项，准备批量处理`,'info');
+  if(action==='confirm' && !window.confirm('确认批量执行删种？该操作不可撤销。')) return;
+  const input=document.getElementById('bulkActionInput');
+  if(input) input.value=action;
+  if (typeof form.requestSubmit === "function") {
+    form.requestSubmit();
+  } else {
+    form.submit();
+  }
+};
+</script>
