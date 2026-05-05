@@ -109,7 +109,7 @@ def get_release_info(force_refresh=False):
     api_base = (get_config('github_api_base', 'https://api.github.com') or 'https://api.github.com').strip().rstrip('/')
     url = f"{api_base}/repos/{repo}/releases/latest"
     checked_at = datetime.now(UTC).isoformat()
-    ttl = int(get_config('version_check_cache_minutes', '30') or '30')
+    ttl = int(get_config('version_check_cache_minutes', '720') or '720')
     if not force_refresh:
         cache_remote = (get_config('version_check_cached_remote', '') or '').strip()
         cache_checked = (get_config('version_check_cached_at', '') or '').strip()
@@ -174,6 +174,8 @@ db.init_app(app)
 bcrypt.init_app(app)
 
 RUN_LOCK = Lock()
+RUNNING_META = {}
+STOP_REQUESTED_KEYS = set()
 RUNNING_KEYS = set()
 AUTH_LOCK = Lock()
 AUTH_FAIL_WINDOW_SECONDS = 60
@@ -465,7 +467,7 @@ def delete_torrent(downloader, torrent_hash):
         return False
 
 
-def scan_hardlink_task(task_id):
+def scan_hardlink_task(task_id, should_stop=None):
     task = db.session.get(HardlinkTask, task_id)
     if not task or not task.enabled:
         return False, '任务不存在或已禁用'
@@ -485,6 +487,11 @@ def scan_hardlink_task(task_id):
     skipped_existing = 0
 
     for file_path in source.rglob('*'):
+        if should_stop and should_stop():
+            db.session.commit()
+            summary = f'扫描 {scanned}，成功 {created}，失败 {failed}；缓存命中 {cache_hit}，扩展名不匹配 {skipped_ext}，黑名单 {skipped_blacklist}，排除目录 {skipped_exclude_dir}，写入中跳过 {skipped_unstable}，已存在跳过 {skipped_existing}；已手动停止'
+            log_operation('hardlink_scan_stopped', 'HardlinkTask', task.id, task.name, summary, False)
+            return False, summary
         if not file_path.is_file() or file_path.is_symlink():
             continue
         scanned += 1
@@ -565,7 +572,7 @@ def create_pending_delete_action(task, row, deleted_path, torrent_hash, match_by
     return pending
 
 
-def scan_delete_task(task_id):
+def scan_delete_task(task_id, should_stop=None):
     task = db.session.get(DeleteMonitorTask, task_id)
     if not task or not task.enabled:
         return False, '任务不存在或已禁用'
@@ -587,14 +594,15 @@ def scan_delete_task(task_id):
         get_config,
         send_telegram_notification,
         create_pending_delete_action,
+        should_stop=should_stop,
     )
     db.session.commit()
 
     if not ok:
         return False, '超过单次删除阈值，已阻断执行'
     return True, f'检测删除 {hit_count} 条，联动删除种子 {deleted_torrents} 条，待确认 {pending_count} 条'
-def scan_backfill_task(downloader_id=None, limit=500):
-    query = FileLinkMap.query.filter(FileLinkMap.torrent_hash.is_(None), FileLinkMap.deleted_at.is_(None))
+def scan_backfill_task(downloader_id=None, limit=500, should_stop=None):
+    query = FileLinkMap.query.filter(FileLinkMap.torrent_hash.is_(None), FileLinkMap.deleted_at.is_(None), db.func.coalesce(FileLinkMap.backfill_fail_count, 0) <= 2)
     if downloader_id:
         query = query.filter(FileLinkMap.downloader_id == downloader_id)
     rows = query.limit(limit).all()
@@ -604,9 +612,28 @@ def scan_backfill_task(downloader_id=None, limit=500):
             return db.session.get(Downloader, did)
         return Downloader.query.filter_by(enabled=True, type='qbittorrent').first()
 
-    matched, conflicts, skipped = scan_backfill_rows(rows, resolve_downloader, list_torrents, list_torrent_files, log_operation)
+    matched, conflicts, skipped = scan_backfill_rows(rows, resolve_downloader, list_torrents, list_torrent_files, log_operation, should_stop=should_stop, max_failures=2)
     db.session.commit()
     return True, f'回填成功 {matched}，冲突 {conflicts}，跳过 {skipped}'
+def is_stop_requested(run_key):
+    with RUN_LOCK:
+        return run_key in STOP_REQUESTED_KEYS
+
+
+def request_stop_by_execution(execution_id):
+    with RUN_LOCK:
+        for key, meta in RUNNING_META.items():
+            if meta.get('execution_id') == execution_id:
+                STOP_REQUESTED_KEYS.add(key)
+                return True, meta
+    return False, None
+
+
+def get_running_executions_snapshot():
+    with RUN_LOCK:
+        return [dict(v) for _, v in RUNNING_META.items()]
+
+
 def _start_execution(job_name, job_type, source='manual', target_id=None):
     started_at = datetime.now(UTC)
     record = JobExecutionLog(
@@ -634,14 +661,31 @@ def _finish_execution(record, started_at, ok, message):
 def execute_with_guard(run_key, job_name, job_type, runner, source='manual', target_id=None):
     with RUN_LOCK:
         if run_key in RUNNING_KEYS:
+            meta = RUNNING_META.get(run_key, {})
+            started = meta.get('started_at')
+            if started:
+                elapsed = int((datetime.now(UTC) - started).total_seconds())
+                return False, f'任务正在执行中（已运行 {elapsed} 秒），请稍后重试'
             return False, '任务正在执行中，请稍后重试'
         RUNNING_KEYS.add(run_key)
+        STOP_REQUESTED_KEYS.discard(run_key)
 
     record = None
     started_at = None
     try:
         record, started_at = _start_execution(job_name, job_type, source=source, target_id=target_id)
-        ok, message = runner()
+        with RUN_LOCK:
+            RUNNING_META[run_key] = {
+                'run_key': run_key,
+                'execution_id': record.id,
+                'job_name': job_name,
+                'job_type': job_type,
+                'source': source,
+                'target_id': target_id,
+                'started_at': started_at,
+            }
+
+        ok, message = runner(lambda: is_stop_requested(run_key))
         _finish_execution(record, started_at, ok, message)
         return ok, message
     except Exception as exc:
@@ -657,6 +701,8 @@ def execute_with_guard(run_key, job_name, job_type, runner, source='manual', tar
     finally:
         with RUN_LOCK:
             RUNNING_KEYS.discard(run_key)
+            RUNNING_META.pop(run_key, None)
+            STOP_REQUESTED_KEYS.discard(run_key)
 
 
 def run_backup_task():
@@ -673,8 +719,8 @@ def run_hardlink_once(task_id):
     if not task:
         return False, '任务不存在'
 
-    def _runner():
-        return scan_hardlink_task(task_id)
+    def _runner(stop_checker=None):
+        return scan_hardlink_task(task_id, should_stop=stop_checker)
 
     return execute_with_guard(f'hardlink:{task_id}', task.name, 'batch_hardlink', _runner, source='manual', target_id=task_id)
 
@@ -684,8 +730,8 @@ def run_delete_once(task_id):
     if not task:
         return False, '任务不存在'
 
-    def _runner():
-        return scan_delete_task(task_id)
+    def _runner(stop_checker=None):
+        return scan_delete_task(task_id, should_stop=stop_checker)
 
     return execute_with_guard(f'delete:{task_id}', task.name, 'delete_scan', _runner, source='manual', target_id=task_id)
 
@@ -693,14 +739,17 @@ def run_delete_once(task_id):
 def run_backfill_once(downloader_id=None):
     run_key = f'backfill:{downloader_id or 0}'
 
-    def _runner():
-        return scan_backfill_task(downloader_id)
+    def _runner(stop_checker=None):
+        return scan_backfill_task(downloader_id, should_stop=stop_checker)
 
     return execute_with_guard(run_key, '映射回填', 'backfill_mapping', _runner, source='manual', target_id=downloader_id)
 
 
 def run_backup_once():
-    return execute_with_guard('backup:manual', '数据库备份', 'db_backup', run_backup_task, source='manual')
+    def _runner(stop_checker=None):
+        return run_backup_task()
+
+    return execute_with_guard('backup:manual', '数据库备份', 'db_backup', _runner, source='manual')
 
 
 def run_cron_job(job_id):
@@ -709,17 +758,17 @@ def run_cron_job(job_id):
         if not job or not job.enabled:
             return
 
-        def _runner():
+        def _runner(stop_checker=None):
             if job.task_type in {'batch_hardlink', 'hardlink_scan'}:
-                ok, msg = scan_hardlink_task(job.target_id)
+                ok, msg = scan_hardlink_task(job.target_id, should_stop=stop_checker)
                 log_operation('cron_executed', 'CronJob', job.id, job.name, f'hardlink_scan: {msg}', ok)
                 return ok, msg
             if job.task_type in {'delete_scan', 'delete_monitor_scan'}:
-                ok, msg = scan_delete_task(job.target_id)
+                ok, msg = scan_delete_task(job.target_id, should_stop=stop_checker)
                 log_operation('cron_executed', 'CronJob', job.id, job.name, f'delete_scan: {msg}', ok)
                 return ok, msg
             if job.task_type in {'backfill_mapping', 'backfill_torrent_mapping'}:
-                ok, msg = scan_backfill_task(job.target_id)
+                ok, msg = scan_backfill_task(job.target_id, should_stop=stop_checker)
                 log_operation('cron_executed', 'CronJob', job.id, job.name, f'backfill: {msg}', ok)
                 return ok, msg
             if job.task_type == 'clean_logs':
@@ -859,16 +908,31 @@ def _migration_v5():
     db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_job_execution_started_at ON job_execution_log(started_at)'))
 
 
+def _migration_v6():
+    needed = {
+        'file_link_map': {
+            'backfill_fail_count': 'ALTER TABLE file_link_map ADD COLUMN backfill_fail_count INTEGER DEFAULT 0',
+            'backfill_last_attempt_at': 'ALTER TABLE file_link_map ADD COLUMN backfill_last_attempt_at DATETIME',
+        },
+    }
+    for table, fields in needed.items():
+        existing = {row[1] for row in db.session.execute(db.text(f'PRAGMA table_info({table})')).fetchall()}
+        for col, sql in fields.items():
+            if col not in existing:
+                db.session.execute(db.text(sql))
+    db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_file_link_map_backfill_fail_count ON file_link_map(backfill_fail_count)"))
+
+
 def ensure_compat_columns():
     # Versioned, idempotent migrations. Supports forward upgrades safely.
     # For downgrades, restore DB from backup before running older code.
-    target = 5
+    target = 6
     current = _get_schema_version()
     if current > target:
         app.logger.warning('db schema version %s is newer than app target %s; running in compatibility mode', current, target)
         return
 
-    migrations = {1: _migration_v1, 2: _migration_v2, 3: _migration_v3, 4: _migration_v4, 5: _migration_v5}
+    migrations = {1: _migration_v1, 2: _migration_v2, 3: _migration_v3, 4: _migration_v4, 5: _migration_v5, 6: _migration_v6}
     for version in range(current + 1, target + 1):
         migrations[version]()
         _set_schema_version(version)
@@ -903,7 +967,7 @@ def init_defaults():
         ('proxy_url', 'http://127.0.0.1:7890', '统一外网代理地址（Telegram/GitHub），留空则直连'),
         ('app_log_max_mb', '10', '应用日志单文件大小上限（MB）'),
         ('app_log_backup_count', '5', '应用日志滚动保留文件数'),
-        ('version_check_cache_minutes', '30', '版本检查缓存分钟数'),
+        ('version_check_cache_minutes', '720', '版本检查缓存分钟数'),
         ('critical_action_passphrase', '', '关键操作口令（留空=不启用）'),
     ]
     for key, value, desc in default_configs:
@@ -916,8 +980,13 @@ def init_system_jobs():
         db.session.add(CronJob(name='系统日志清理', task_type='clean_logs', cron_expression='0 3 * * *', description='每天凌晨3点自动清理日志'))
     if not CronJob.query.filter_by(name='系统缓存清理').first():
         db.session.add(CronJob(name='系统缓存清理', task_type='clean_cache', cron_expression='30 3 * * *', description='每天凌晨3:30清理缓存'))
-    if not CronJob.query.filter_by(name='系统映射回填').first():
-        db.session.add(CronJob(name='系统映射回填', task_type='backfill_mapping', cron_expression='*/30 * * * *', description='每30分钟回填文件与种子映射'))
+    backfill_job = CronJob.query.filter_by(name='系统映射回填').first()
+    if not backfill_job:
+        db.session.add(CronJob(name='系统映射回填', task_type='backfill_mapping', cron_expression='0 * * * *', description='每60分钟回填文件与种子映射'))
+    else:
+        if backfill_job.cron_expression == '*/30 * * * *':
+            backfill_job.cron_expression = '0 * * * *'
+            backfill_job.description = '每60分钟回填文件与种子映射'
     if not CronJob.query.filter_by(name='系统数据库备份').first():
         db.session.add(CronJob(name='系统数据库备份', task_type='db_backup', cron_expression='0 */6 * * *', description='每6小时执行一次数据库备份'))
     db.session.commit()
@@ -974,6 +1043,8 @@ def init_app():
             send_telegram_notification=send_telegram_notification,
             delete_torrent=delete_torrent,
             get_release_info=get_release_info,
+            request_stop_by_execution=request_stop_by_execution,
+            get_running_executions_snapshot=get_running_executions_snapshot,
         )))
         APP_BOOTSTRAPPED = True
 

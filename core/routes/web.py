@@ -37,6 +37,8 @@ def init_web_routes(ctx: RouteDeps):
     send_telegram_notification = ctx.send_telegram_notification
     delete_torrent_func = ctx.delete_torrent
     get_release_info = ctx.get_release_info
+    request_stop_by_execution = ctx.request_stop_by_execution
+    get_running_executions_snapshot = ctx.get_running_executions_snapshot
 
     def _wants_json():
         return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
@@ -129,6 +131,7 @@ def init_web_routes(ctx: RouteDeps):
         executions = JobExecutionLog.query.order_by(JobExecutionLog.started_at.desc()).limit(10).all()
         success_runs = JobExecutionLog.query.filter_by(status='success').count()
         failed_runs = JobExecutionLog.query.filter_by(status='failed').count()
+        running_execs = [e for e in executions if e.status == 'running']
         return render_template(
             'dashboard.html',
             hardlink_tasks=hardlink_tasks,
@@ -146,7 +149,34 @@ def init_web_routes(ctx: RouteDeps):
             notifier_count=Notifier.query.count(),
             success_runs=success_runs,
             failed_runs=failed_runs,
+            running_executions=running_execs,
         )
+
+    @web_bp.route('/executions/retry/<int:execution_id>', methods=['POST'])
+    def execution_retry(execution_id):
+        e = db.session.get(JobExecutionLog, execution_id)
+        if not e:
+            return _json_or_redirect(False, '执行记录不存在', '/', status=404)
+
+        if e.job_type in {'batch_hardlink', 'hardlink_scan'} and e.target_id:
+            ok, msg = run_hardlink_once(e.target_id)
+        elif e.job_type in {'delete_scan', 'delete_monitor_scan'} and e.target_id:
+            ok, msg = run_delete_once(e.target_id)
+        elif e.job_type in {'backfill_mapping', 'backfill_torrent_mapping'}:
+            ok, msg = run_backfill_once(e.target_id)
+        elif e.job_type == 'db_backup':
+            ok, msg = run_backup_once()
+        else:
+            return _json_or_redirect(False, f'该任务类型暂不支持重试: {e.job_type}', '/', status=400)
+        return _json_or_redirect(ok, msg, '/', status=200 if ok else 400)
+
+    @web_bp.route('/executions/stop/<int:execution_id>', methods=['POST'])
+    def execution_stop(execution_id):
+        ok, meta = request_stop_by_execution(execution_id)
+        if not ok:
+            return _json_or_redirect(False, '该任务当前未在运行，无法停止', request.referrer or '/', status=400)
+        return _json_or_redirect(True, f"已发送停止请求：{meta.get('job_name','任务')}（请等待当前步骤结束）", request.referrer or '/')
+
 
     @web_bp.route('/hardlink')
     def hardlink_list():
@@ -947,13 +977,25 @@ def init_web_routes(ctx: RouteDeps):
             current_schema = str(row[0]) if row and row[0] is not None else '0'
         except Exception:
             current_schema = '0'
-        checks.append(('数据库结构版本', True, f'current={current_schema}, target=3'))
+        checks.append(('数据库结构版本', True, f'current={current_schema}, target=6'))
 
         checks.append(('代理配置', True, (get_config('proxy_url','') or '').strip() or '未设置（直连）'))
         checks.append(('应用版本', True, get_release_info().get('local_version','-')))
         checks.append(('日志目录', True, str(Path('data/logs').resolve())))
 
-        return render_template('diagnostics.html', checks=checks)
+        running_execs = JobExecutionLog.query.filter_by(status='running').order_by(JobExecutionLog.started_at.asc()).limit(50).all()
+        running_snaps = get_running_executions_snapshot()
+        now = __import__('datetime').datetime.now(__import__('datetime').UTC)
+        snap_map = {x.get('execution_id'): x for x in running_snaps}
+        running_rows = []
+        for e in running_execs:
+            started = e.started_at
+            if started and started.tzinfo is None:
+                started = started.replace(tzinfo=__import__('datetime').UTC)
+            elapsed = int((now - started).total_seconds()) if started else 0
+            running_rows.append({'id': e.id, 'job_name': e.job_name, 'job_type': e.job_type, 'source': e.source, 'elapsed_seconds': elapsed, 'target_id': e.target_id, 'has_snapshot': e.id in snap_map})
+
+        return render_template('diagnostics.html', checks=checks, running_rows=running_rows)
 
     @web_bp.route('/delete-monitor/preview/<int:task_id>', methods=['POST'])
     def delete_monitor_preview(task_id):

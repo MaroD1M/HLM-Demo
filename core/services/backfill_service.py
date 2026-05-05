@@ -9,7 +9,7 @@ def _basename(v):
     return Path(str(v or '')).name.lower()
 
 
-def _match_by_filelist(row, downloader, candidate_torrents, list_torrent_files):
+def _match_by_filelist(row, downloader, candidate_torrents, list_torrent_files, files_cache=None, exact_cache=None):
     """Strong match: basename + file_size against qb torrent file list.
 
     Returns tuple: (hash or None, reason)
@@ -18,12 +18,25 @@ def _match_by_filelist(row, downloader, candidate_torrents, list_torrent_files):
     if not base or row.file_size in (None, 0):
         return None, 'missing_basename_or_size'
 
+    if files_cache is None:
+        files_cache = {}
+    if exact_cache is None:
+        exact_cache = {}
+
+    key = (base, int(row.file_size or 0), tuple(sorted(str(t.get('hash') or '').strip() for t in candidate_torrents if str(t.get('hash') or '').strip())))
+    if key in exact_cache:
+        return exact_cache[key]
+
     winners = []
     for torrent in candidate_torrents:
         th = str(torrent.get('hash') or '').strip()
         if not th:
             continue
-        files = list_torrent_files(downloader, th)
+        if th in files_cache:
+            files = files_cache[th]
+        else:
+            files = list_torrent_files(downloader, th)
+            files_cache[th] = files
         if files is None:
             continue
         for f in files:
@@ -38,13 +51,19 @@ def _match_by_filelist(row, downloader, candidate_torrents, list_torrent_files):
 
     uniq = sorted(set(winners))
     if len(uniq) == 1:
-        return uniq[0], 'filelist_exact'
+        result = (uniq[0], 'filelist_exact')
+        exact_cache[key] = result
+        return result
     if len(uniq) > 1:
-        return None, f'filelist_conflict:{len(uniq)}'
-    return None, 'filelist_no_match'
+        result = (None, f'filelist_conflict:{len(uniq)}')
+        exact_cache[key] = result
+        return result
+    result = (None, 'filelist_no_match')
+    exact_cache[key] = result
+    return result
 
 
-def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_files, log_operation):
+def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_files, log_operation, should_stop=None, max_failures=2):
     """Backfill torrent hash for mapping rows.
 
     Strategy:
@@ -61,6 +80,8 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
         groups.setdefault(row.downloader_id, []).append(row)
 
     for downloader_id, items in groups.items():
+        files_cache = {}
+        exact_cache = {}
         downloader = downloader_resolver(downloader_id)
         if not downloader:
             skipped += len(items)
@@ -72,6 +93,9 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
             continue
 
         for row in items:
+            if should_stop and should_stop():
+                log_operation('backfill_stopped', 'FileLinkMap', None, '映射回填', '收到停止指令，已中止本轮回填', False)
+                return matched, conflicts, skipped
             src = Path(row.source_path or '')
             dst = Path(row.dest_path or '')
 
@@ -109,17 +133,29 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
                 candidates = torrents
 
             # Strong decision by torrent file list exactness.
-            matched_hash, reason = _match_by_filelist(row, downloader, candidates, list_torrent_files)
+            matched_hash, reason = _match_by_filelist(row, downloader, candidates, list_torrent_files, files_cache=files_cache, exact_cache=exact_cache)
             if fallback_mode and reason == 'filelist_no_match':
                 reason = 'candidate_empty_fallback_no_match'
             if matched_hash:
                 row.torrent_hash = matched_hash
                 row.downloader_id = downloader.id
                 row.source_type = 'downloader'
+                row.backfill_fail_count = 0
+                row.backfill_last_attempt_at = None
                 matched += 1
                 if fallback_mode and reason == 'filelist_exact':
                     reason = 'candidate_empty_fallback_matched'
                 log_operation('backfill_matched', 'FileLinkMap', row.id, probe.name, f'hash={matched_hash};reason={reason}')
+                continue
+
+            # track failed attempts to avoid repeated expensive retries forever
+            fail_count = int(getattr(row, 'backfill_fail_count', 0) or 0) + 1
+            row.backfill_fail_count = fail_count
+            row.backfill_last_attempt_at = __import__('datetime').datetime.now(__import__('datetime').UTC)
+
+            if fail_count > max_failures:
+                skipped += 1
+                log_operation('backfill_skipped', 'FileLinkMap', row.id, probe.name, f'{reason};skip_permanent_after={max_failures}', False)
                 continue
 
             if reason.startswith('filelist_conflict'):
