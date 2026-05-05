@@ -577,15 +577,14 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
     if not task or not task.enabled:
         return False, '任务不存在或已禁用'
 
+    if (not task.monitor_source_delete) and (not task.monitor_dest_delete):
+        return True, '删除联动未启用（源删/目标删均关闭）'
+
     downloader = db.session.get(Downloader, task.delete_downloader_id) if task.delete_downloader_id else None
     notifier = db.session.get(Notifier, task.delete_notifier_id) if task.delete_notifier_id else None
 
     class _ProxyTask:
         pass
-
-    deleted_torrents = 0
-    hit_total = 0
-    pending_total = 0
 
     legacy_task = DeleteMonitorTask.query.filter_by(name=f'[兼容]硬链接任务#{task.id}').first()
     if not legacy_task:
@@ -605,6 +604,66 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
         db.session.add(legacy_task)
         db.session.flush()
 
+    now = datetime.now(UTC)
+    cooldown = int(task.delete_cooldown_seconds or 120)
+    max_del = int(task.delete_max_deletes_per_run or 20)
+
+    rows = FileLinkMap.query.filter(FileLinkMap.task_id == task.id, FileLinkMap.deleted_at.is_(None)).all()
+    candidates = []
+    for row in rows:
+        if should_stop and should_stop():
+            break
+        src = str(row.source_path or '')
+        dst = str(row.dest_path or '')
+        src_exists = Path(src).exists() if src else False
+        dst_exists = Path(dst).exists() if dst else False
+
+        deleted_side = None
+        deleted_path = ''
+        if task.monitor_source_delete and src and not src_exists:
+            deleted_side = 'source'
+            deleted_path = src
+        elif task.monitor_dest_delete and dst and not dst_exists:
+            deleted_side = 'dest'
+            deleted_path = dst
+
+        if not deleted_side:
+            continue
+
+        last_seen = row.last_seen_at
+        if last_seen and last_seen.tzinfo is None:
+            last_seen = last_seen.replace(tzinfo=UTC)
+        if last_seen and (now - last_seen).total_seconds() < cooldown:
+            continue
+        candidates.append((row, deleted_side, deleted_path))
+
+    if len(candidates) > max_del:
+        log_operation('delete_guard_blocked', 'HardlinkTask', task.id, task.name, f'本轮命中 {len(candidates)} 超过阈值 {max_del}', False)
+        return False, f'删除联动已阻断：本轮命中 {len(candidates)} 超过阈值 {max_del}'
+
+    deleted_torrents = 0
+    pending_total = 0
+    hit_total = 0
+    linked_removed = 0
+
+    def _prune_empty_dirs_from(file_path: str, root_path: str):
+        try:
+            root = Path(root_path).resolve(strict=False)
+            cur = Path(file_path).parent
+            while True:
+                try:
+                    cur_res = cur.resolve(strict=False)
+                    if str(cur_res) == str(root) or not str(cur_res).startswith(str(root)):
+                        break
+                    if any(cur.iterdir()):
+                        break
+                    cur.rmdir()
+                    cur = cur.parent
+                except Exception:
+                    break
+        except Exception:
+            return
+
     def _create_pending_action(_proxy_task, row, deleted_path, torrent_hash, match_by, reason):
         pending = DeletePendingAction(
             task_id=legacy_task.id,
@@ -618,24 +677,74 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
         db.session.add(pending)
         return pending
 
-    def _run_for_root(root_dir):
-        nonlocal deleted_torrents, hit_total, pending_total
+    for row, deleted_side, deleted_path in candidates:
+        if should_stop and should_stop():
+            log_operation('delete_scan_stopped', 'HardlinkTask', task.id, task.name, '收到停止指令，已中止本轮删除联动', False)
+            break
+
+        # 不能在这里提前写入时间戳，否则后续会被冷却窗口误判为“刚处理过”
+        hit_total += 1
+
+        src = str(row.source_path or '')
+        dst = str(row.dest_path or '')
+        source_type = (row.source_type or 'manual').strip().lower()
+        if source_type not in {'manual', 'downloader'}:
+            source_type = 'manual'
+        # 历史数据兜底：只要已有下载器关联信息，按下载器来源处理。
+        if source_type == 'manual' and (((row.torrent_hash or '').strip()) or row.downloader_id):
+            source_type = 'downloader'
+
+        if deleted_side == 'source':
+            counterpart = dst
+            policy_key = 'manual_source_delete_delete_dest' if source_type == 'manual' else 'downloader_source_delete_delete_dest'
+            action_label = 'source_deleted'
+        else:
+            counterpart = src
+            policy_key = 'manual_dest_delete_delete_source' if source_type == 'manual' else 'downloader_dest_delete_delete_source'
+            action_label = 'dest_deleted'
+
+        counterpart_removed = None
+        if counterpart and str(get_config(policy_key, 'true')).lower() == 'true':
+            counterpart_removed = False
+            try:
+                cp = Path(counterpart)
+                if cp.exists() and cp.is_file():
+                    cp.unlink()
+                    counterpart_removed = True
+                    linked_removed += 1
+                    # 对侧文件删除后，顺带清理空目录，避免残留 a/ 这类空壳目录。
+                    if deleted_side == 'source':
+                        _prune_empty_dirs_from(counterpart, task.dest_dir)
+                    else:
+                        _prune_empty_dirs_from(counterpart, task.source_dir)
+            except Exception:
+                counterpart_removed = False
+
+            if counterpart_removed:
+                log_operation('linked_file_deleted', 'FileLinkMap', row.id, task.name, f'{action_label} -> delete_counterpart: {counterpart}')
+            else:
+                log_operation('linked_file_delete_skip', 'FileLinkMap', row.id, task.name, f'{action_label} -> counterpart_missing_or_failed: {counterpart}')
+                # 即便文件已不存在，也尝试清理可能遗留的空目录。
+                if deleted_side == 'source':
+                    _prune_empty_dirs_from(counterpart, task.dest_dir)
+                else:
+                    _prune_empty_dirs_from(counterpart, task.source_dir)
+
         proxy = _ProxyTask()
         proxy.id = task.id
         proxy.name = f'{task.name}:删除联动'
-        proxy.directory = root_dir
+        proxy.directory = task.source_dir if deleted_side == 'source' else task.dest_dir
         proxy.downloader = downloader
         proxy.notifier = notifier
-        proxy.cooldown_seconds = int(task.delete_cooldown_seconds or 120)
-        proxy.max_deletes_per_run = int(task.delete_max_deletes_per_run or 20)
+        proxy.cooldown_seconds = cooldown
+        proxy.max_deletes_per_run = max_del
         proxy.dry_run = bool(task.delete_dry_run)
         proxy.notify_on_delete = bool(task.delete_notify_on_delete)
         proxy.notify_on_risky_delete = bool(task.delete_notify_on_risky_delete)
 
-        rows = FileLinkMap.query.filter(FileLinkMap.task_id == task.id, FileLinkMap.deleted_at.is_(None)).all()
-        ok, deleted_cnt, hit_cnt, pending_cnt = scan_delete_rows(
+        ok, deleted_cnt, _hits, pending_cnt = scan_delete_rows(
             proxy,
-            rows,
+            [row],
             try_match_torrent_by_mapping_or_name,
             delete_torrent,
             log_operation,
@@ -644,23 +753,16 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
             _create_pending_action,
             should_stop=should_stop,
         )
+        if not ok:
+            db.session.commit()
+            return False, f'删除联动已阻断：检测删除 {hit_total}，删种 {deleted_torrents}，待确认 {pending_total}'
         deleted_torrents += int(deleted_cnt or 0)
-        hit_total += int(hit_cnt or 0)
         pending_total += int(pending_cnt or 0)
-        return ok
-
-    if task.monitor_source_delete:
-        if not _run_for_root(task.source_dir):
-            db.session.commit()
-            return False, f'删除联动已阻断：检测删除 {hit_total}，删种 {deleted_torrents}，待确认 {pending_total}'
-
-    if task.monitor_dest_delete:
-        if not _run_for_root(task.dest_dir):
-            db.session.commit()
-            return False, f'删除联动已阻断：检测删除 {hit_total}，删种 {deleted_torrents}，待确认 {pending_total}'
 
     db.session.commit()
-    return True, f'删除联动完成：检测删除 {hit_total}，联动删种 {deleted_torrents}，待确认 {pending_total}'
+    return True, f'删除联动完成：检测删除 {hit_total}，联动删种 {deleted_torrents}，待确认 {pending_total}，对侧删除 {linked_removed}'
+
+
 
 
 def scan_delete_task(task_id, should_stop=None):
