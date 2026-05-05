@@ -132,7 +132,11 @@ def init_web_routes(ctx: RouteDeps):
         executions = JobExecutionLog.query.order_by(JobExecutionLog.started_at.desc()).limit(10).all()
         success_runs = JobExecutionLog.query.filter_by(status='success').count()
         failed_runs = JobExecutionLog.query.filter_by(status='failed').count()
-        running_execs = [e for e in executions if e.status == 'running']
+
+        running_snaps = get_running_executions_snapshot()
+        running_ids = set([x.get('execution_id') for x in running_snaps if x.get('execution_id')])
+        stale_running_ids = set([e.id for e in executions if e.status == 'running' and e.id not in running_ids])
+
         return render_template(
             'dashboard.html',
             hardlink_tasks=hardlink_tasks,
@@ -142,7 +146,7 @@ def init_web_routes(ctx: RouteDeps):
             cron_jobs=CronJob.query.all(),
             recent_logs=OperationLog.query.order_by(OperationLog.created_at.desc()).limit(10).all(),
             recent_executions=executions,
-            running_count=sum(1 for t in hardlink_tasks if t.enabled) + sum(1 for t in delete_tasks if t.enabled),
+            running_count=len(running_snaps),
             total_tasks=len(hardlink_tasks) + len(delete_tasks),
             hardlink_count=len(hardlink_tasks),
             delete_count=len(delete_tasks),
@@ -150,7 +154,8 @@ def init_web_routes(ctx: RouteDeps):
             notifier_count=Notifier.query.count(),
             success_runs=success_runs,
             failed_runs=failed_runs,
-            running_executions=running_execs,
+            running_executions=running_snaps,
+            stale_running_ids=stale_running_ids,
         )
 
     @web_bp.route('/executions/retry/<int:execution_id>', methods=['POST'])
@@ -175,7 +180,7 @@ def init_web_routes(ctx: RouteDeps):
     def execution_stop(execution_id):
         ok, meta = request_stop_by_execution(execution_id)
         if not ok:
-            return _json_or_redirect(False, '该任务当前未在运行，无法停止', request.referrer or '/', status=400)
+            return _json_or_redirect(True, '任务已结束或未在运行，无需停止', request.referrer or '/')
         return _json_or_redirect(True, f"已发送停止请求：{meta.get('job_name','任务')}（请等待当前步骤结束）", request.referrer or '/')
 
 
@@ -809,7 +814,9 @@ def init_web_routes(ctx: RouteDeps):
             html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
             return _json_or_redirect(True, '该映射已关联种子，无需重试', '/mapping', html=html, target='mappingPanel')
 
-        ok, msg = run_backfill_for_map_id(map_id)
+        retry_mode = (request.form.get('retry_mode') or 'fast').strip().lower()
+        deep_retry = retry_mode == 'deep'
+        ok, msg = run_backfill_for_map_id(map_id, deep_retry=deep_retry)
         db.session.refresh(row)
         payload = _mapping_payload()
         html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
@@ -1012,17 +1019,21 @@ def init_web_routes(ctx: RouteDeps):
         checks.append(('应用版本', True, get_release_info().get('local_version','-')))
         checks.append(('日志目录', True, str(Path('data/logs').resolve())))
 
-        running_execs = JobExecutionLog.query.filter_by(status='running').order_by(JobExecutionLog.started_at.asc()).limit(50).all()
         running_snaps = get_running_executions_snapshot()
         now = __import__('datetime').datetime.now(__import__('datetime').UTC)
-        snap_map = {x.get('execution_id'): x for x in running_snaps}
         running_rows = []
-        for e in running_execs:
-            started = e.started_at
-            if started and started.tzinfo is None:
-                started = started.replace(tzinfo=__import__('datetime').UTC)
+        for snap in running_snaps:
+            started = snap.get('started_at')
             elapsed = int((now - started).total_seconds()) if started else 0
-            running_rows.append({'id': e.id, 'job_name': e.job_name, 'job_type': e.job_type, 'source': e.source, 'elapsed_seconds': elapsed, 'target_id': e.target_id, 'has_snapshot': e.id in snap_map})
+            running_rows.append({
+                'id': snap.get('execution_id'),
+                'job_name': snap.get('job_name') or '-',
+                'job_type': snap.get('job_type') or '-',
+                'source': snap.get('source') or '-',
+                'elapsed_seconds': max(0, elapsed),
+                'target_id': snap.get('target_id'),
+                'has_snapshot': True,
+            })
 
         return render_template('diagnostics.html', checks=checks, running_rows=running_rows)
 
@@ -1087,13 +1098,27 @@ def init_web_routes(ctx: RouteDeps):
             return _json_or_redirect(False, '定时任务不存在', '/cron', status=404)
 
         name = (request.form.get('name') or '').strip()
+        task_type = (request.form.get('task_type') or c.task_type or '').strip()
+        target_id = request.form.get('target_id', type=int)
         cron_expression = (request.form.get('custom_cron') or '').strip()
         if not name:
             return _json_or_redirect(False, '任务名称不能为空', '/cron', status=400)
         if not validate_cron_expression(cron_expression):
             return _json_or_redirect(False, 'Cron 表达式格式错误（应为 5 段，例如 0 3 * * *）', '/cron', status=400)
 
+        allowed_types = {'batch_hardlink', 'delete_scan', 'backfill_mapping', 'clean_logs', 'clean_cache', 'db_backup'}
+        if task_type not in allowed_types:
+            return _json_or_redirect(False, '不支持的任务类型', '/cron', status=400)
+        if task_type == 'batch_hardlink' and (not target_id or not db.session.get(HardlinkTask, target_id)):
+            return _json_or_redirect(False, '请选择有效的硬链接任务', '/cron', status=400)
+        if task_type == 'delete_scan' and (not target_id or not db.session.get(DeleteMonitorTask, target_id)):
+            return _json_or_redirect(False, '请选择有效的删除监控任务', '/cron', status=400)
+        if task_type in {'clean_logs', 'clean_cache', 'backfill_mapping', 'db_backup'}:
+            target_id = None
+
         c.name = name
+        c.task_type = task_type
+        c.target_id = target_id
         c.cron_expression = cron_expression
         c.description = request.form.get('description')
         db.session.commit()

@@ -634,6 +634,17 @@ def get_running_executions_snapshot():
         return [dict(v) for _, v in RUNNING_META.items()]
 
 
+def is_run_key_active(run_key):
+    with RUN_LOCK:
+        return run_key in RUNNING_KEYS
+
+
+def get_run_meta(run_key):
+    with RUN_LOCK:
+        meta = RUNNING_META.get(run_key)
+        return dict(meta) if meta else None
+
+
 def _start_execution(job_name, job_type, source='manual', target_id=None):
     started_at = datetime.now(UTC)
     record = JobExecutionLog(
@@ -745,7 +756,7 @@ def run_backfill_once(downloader_id=None):
     return execute_with_guard(run_key, '映射回填', 'backfill_mapping', _runner, source='manual', target_id=downloader_id)
 
 
-def run_backfill_for_map_id(map_id):
+def run_backfill_for_map_id(map_id, deep_retry=False):
     row = db.session.get(FileLinkMap, map_id)
     if not row:
         return False, '映射记录不存在'
@@ -779,18 +790,21 @@ def run_backfill_for_map_id(map_id):
             log_operation,
             should_stop=stop_checker,
             max_failures=2,
+            allow_global_fallback=bool(deep_retry),
+            max_candidates=120 if deep_retry else 40,
         )
         db.session.commit()
         db.session.refresh(target)
         if target.torrent_hash:
-            return True, f'单条回填成功：hash={target.torrent_hash}'
+            return True, f'单条回填成功：hash={target.torrent_hash}（匹配统计：成功{matched}/冲突{conflicts}/跳过{skipped}）'
         if conflicts:
-            return False, '单条回填未成功：检测到候选冲突，请检查下载器内同名同大小文件'
+            return False, f'单条回填未成功：检测到候选冲突（成功{matched}/冲突{conflicts}/跳过{skipped}）'
         if skipped:
-            return False, '单条回填未成功：未命中可用种子或已达到跳过阈值'
-        return False, '单条回填未成功：未匹配到候选种子'
+            return False, f'单条回填未成功：未命中可用种子或已达到跳过阈值（成功{matched}/冲突{conflicts}/跳过{skipped}）'
+        return False, f'单条回填未成功：未匹配到候选种子（成功{matched}/冲突{conflicts}/跳过{skipped}）'
 
-    return execute_with_guard(run_key, '单条映射回填', 'backfill_mapping_single', _runner, source='manual', target_id=map_id)
+    mode_text = '深度重试' if deep_retry else '快速重试'
+    return execute_with_guard(run_key, f'单条映射回填（{mode_text}）', 'backfill_mapping_single', _runner, source='manual', target_id=map_id)
 
 
 def run_backup_once():
@@ -804,6 +818,22 @@ def run_cron_job(job_id):
     with app.app_context():
         job = db.session.get(CronJob, job_id)
         if not job or not job.enabled:
+            return
+
+        related_key = None
+        if job.task_type in {'batch_hardlink', 'hardlink_scan'} and job.target_id:
+            related_key = f'hardlink:{job.target_id}'
+        elif job.task_type in {'delete_scan', 'delete_monitor_scan'} and job.target_id:
+            related_key = f'delete:{job.target_id}'
+        elif job.task_type in {'backfill_mapping', 'backfill_torrent_mapping'}:
+            related_key = f'backfill:{job.target_id or 0}'
+
+        if related_key and is_run_key_active(related_key):
+            meta = get_run_meta(related_key) or {}
+            started = meta.get('started_at')
+            elapsed = int((datetime.now(UTC) - started).total_seconds()) if started else 0
+            msg = f'上次同任务仍在执行（{elapsed} 秒），已跳过本次定时执行'
+            log_operation('cron_skipped_already_running', 'CronJob', job.id, job.name, msg, False)
             return
 
         def _runner(stop_checker=None):
@@ -1040,6 +1070,25 @@ def init_system_jobs():
     db.session.commit()
 
 
+def reconcile_stale_running_executions():
+    stale = JobExecutionLog.query.filter_by(status='running').all()
+    if not stale:
+        return 0
+    now = datetime.now(UTC)
+    for row in stale:
+        row.status = 'failed'
+        row.message = '服务重启导致上次执行中断（已自动修正状态）'
+        row.finished_at = now
+        if row.started_at:
+            started = row.started_at if row.started_at.tzinfo else row.started_at.replace(tzinfo=UTC)
+            row.duration_ms = max(0, int((now - started).total_seconds() * 1000))
+        else:
+            row.duration_ms = row.duration_ms or 0
+    db.session.commit()
+    app.logger.warning('reconciled stale running executions: %s', len(stale))
+    return len(stale)
+
+
 def init_app():
     global APP_BOOTSTRAPPED
     if app.config['SECRET_KEY'] == 'default-secret-key-for-dev-only':
@@ -1054,6 +1103,7 @@ def init_app():
         init_file_logger()
         app.logger.info('startup access_log_enabled=%s tz=%s version=%s', app.config.get('ACCESS_LOG_ENABLED'), os.environ.get('TZ', ''), app.config.get('APP_VERSION'))
         init_system_jobs()
+        reconcile_stale_running_executions()
         start_cron_scheduler()
         if APP_BOOTSTRAPPED:
             return

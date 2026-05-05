@@ -27,8 +27,8 @@
     .section-card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,#ffffff,#f9fcff);padding:14px}
     .section-title{font-weight:700;color:#0c4f66}
     .hint-icon{color:#0c4f66;cursor:help;margin-left:4px}
-    #liveFeedback{position:sticky;top:10px;z-index:1055}
-    #liveFeedback .alert{box-shadow:0 8px 24px rgba(12,32,54,.18)}
+    #liveFeedback{position:fixed;right:16px;bottom:16px;z-index:2000;display:flex;flex-direction:column;gap:10px;max-width:min(92vw,420px);pointer-events:none}
+    #liveFeedback .alert{box-shadow:0 8px 24px rgba(12,32,54,.18);pointer-events:auto;margin:0}
     @keyframes fadeIn{from{opacity:.0;transform:translateY(4px)}to{opacity:1;transform:none}}
     @media (max-width:960px){.shell{grid-template-columns:1fr}.side{height:auto;position:relative}.main{padding:16px}}
   </style>
@@ -69,8 +69,16 @@
 window.HLMNotice=function(msg,level){
   const box=document.getElementById('liveFeedback');
   if(!box||!msg) return;
-  box.innerHTML=`<div class="alert alert-${level} alert-dismissible fade show" role="alert">${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
-  window.setTimeout(()=>{const a=box.querySelector('.alert'); if(a){a.classList.remove('show'); a.classList.add('hide'); setTimeout(()=>{if(box.contains(a)) a.remove();},250);}},2600);
+  const alert=document.createElement('div');
+  alert.className=`alert alert-${level||'info'} alert-dismissible fade show`;
+  alert.setAttribute('role','alert');
+  alert.innerHTML=`${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+  box.appendChild(alert);
+  window.setTimeout(()=>{
+    if(!alert || !box.contains(alert)) return;
+    alert.classList.remove('show');
+    setTimeout(()=>{if(box.contains(alert)) alert.remove();},280);
+  },5000);
 };
 
 window.HLMAjax={
@@ -118,7 +126,7 @@ window.HLMAjax={
             document.body.classList.remove('modal-open');
             document.body.style.removeProperty('padding-right');
             document.querySelectorAll('.modal form.js-ajax-form').forEach((f)=>{ if(f.hasAttribute('data-keep-values')) return; try{f.reset&&f.reset();}catch(_){}});
-            window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();if(window.bindMappingPanel) window.bindMappingPanel();
+            window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();if(window.initCronEditModal) window.initCronEditModal();if(window.bindMappingPanel) window.bindMappingPanel();
           }
         }catch(err){
           const msg=(err&&err.message&&String(err.message).startsWith('NON_JSON_'))
@@ -156,6 +164,7 @@ window.HLMAjax.bindFilters=function(){
           window.HLMAjax.bind();
           window.HLMAjax.bindFilters();
           if(window.bindCronPreview) window.bindCronPreview();
+          if(window.initCronEditModal) window.initCronEditModal();
           if(window.bindMappingPanel) window.bindMappingPanel();
           window.HLMNotice && window.HLMNotice('筛选已更新','success');
         }
