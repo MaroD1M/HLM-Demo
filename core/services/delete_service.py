@@ -96,9 +96,10 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
         row.deleted_at = now
         hits.append((row, deleted_path))
 
-    if len(hits) > task.max_deletes_per_run:
-        log_operation('delete_guard_blocked', 'DeleteMonitorTask', task.id, task.name, f'本轮命中 {len(hits)} 超过阈值 {task.max_deletes_per_run}', False)
-        return False, 0, len(hits), 0
+    total_hits = len(hits)
+    if total_hits > task.max_deletes_per_run:
+        log_operation('delete_guard_truncated', 'DeleteMonitorTask', task.id, task.name, f'本轮命中 {total_hits}，按阈值分批执行前 {task.max_deletes_per_run} 条，其余待下轮处理', True)
+        hits = hits[:task.max_deletes_per_run]
 
     deleted_torrents = 0
     pending_count = 0
@@ -191,4 +192,4 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
         else:
             log_operation('torrent_delete_failed', 'DeleteMonitorTask', task.id, task.name, f'删除失败 {torrent_hash}', False)
 
-    return True, deleted_torrents, len(hits), pending_count
+    return True, deleted_torrents, total_hits, pending_count
