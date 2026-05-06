@@ -637,9 +637,10 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
             continue
         candidates.append((row, deleted_side, deleted_path))
 
-    if len(candidates) > max_del:
-        log_operation('delete_guard_blocked', 'HardlinkTask', task.id, task.name, f'本轮命中 {len(candidates)} 超过阈值 {max_del}', False)
-        return False, f'删除联动已阻断：本轮命中 {len(candidates)} 超过阈值 {max_del}'
+    total_candidates = len(candidates)
+    if total_candidates > max_del:
+        log_operation('delete_guard_truncated', 'HardlinkTask', task.id, task.name, f'本轮命中 {total_candidates}，按阈值分批执行前 {max_del} 条，其余待下轮处理', True)
+        candidates = candidates[:max_del]
 
     deleted_torrents = 0
     pending_total = 0
@@ -760,7 +761,7 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
         pending_total += int(pending_cnt or 0)
 
     db.session.commit()
-    return True, f'删除联动完成：检测删除 {hit_total}，联动删种 {deleted_torrents}，待确认 {pending_total}，对侧删除 {linked_removed}'
+    return True, f'删除联动完成：本轮处理 {hit_total}/{total_candidates}，联动删种 {deleted_torrents}，待确认 {pending_total}，对侧删除 {linked_removed}'
 
 
 
@@ -792,8 +793,8 @@ def scan_delete_task(task_id, should_stop=None):
     db.session.commit()
 
     if not ok:
-        return False, '超过单次删除阈值，已阻断执行'
-    return True, f'检测删除 {hit_count} 条，联动删除种子 {deleted_torrents} 条，待确认 {pending_count} 条'
+        return False, '删除任务执行失败'
+    return True, f'删除联动完成：本轮处理 {min(hit_count, task.max_deletes_per_run)}/{hit_count} 条，联动删除种子 {deleted_torrents} 条，待确认 {pending_count} 条'
 def scan_backfill_task(downloader_id=None, limit=500, should_stop=None):
     query = FileLinkMap.query.filter(FileLinkMap.torrent_hash.is_(None), FileLinkMap.deleted_at.is_(None), db.func.coalesce(FileLinkMap.backfill_fail_count, 0) <= 2)
     if downloader_id:
