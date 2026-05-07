@@ -113,23 +113,27 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
         src = str(row.source_path or '')
         dst = str(row.dest_path or '')
         raw_source_type = (row.source_type or '').strip().lower()
-        if raw_source_type in {'manual', 'downloader'}:
-            source_type = raw_source_type
+        has_hash = bool((row.torrent_hash or '').strip())
+        has_downloader = bool(row.downloader_id)
+        if raw_source_type == 'downloader' or (has_hash and has_downloader):
+            source_type = 'downloader'
+        elif raw_source_type == 'pending':
+            source_type = 'pending'
+            row.last_seen_at = now
+            log_operation('delete_pending_source', 'FileLinkMap', row.id, task.name, f'来源待判定，暂不执行删种: path={deleted_path_str}', False)
         else:
-            # 仅在来源字段缺失/异常时才做兜底推断，避免把 manual 误判为 downloader 触发删种。
-            has_hash = bool((row.torrent_hash or '').strip())
-            has_downloader = bool(row.downloader_id)
-            source_type = 'downloader' if (has_hash and has_downloader) else 'manual'
+            source_type = 'manual'
 
         # Determine which side was deleted and optionally remove the counterpart file.
         deleted_is_source = bool(src and deleted_path_str == src)
+        policy_source_type = 'manual' if source_type == 'pending' else source_type
         if deleted_is_source:
             counterpart = dst
-            policy_key = 'manual_source_delete_delete_dest' if source_type == 'manual' else 'downloader_source_delete_delete_dest'
+            policy_key = 'manual_source_delete_delete_dest' if policy_source_type == 'manual' else 'downloader_source_delete_delete_dest'
             action_label = 'source_deleted'
         else:
             counterpart = src
-            policy_key = 'manual_dest_delete_delete_source' if source_type == 'manual' else 'downloader_dest_delete_delete_source'
+            policy_key = 'manual_dest_delete_delete_source' if policy_source_type == 'manual' else 'downloader_dest_delete_delete_source'
             action_label = 'dest_deleted'
 
         counterpart_removed = None
@@ -140,8 +144,8 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
             else:
                 log_operation('linked_file_delete_skip', 'FileLinkMap', row.id, task.name, f'{action_label} -> counterpart_missing_or_failed: {counterpart}')
 
-        # Manual source: never delete torrent task, but should still notify if enabled.
-        if source_type == 'manual':
+        # Pending/manual sources never auto-delete torrent; pending stays conservative until resolved.
+        if source_type in {'manual', 'pending'}:
             log_operation('delete_detected_manual', 'DeleteMonitorTask', task.id, task.name, f'手动来源删除: {deleted_path_str}')
             if task.notifier and _task_notify_on_delete_enabled(task, get_config, source_type):
                 msg = f'📌 删除联动提醒（手动来源）\n任务：{task.name}\n触发路径：{deleted_path_str}\n对侧处理：'

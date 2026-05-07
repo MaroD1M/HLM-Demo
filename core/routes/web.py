@@ -6,6 +6,22 @@ from core.deps import RouteDeps
 web_bp = Blueprint('web_bp', __name__)
 
 
+
+
+SETTINGS_SAVE_KEYS = (
+    'log_retention_days', 'auto_clean_logs', 'default_extensions', 'default_exclude_dirs',
+    'delete_files_with_torrent', 'notify_on_delete',
+    'allowed_roots', 'proxy_url', 'tg_api_base', 'backup_dir', 'backup_keep_last', 'notify_on_risky_delete', 'delete_match_strict_mode',
+    'manual_dest_delete_delete_source', 'manual_source_delete_delete_dest',
+    'downloader_dest_delete_delete_source', 'downloader_source_delete_delete_dest',
+    'downloader_dest_delete_delete_torrent', 'downloader_source_delete_delete_torrent',
+    'pending_source_guard_enabled', 'pending_source_guard_seconds', 'pending_source_warn_threshold',
+    'github_version_check_enabled', 'github_repo', 'github_api_base',
+    'app_log_max_mb', 'app_log_backup_count', 'version_check_cache_minutes', 'critical_action_passphrase',
+)
+
+IMPORTABLE_SETTINGS_KEYS = frozenset(SETTINGS_SAVE_KEYS)
+
 def init_web_routes(ctx: RouteDeps):
     HardlinkTask = ctx.HardlinkTask
     DeleteMonitorTask = ctx.DeleteMonitorTask
@@ -160,6 +176,15 @@ def init_web_routes(ctx: RouteDeps):
         running_ids = set([x.get('execution_id') for x in running_snaps if x.get('execution_id')])
         stale_running_ids = set([e.id for e in executions if e.status == 'running' and e.id not in running_ids])
 
+        pending_count = FileLinkMap.query.filter(FileLinkMap.source_type == 'pending', FileLinkMap.deleted_at.is_(None)).count()
+        try:
+            pending_warn_threshold = int((get_config('pending_source_warn_threshold', '200') or '200').strip())
+        except Exception:
+            pending_warn_threshold = 200
+        pending_warn_threshold = max(1, pending_warn_threshold)
+        pending_is_warn = pending_count >= pending_warn_threshold
+        latest_pending_event = OperationLog.query.filter_by(operation_type='delete_pending_source').order_by(OperationLog.created_at.desc()).first()
+
         return render_template(
             'dashboard.html',
             hardlink_tasks=hardlink_tasks,
@@ -179,6 +204,10 @@ def init_web_routes(ctx: RouteDeps):
             failed_runs=failed_runs,
             running_executions=running_snaps,
             stale_running_ids=stale_running_ids,
+            pending_count=pending_count,
+            pending_warn_threshold=pending_warn_threshold,
+            pending_is_warn=pending_is_warn,
+            latest_pending_event=latest_pending_event,
         )
 
     @web_bp.route('/executions/retry/<int:execution_id>', methods=['POST'])
@@ -699,6 +728,8 @@ def init_web_routes(ctx: RouteDeps):
             mapping_q = mapping_q.filter(FileLinkMap.source_type == 'manual')
         elif source_type == 'downloader':
             mapping_q = mapping_q.filter(FileLinkMap.source_type == 'downloader')
+        elif source_type == 'pending':
+            mapping_q = mapping_q.filter(FileLinkMap.source_type == 'pending')
 
         mapping_q = mapping_q.order_by(FileLinkMap.created_at.desc())
         mapping_pg = mapping_q.paginate(page=page, per_page=50, error_out=False)
@@ -928,16 +959,7 @@ def init_web_routes(ctx: RouteDeps):
 
     @web_bp.route('/settings/save', methods=['POST'])
     def settings_save():
-        for key in [
-            'log_retention_days', 'auto_clean_logs', 'default_extensions', 'default_exclude_dirs',
-            'delete_files_with_torrent', 'notify_on_delete',
-            'allowed_roots', 'proxy_url', 'tg_api_base', 'backup_dir', 'backup_keep_last', 'notify_on_risky_delete', 'delete_match_strict_mode',
-            'manual_dest_delete_delete_source', 'manual_source_delete_delete_dest',
-            'downloader_dest_delete_delete_source', 'downloader_source_delete_delete_dest',
-            'downloader_dest_delete_delete_torrent', 'downloader_source_delete_delete_torrent',
-            'github_version_check_enabled', 'github_repo', 'github_api_base',
-            'app_log_max_mb', 'app_log_backup_count', 'version_check_cache_minutes', 'critical_action_passphrase',
-        ]:
+        for key in SETTINGS_SAVE_KEYS:
             val = request.form.get(key)
             if val is not None:
                 set_config(key, val.strip() if isinstance(val, str) else val)
@@ -969,13 +991,7 @@ def init_web_routes(ctx: RouteDeps):
         except Exception:
             flash('配置文件格式错误', 'danger')
             return redirect('/settings')
-        allowed = {
-            'log_retention_days','auto_clean_logs','default_extensions','default_exclude_dirs','delete_files_with_torrent','notify_on_delete',
-            'allowed_roots','proxy_url','tg_api_base','backup_dir','backup_keep_last','notify_on_risky_delete','delete_match_strict_mode',
-            'manual_dest_delete_delete_source','manual_source_delete_delete_dest','downloader_dest_delete_delete_source','downloader_source_delete_delete_dest',
-            'downloader_dest_delete_delete_torrent','downloader_source_delete_delete_torrent','github_version_check_enabled','github_repo','github_api_base',
-            'app_log_max_mb','app_log_backup_count','version_check_cache_minutes','critical_action_passphrase'
-        }
+        allowed = IMPORTABLE_SETTINGS_KEYS
         applied = 0
         for k,v in payload.items():
             if k in allowed and v is not None and v != '***':
@@ -1002,6 +1018,17 @@ def init_web_routes(ctx: RouteDeps):
         checks.append(('代理配置', True, (get_config('proxy_url','') or '').strip() or '未设置（直连）'))
         checks.append(('应用版本', True, get_release_info().get('local_version','-')))
         checks.append(('日志目录', True, str(Path('data/logs').resolve())))
+        checks.append(('待判定来源保护', True, f"enabled={get_config('pending_source_guard_enabled','true')}, window={get_config('pending_source_guard_seconds','900')}s"))
+
+        pending_count = FileLinkMap.query.filter(FileLinkMap.source_type == 'pending', FileLinkMap.deleted_at.is_(None)).count()
+        try:
+            pending_warn_threshold = int((get_config('pending_source_warn_threshold', '200') or '200').strip())
+        except Exception:
+            pending_warn_threshold = 200
+        pending_warn_threshold = max(1, pending_warn_threshold)
+        checks.append(('待判定映射数量', pending_count < pending_warn_threshold, f'{pending_count} (threshold={pending_warn_threshold})'))
+
+        pending_events = OperationLog.query.filter_by(operation_type='delete_pending_source').order_by(OperationLog.created_at.desc()).limit(5).all()
 
         running_snaps = get_running_executions_snapshot()
         now = __import__('datetime').datetime.now(__import__('datetime').UTC)
@@ -1019,7 +1046,7 @@ def init_web_routes(ctx: RouteDeps):
                 'has_snapshot': True,
             })
 
-        return render_template('diagnostics.html', checks=checks, running_rows=running_rows)
+        return render_template('diagnostics.html', checks=checks, running_rows=running_rows, pending_events=pending_events)
 
     @web_bp.route('/delete-monitor/preview/<int:task_id>', methods=['POST'])
     def delete_monitor_preview(task_id):

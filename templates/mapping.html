@@ -32,6 +32,7 @@
         <option value="all" {% if (source_type or 'all')=='all' %}selected{% endif %}>全部来源</option>
         <option value="manual" {% if source_type=='manual' %}selected{% endif %}>手动文件</option>
         <option value="downloader" {% if source_type=='downloader' %}selected{% endif %}>下载器文件</option>
+        <option value="pending" {% if source_type=='pending' %}selected{% endif %}>待判定</option>
       </select>
     </div>
     <div class="col-md-2 d-flex gap-2"><button class="btn btn-brand" type="submit">筛选</button><a class="btn btn-outline-secondary" href="/mapping">重置</a></div>
