@@ -5,7 +5,7 @@
 # 🔗 Hardlink Manager · 媒体硬链接自动化中心
 
 **让下载目录自动入库，让删除联动可控可靠。**  
-**兼顾日常自用部署与二次开发调试。**
+**同时支持日常稳定使用与开发调试。**
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-Web-black?style=flat-square&logo=flask)
@@ -18,48 +18,48 @@
 
 ---
 
-## ✨ 你能得到什么
+## 🎯 适用人群
 
-- 🧠 **多任务管理**：电影/剧集/动漫等可以分任务并行管理
-- 🔁 **硬链接自动化**：定时或手动执行，减少重复操作
-- 🧹 **删除联动可控**：冷却、阈值、试运行、通知，降低误删风险
-- 🛡️ **待判定保护**：映射重建窗口期保守处理，避免误删种
-- 📦 **映射与缓存面板**：支持筛选、重试、批量清理
-- 🪵 **日志 + 诊断**：出问题更容易定位
+- **日常使用者**：希望开箱即用、少折腾，复制 Compose 后只改少量个人信息即可启动。
+- **开发调试者**：希望重启即拉取最新代码，减少频繁打包构建成本。
 
 ---
 
-## 🗺️ 页面导览（第一次使用建议先看）
+## ✨ 主要能力
 
-- 🏠 **仪表盘**：看全局状态、近期执行、快捷入口
-- 🔗 **硬链接任务**：设置源目录、目标目录、扩展名、删除联动
-- 🧹 **疑似误删处理**：处理高风险待确认记录
-- 🧭 **映射与缓存**：查看映射关系、重试关联、清理缓存
-- ⏰ **定时任务**：统一调度执行
-- ⚙️ **系统设置**：路径白名单、通知、版本检查、备份参数
-- 🔍 **系统诊断 / 日志**：排查配置和运行问题
+- 🧠 多任务硬链接：电影/剧集/动漫等独立任务管理
+- 🔁 自动化执行：手动执行 + 定时 Cron 双模式
+- 🧹 删除联动：支持冷却、阈值、试运行、通知
+- 🛡️ 待判定保护：减少映射重建窗口期误删风险
+- 📦 映射/缓存管理：筛选、重试、批量清理
+- 🪵 日志与诊断：方便定位配置与运行问题
 
 ---
 
-## 🚀 快速开始（适合日常自用）
+## 🗺️ 页面说明（建议先读）
 
-下面这份 Compose 可以直接用。  
-你只需要改 **4 处**：
+- 🏠 **仪表盘**：总览状态、近期执行、快捷入口
+- 🔗 **硬链接任务**：源目录/目标目录/扩展名/删除联动
+- 🧹 **疑似误删处理**：处理待确认的风险删除记录
+- 🧭 **映射与缓存**：查看来源、重试关联、批量管理
+- ⏰ **定时任务**：统一调度入口
+- ⚙️ **系统设置**：白名单、通知、版本检查、备份
+- 🔍 **系统诊断/日志**：问题排查入口
 
-1. `SECRET_KEY`  
-2. `APP_USERNAME`  
-3. `APP_PASSWORD`  
-4. 宿主机媒体目录（`/你的媒体目录`）
+---
 
-### 1）新建项目目录并进入
+## 🚀 一键部署（推荐：日常稳定使用）
+
+### 第 1 步：创建目录
 
 ```bash
 mkdir -p hlm-demo && cd hlm-demo
 ```
 
-### 2）创建 `docker-compose.yml`
+### 第 2 步：创建 `docker-compose.yml`
 
-把下面内容完整复制到 `docker-compose.yml`：
+> 下面这份可以直接用。你只需要改这几项：
+> 1) `SECRET_KEY`  2) `APP_USERNAME`  3) `APP_PASSWORD`  4) `/你的媒体目录`
 
 ```yaml
 services:
@@ -73,38 +73,36 @@ services:
       - "5000:5000"
 
     environment:
-      # 必改：应用密钥（请换成你自己的随机字符串）
+      # 必改：应用密钥（建议至少32位随机字符串）
       SECRET_KEY: "请改成一个长随机字符串"
 
-      # 建议：登录账号密码（两项都填写才启用登录）
+      # 建议：登录凭据（两项都填写才启用登录）
       APP_USERNAME: "admin"
       APP_PASSWORD: "123456"
 
-      # 可选：时区
+      # 可选：时区/请求超时
       TZ: "Asia/Shanghai"
-
-      # 可选：请求超时（秒）
       REQUEST_TIMEOUT_SECONDS: "10"
 
-      # 可选：日志控制
+      # 可选：日志行为
       ACCESS_LOG_ENABLED: "true"
       APP_LOG_MAX_MB: "10"
       APP_LOG_BACKUP_COUNT: "5"
 
-      # 固定建议
+      # 建议保留
       PYTHONUNBUFFERED: "1"
 
     volumes:
-      # 数据库与运行状态（必须保留）
+      # 必须：数据库与运行状态（不要删）
       - ./data/instance:/app/instance
 
-      # 备份目录（建议保留）
+      # 建议：数据库备份目录
       - ./data/backups:/app/data/backups
 
-      # 应用日志目录（建议保留）
+      # 建议：应用日志目录
       - ./data/logs:/app/data/logs
 
-      # 必改：把左侧路径改成你自己的媒体根目录
+      # 必改：把左边改为你自己的媒体根目录
       - /你的媒体目录:/media
 
     healthcheck:
@@ -121,30 +119,37 @@ services:
         max-file: "3"
 ```
 
-### 3）启动
+### 第 3 步：启动
 
 ```bash
 docker compose up -d
 ```
 
-### 4）访问
+### 第 4 步：访问
 
 - 本机：`http://127.0.0.1:5000`
 - 局域网：`http://你的主机IP:5000`
 
+### 第 5 步：首次建议操作
+
+1. 先创建一个测试硬链接任务，验证路径与命名规则。  
+2. 确认无误后再创建生产目录任务。  
+3. 删除联动先开启“试运行”，观察日志后再切正式执行。
+
 ---
 
-## 🧪 开发调试部署（适合需要频繁改代码）
+## 🧪 开发调试部署（重启自动拉代码）
 
-这个模式适合你“重启就拉最新代码”的调试场景，不用每次都打版本构建镜像。
+适用于你这种“经常改代码、想快速验证”的场景。
 
-### 开发模式关键点
+### 行为说明
 
-- 开启后，容器重启会自动拉取指定仓库/分支最新代码
-- 可选：`requirements.txt` 变化时自动同步依赖
-- 可选：通过代理拉取 GitHub（容器内代理，**不要写 127.0.0.1**）
+- `APP_DEV_MODE=true` 且 `APP_DEV_AUTO_PULL=true` 时：
+  - 容器重启后自动拉取仓库最新代码
+  - 可选：`requirements.txt` 变化时自动同步依赖
+- 代理是容器内代理：**不要填 `127.0.0.1`**
 
-### 开发模式 Compose 示例
+### 开发调试 Compose 示例
 
 ```yaml
 services:
@@ -170,15 +175,15 @@ services:
       APP_DEV_GIT_REPO: "https://github.com/MaroD1M/HLM-Demo.git"
       APP_DEV_GIT_BRANCH: "master"
 
-      # requirements 变化时自动安装依赖
+      # requirements 变更自动同步（可选）
       APP_DEV_AUTO_PIP_SYNC: "true"
       APP_DEV_PIP_SYNC_TIMEOUT: "120"
 
-      # 私有仓库可用（公开仓库可留空）
+      # 私有仓库可用（公开仓库留空）
       APP_DEV_GIT_TOKEN: ""
 
-      # 代理（容器内生效）
-      # 建议填 host.docker.internal:7890 或宿主机局域网IP:7890
+      # 开发代理（容器内生效）
+      # 推荐：host.docker.internal:7890 或宿主机局域网IP:7890
       APP_DEV_PROXY_URL: ""
       APP_DEV_NO_PROXY: "localhost,127.0.0.1,::1"
 
@@ -192,66 +197,50 @@ services:
 
 ---
 
-## 📁 路径填写规则（非常重要）
+## 📁 路径规则（最容易填错）
 
-页面里填写路径时，填的是**容器路径**，不是宿主机路径。
+页面中的路径必须是**容器路径**：
 
-- ✅ 正确：`/media/downloads/movie`
-- ❌ 错误：`/volume1/media/downloads/movie`
-
----
-
-## 🧩 推荐任务模板（可直接照抄）
-
-- 电影任务：
-  - 源目录：`/media/downloads/movie`
-  - 目标目录：`/media/library/movie`
-
-- 剧集任务：
-  - 源目录：`/media/downloads/tv`
-  - 目标目录：`/media/library/tv`
-
-- 动漫任务：
-  - 源目录：`/media/downloads/anime`
-  - 目标目录：`/media/library/anime`
+- ✅ `/media/downloads/movie`
+- ❌ `/volume1/media/downloads/movie`
 
 ---
 
-## 🔐 登录与账号密码机制
+## 🧩 任务模板（可直接照抄）
 
-- 同时设置 `APP_USERNAME` 和 `APP_PASSWORD`：启用登录页
-- 任一为空：不强制登录，直接进入主界面
-- 修改账号密码：改 Compose 里的环境变量后重启容器即可
-- 账号密码**不写入数据库**
-
----
-
-## 🛡️ 生产使用建议
-
-- 使用强随机 `SECRET_KEY`
-- 仅在内网开放端口
-- 定期备份 `./data/instance` 与 `./data/backups`
-- 删除联动建议保持保守策略（严格匹配 + 风险通知开启）
+- 电影：`/media/downloads/movie -> /media/library/movie`
+- 剧集：`/media/downloads/tv -> /media/library/tv`
+- 动漫：`/media/downloads/anime -> /media/library/anime`
 
 ---
 
-## ❓常见问题
+## 🔐 登录机制（务必理解）
 
-### Q1：为什么访问 `/login` 会跳回首页？
-因为没同时设置账号和密码，系统默认不强制登录。
+- 同时设置账号和密码：启用登录页
+- 任一为空：不强制登录
+- 修改账号密码：改 Compose 后重启容器
+- 账号密码不写入数据库
 
-### Q2：自动拉取代码没生效？
-检查是否同时满足：
-- `APP_DEV_MODE=true`
-- `APP_DEV_AUTO_PULL=true`
-- `APP_DEV_GIT_REPO` 正确
+---
 
-### Q3：我配了代理还是拉不下来？
-确认代理地址是容器可访问地址，别写 `127.0.0.1`。  
-建议改为 `host.docker.internal:端口` 或宿主机局域网 IP。
+## 🧯 常见问题
 
-### Q4：导入/导出配置会不会包含口令？
-导出会隐藏关键口令；导入只覆盖支持的配置项。
+### Q1：为什么我访问 `/login` 会回首页？
+因为你没有同时设置 `APP_USERNAME` 和 `APP_PASSWORD`。
+
+### Q2：为什么自动拉取没生效？
+检查三项：
+1. `APP_DEV_MODE=true`
+2. `APP_DEV_AUTO_PULL=true`
+3. `APP_DEV_GIT_REPO` 地址可访问
+
+### Q3：代理已经配置，为什么还拉不到？
+你可能用了 `127.0.0.1`。容器里请改为：
+- `host.docker.internal:端口` 或
+- 宿主机局域网 IP:端口
+
+### Q4：导入/导出会泄露关键口令吗？
+导出会隐藏关键口令；导入仅覆盖支持的配置项。
 
 ---
 

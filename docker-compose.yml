@@ -1,69 +1,117 @@
 services:
   hlm:
+    # 镜像地址：默认拉取 latest（适合日常使用）
     image: ghcr.io/marod1m/hlm-demo:latest
+
+    # 容器名称（可改）
     container_name: hlm-demo
+
+    # 容器异常退出后自动重启
     restart: unless-stopped
-    # 显式使用 bridge 网络，确保容器可正常访问外网（如 Telegram API）
+
+    # 使用 bridge 网络，便于访问外网服务（如 Telegram / GitHub）
     network_mode: bridge
+
     ports:
+      # 左侧是宿主机端口，右侧是容器端口
+      # 想改访问端口，只改左边即可，例如 "8080:5000"
       - "${APP_PORT:-5000}:5000"
+
     environment:
-      # 应用密钥（首次部署请务必修改）
+      # =========================
+      # 基础运行配置（建议先改这几项）
+      # =========================
+
+      # 必填：应用密钥（请改成强随机字符串）
       SECRET_KEY: ${SECRET_KEY}
-      # 可选：访问账号密码（留空=不启用登录）
+
+      # 登录账号密码（两项都填才启用登录）
+      # 任一为空 = 不强制登录
       APP_USERNAME: ${APP_USERNAME:-}
       APP_PASSWORD: ${APP_PASSWORD:-}
-      # 可选：HTTP 请求超时（秒）
+
+      # 请求超时（秒）
       REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-10}
-      # 访问日志（写入容器stdout，群晖日志页可见）
+
+      # 是否输出访问日志到容器日志
       ACCESS_LOG_ENABLED: ${ACCESS_LOG_ENABLED:-true}
+
       # 时区
       TZ: ${TZ:-Asia/Shanghai}
-      # 关闭Python输出缓冲，确保群晖容器日志实时可见
+
+      # 关闭 Python 输出缓冲，日志更实时
       PYTHONUNBUFFERED: "1"
-      # 应用日志分割（避免日志过大）
+
+      # 应用日志分割（防止单日志文件过大）
       APP_LOG_MAX_MB: ${APP_LOG_MAX_MB:-10}
       APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
-      # 开发模式：仅用于测试环境。true 时可启用重启自动拉取最新代码
+
+      # =========================
+      # 开发模式（仅调试时开启）
+      # =========================
+
+      # true=开发模式；false=普通模式
       APP_DEV_MODE: ${APP_DEV_MODE:-false}
-      # 开发模式自动拉取：每次容器重启时从 GitHub 拉取指定分支最新代码
+
+      # true=容器每次重启时自动拉取最新代码
       APP_DEV_AUTO_PULL: ${APP_DEV_AUTO_PULL:-false}
-      # 开发仓库地址（开发模式下必填）
+
+      # 开发模式仓库地址（自动拉取时必填）
       APP_DEV_GIT_REPO: ${APP_DEV_GIT_REPO:-}
-      # 开发分支（默认 master）
+
+      # 开发模式拉取分支
       APP_DEV_GIT_BRANCH: ${APP_DEV_GIT_BRANCH:-master}
-      # 开发模式可选：requirements 变更时自动同步依赖
+
+      # requirements.txt 变化时自动同步依赖
       APP_DEV_AUTO_PIP_SYNC: ${APP_DEV_AUTO_PIP_SYNC:-false}
-      # 依赖同步超时秒数（避免网络异常长时间卡住启动）
+
+      # 依赖同步超时秒数（避免网络问题长时间卡住）
       APP_DEV_PIP_SYNC_TIMEOUT: ${APP_DEV_PIP_SYNC_TIMEOUT:-120}
-      # 私有仓库可选 Token（明文环境变量有泄露风险，请谨慎）
+
+      # 私有仓库可选 Token（公开仓库留空）
       APP_DEV_GIT_TOKEN: ${APP_DEV_GIT_TOKEN:-}
-      # 开发模式代理（容器内生效，勿用127.0.0.1）
+
+      # 开发模式代理（容器内生效，不要写127.0.0.1）
       APP_DEV_PROXY_URL: ${APP_DEV_PROXY_URL:-}
-      # 开发模式代理白名单（可选）
+
+      # 开发模式代理白名单
       APP_DEV_NO_PROXY: ${APP_DEV_NO_PROXY:-localhost,127.0.0.1,::1}
+
     volumes:
-      # 必须：数据库与运行状态
+      # =========================
+      # 数据目录（建议保留）
+      # =========================
+
+      # 数据库与运行状态（必须）
       - ./data/instance:/app/instance
-      # 建议：数据库备份目录
+
+      # 数据库备份目录（建议）
       - ./data/backups:/app/data/backups
-      # 建议：应用文件日志目录（配合日志分割）
+
+      # 应用日志目录（建议）
       - ./data/logs:/app/data/logs
-      # 开发模式代码目录（保留拉取到的仓库）
+
+      # 开发模式代码目录（用于保存自动拉取下来的源码）
       - ./data/devsrc:/app-devsrc
-      # 推荐：只映射一个“媒体根目录”，任务里自行填写子目录
-      # 例如：源目录 /media/downloads，目标目录 /media/library
+
+      # 媒体根目录映射（推荐单目录映射）
+      # 例如：容器内统一使用 /media/downloads 与 /media/library
       - ${MEDIA_ROOT:-./data/media}:/media
-      # 可选（非必要）：如你更偏好双目录固定映射，取消注释下面两行
+
+      # 如果你偏好固定双目录映射，可启用下面两行
       # - ${DOWNLOADS_PATH:-./data/downloads}:/downloads
       # - ${LIBRARY_PATH:-./data/library}:/library
+
     healthcheck:
+      # 健康检查：访问 /api/health 返回200即为健康
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
+
     logging:
+      # Docker 日志滚动，防止磁盘被日志打满
       driver: json-file
       options:
         max-size: "10m"
