@@ -4,19 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Hardlink Manager{% endblock %}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+  <link href="/static/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/vendor/fontawesome/css/all.min.css" rel="stylesheet">
+  <link href="/static/css/app.css" rel="stylesheet">
   <style>
     :root { --ink:#102027; --muted:#5e7383; --paper:#f5f8ff; --panel:#fff; --line:#d8e1ea; --brand:#10a37f; --brand2:#0d5f7a; --accent:#ff8a3d; }
-    *{font-family:"Manrope",sans-serif}
+    *{font-family:var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif)}
     body{color:var(--ink);background:radial-gradient(900px 380px at -8% -10%,#d9f7f1 0%,transparent 60%),radial-gradient(700px 360px at 108% 0%,#d7edf7 0%,transparent 58%),var(--paper);min-height:100vh}
     .shell{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
     .side{background:linear-gradient(180deg,var(--brand2),#163249);color:#daf4f3;padding:20px 14px;position:sticky;top:0;height:100vh}
     .brand{font-weight:800;letter-spacing:.4px;margin-bottom:18px}
-    .nav-link{color:#cce6ea;border-radius:12px;margin:4px 0}
+    .nav-link{color:#cce6ea;border-radius:12px;margin:4px 0;display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .nav-link:hover,.nav-link.active{background:rgba(255,255,255,.13);color:#fff}
     .main{padding:24px;animation:fadeIn .25s ease-out}
     .card{border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 26px rgba(12,32,54,.06);background:var(--panel);transition:transform .18s ease,box-shadow .18s ease}.card:hover{transform:translateY(-2px);box-shadow:0 16px 30px rgba(12,32,54,.1)}
@@ -41,17 +39,23 @@
   <aside class="side">
     <div class="brand"><i class="fa-solid fa-link"></i> Hardlink Manager</div>
     <nav class="nav flex-column">
-      <a class="nav-link {% if request.path=='/' %}active{% endif %}" href="/">仪表盘</a>
-      <a class="nav-link {% if request.path.startswith('/hardlink') %}active{% endif %}" href="/hardlink">硬链接任务</a>
-      <a class="nav-link {% if request.path.startswith('/delete-monitor') %}active{% endif %}" href="/delete-monitor">疑似误删处理</a>
-      <a class="nav-link {% if request.path.startswith('/cron') %}active{% endif %}" href="/cron">定时任务</a>
-      <a class="nav-link {% if request.path.startswith('/downloader') %}active{% endif %}" href="/downloader">下载器</a>
-      <a class="nav-link {% if request.path.startswith('/notifier') %}active{% endif %}" href="/notifier">通知器</a>
-      <a class="nav-link {% if request.path.startswith('/logs') %}active{% endif %}" href="/logs">日志与执行</a>
-      <a class="nav-link {% if request.path.startswith('/mapping') %}active{% endif %}" href="/mapping">映射与缓存</a>
-      <a class="nav-link {% if request.path.startswith('/settings') %}active{% endif %}" href="/settings">系统设置</a>
-      <a class="nav-link {% if request.path.startswith('/diagnostics') %}active{% endif %}" href="/diagnostics">系统诊断</a>
+      <a class="nav-link {% if request.path=='/' %}active{% endif %}" href="/"><i class="fa-solid fa-gauge"></i><span>仪表盘</span></a>
+      <a class="nav-link {% if request.path.startswith('/hardlink') %}active{% endif %}" href="/hardlink"><i class="fa-solid fa-link"></i><span>硬链接任务</span></a>
+      <a class="nav-link {% if request.path.startswith('/delete-monitor') %}active{% endif %}" href="/delete-monitor"><i class="fa-solid fa-shield-halved"></i><span>疑似误删处理</span></a>
+      <a class="nav-link {% if request.path.startswith('/cron') %}active{% endif %}" href="/cron"><i class="fa-regular fa-clock"></i><span>定时任务</span></a>
+      <a class="nav-link {% if request.path.startswith('/downloader') %}active{% endif %}" href="/downloader"><i class="fa-solid fa-download"></i><span>下载器</span></a>
+      <a class="nav-link {% if request.path.startswith('/notifier') %}active{% endif %}" href="/notifier"><i class="fa-regular fa-bell"></i><span>通知器</span></a>
+      <a class="nav-link {% if request.path.startswith('/logs') %}active{% endif %}" href="/logs"><i class="fa-solid fa-list-check"></i><span>日志与执行</span></a>
+      <a class="nav-link {% if request.path.startswith('/mapping') %}active{% endif %}" href="/mapping"><i class="fa-solid fa-diagram-project"></i><span>映射与缓存</span></a>
+      <a class="nav-link {% if request.path.startswith('/settings') %}active{% endif %}" href="/settings"><i class="fa-solid fa-gear"></i><span>系统设置</span></a>
+      <a class="nav-link {% if request.path.startswith('/diagnostics') %}active{% endif %}" href="/diagnostics"><i class="fa-solid fa-stethoscope"></i><span>系统诊断</span></a>
     </nav>
+    {% if auth_enabled and is_logged_in %}
+    <form action="/logout" method="POST" class="mt-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-sm btn-outline-light w-100">退出登录</button>
+    </form>
+    {% endif %}
   </aside>
   <main class="main">
     <div id="liveFeedback"></div>
@@ -65,7 +69,7 @@
     {% block content %}{% endblock %}
   </main>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
 
 <script>
 

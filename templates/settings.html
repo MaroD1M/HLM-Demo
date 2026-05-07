@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}设置 - Hardlink Manager{% endblock %}
 {% block content %}
-<h3 class="mb-3">系统设置</h3>
+<div class="page-head"><h3 class="mb-0">系统设置</h3></div>
 <div class="card p-3" id="settingsPagePanel">
   <form class="js-ajax-form" data-target="settingsPagePanel" action="/settings/save" method="POST">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -34,6 +34,7 @@
         <div class="col-md-4"><label class="form-label">待判定来源保护</label><select class="form-select" name="pending_source_guard_enabled"><option value="true" {% if settings.get('pending_source_guard_enabled','true')=='true' %}selected{% endif %}>开启（推荐）</option><option value="false" {% if settings.get('pending_source_guard_enabled')=='false' %}selected{% endif %}>关闭</option></select></div>
         <div class="col-md-4"><label class="form-label">待判定窗口(秒)</label><input class="form-control" type="number" min="0" name="pending_source_guard_seconds" value="{{ settings.get('pending_source_guard_seconds', 900) }}"><div class="form-text">窗口内新映射不会被直接当作手动来源触发自动删种。</div></div>
         <div class="col-md-4"><label class="form-label">待判定告警阈值</label><input class="form-control" type="number" min="1" name="pending_source_warn_threshold" value="{{ settings.get('pending_source_warn_threshold', 200) }}"><div class="form-text">系统诊断中，待判定数量达到该值会标记异常。</div></div>
+        <div class="col-md-4"><label class="form-label">待判定日志模式</label><select class="form-select" name="pending_source_log_mode"><option value="aggregate" {% if settings.get('pending_source_log_mode','aggregate')=='aggregate' %}selected{% endif %}>聚合（默认）</option><option value="detail" {% if settings.get('pending_source_log_mode')=='detail' %}selected{% endif %}>明细（逐条）</option></select><div class="form-text">明细模式便于排查单条记录，聚合模式更省日志。</div></div>
       </div>
     </div>
 

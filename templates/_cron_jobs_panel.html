@@ -7,18 +7,19 @@
 } %}
 <div class="card p-3 mb-3">
   <div class="table-responsive">
-    <table class="table align-middle">
+    <table class="table align-middle table-fixed">
       <thead>
         <tr>
-          <th>名称</th>
-          <th>类型</th>
-          <th>Cron</th>
-          <th>解释</th>
-          <th>状态</th>
-          <th>操作</th>
+          <th class="col-mid">名称</th>
+          <th class="col-wide">类型</th>
+          <th class="col-mid">Cron</th>
+          <th class="col-mid">解释</th>
+          <th class="col-narrow">状态</th>
+          <th class="col-actions">操作</th>
         </tr>
       </thead>
       <tbody>
+        {% if jobs %}
         {% for j in jobs %}
         <tr>
           <td>{{ j.name }}</td>
@@ -32,7 +33,7 @@
               <span class="badge text-bg-secondary">禁用</span>
             {% endif %}
           </td>
-          <td>
+          <td class="col-actions"><div class="actions-row">
             <form class="d-inline js-ajax-form" action="/cron/run/{{ j.id }}" method="POST" data-target="cronJobsPanel">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn btn-sm btn-outline-primary">立即执行一次</button>
@@ -46,14 +47,18 @@
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn btn-sm btn-outline-danger">删除</button>
             </form>
-          </td>
+          </div></td>
         </tr>
         {% endfor %}
+        {% else %}
+        <tr><td colspan="6"><div class="empty-state"><i class="fa-regular fa-calendar-xmark"></i>暂无定时任务，点击右上角“新建计划”开始配置。</div></td></tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
 </div>
 
+{% if jobs %}
 {% for j in jobs %}
 <div class="modal fade" id="editCronModal{{ j.id }}" tabindex="-1">
   <div class="modal-dialog">
@@ -73,7 +78,6 @@
             <label class="form-label">任务类型</label>
             <select class="form-select cron-edit-task-type" name="task_type" data-edit-id="{{ j.id }}">
               <option value="batch_hardlink" {% if j.task_type=='batch_hardlink' %}selected{% endif %}>批量创建硬链接</option>
-              
               <option value="backfill_mapping" {% if j.task_type=='backfill_mapping' %}selected{% endif %}>映射回填任务</option>
               <option value="clean_logs" {% if j.task_type=='clean_logs' %}selected{% endif %}>清理日志</option>
               <option value="clean_cache" {% if j.task_type=='clean_cache' %}selected{% endif %}>清理缓存（高风险）</option>
@@ -104,6 +108,7 @@
   </div>
 </div>
 {% endfor %}
+{% endif %}
 
 <script>
 window.updateCronEditTargetField = function(jobId){

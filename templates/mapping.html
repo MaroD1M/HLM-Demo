@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}映射与缓存 - Hardlink Manager{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <h3 class="mb-0">文件映射与缓存管理</h3>
+<div class="page-head">
+  <h3 class="mb-0">文件映射与缓存管理 <i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="映射=源与目标关系；缓存=已处理标记。清理时仅影响记录，不删除真实文件。"></i></h3>
   <div class="d-flex gap-2 align-items-center flex-wrap">
     <form action="/mapping/link/clear" method="POST" onsubmit="return confirm('确认清空全部映射记录吗？仅删除数据库映射，不删除真实文件。')" class="d-flex gap-2 align-items-center flex-wrap js-ajax-form" data-target="mappingPanel">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -28,7 +28,7 @@
       </select>
     </div>
     <div class="col-md-2">
-      <select class="form-select" name="source_type">
+      <select class="form-select" name="source_type" data-bs-toggle="tooltip" title="待判定表示来源尚在回填确认窗口，删除联动会保守处理。">
         <option value="all" {% if (source_type or 'all')=='all' %}selected{% endif %}>全部来源</option>
         <option value="manual" {% if source_type=='manual' %}selected{% endif %}>手动文件</option>
         <option value="downloader" {% if source_type=='downloader' %}selected{% endif %}>下载器文件</option>

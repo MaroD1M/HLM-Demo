@@ -1,0 +1,160 @@
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --fs-12: 12px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+  --lh-tight: 1.25;
+  --lh-normal: 1.5;
+  --lh-relaxed: 1.7;
+}
+
+html, body {
+  font-size: var(--fs-16);
+  line-height: var(--lh-normal);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  line-height: var(--lh-tight);
+  font-weight: 700;
+}
+
+h3 { font-size: var(--fs-24); }
+h5 { font-size: var(--fs-20); }
+
+.form-label {
+  font-size: var(--fs-14);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.form-text {
+  font-size: var(--fs-12);
+  line-height: var(--lh-normal);
+}
+
+.form-control,
+.form-select,
+.btn {
+  font-size: var(--fs-14);
+}
+
+.table {
+  font-size: var(--fs-14);
+}
+
+.alert {
+  font-size: var(--fs-14);
+}
+
+
+/* Layout consistency */
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.page-head h3 {
+  margin: 0;
+  font-size: var(--fs-24);
+  font-weight: 700;
+}
+
+.side .nav-link i {
+  width: 18px;
+  text-align: center;
+  flex: 0 0 18px;
+}
+
+.side .nav-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table > :not(caption) > * > * {
+  vertical-align: middle;
+}
+
+.btn-sm {
+  font-size: var(--fs-12);
+  padding: 0.3rem 0.55rem;
+}
+
+.modal .modal-header {
+  padding: 14px 18px;
+}
+
+.modal .modal-body {
+  padding: 14px 18px;
+}
+
+.modal .modal-footer {
+  padding: 12px 18px;
+}
+
+.modal .row.g-3 > [class*="col-"] {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.card h5 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 768px) {
+  .page-head h3 { font-size: var(--fs-20); }
+}
+
+
+.actions-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.col-actions {
+  min-width: 260px;
+}
+
+.table-fixed {
+  table-layout: fixed;
+}
+
+.table-fixed th,
+.table-fixed td {
+  vertical-align: middle;
+}
+
+.table-fixed .col-wide {
+  width: 28%;
+}
+
+.table-fixed .col-mid {
+  width: 14%;
+}
+
+.table-fixed .col-narrow {
+  width: 10%;
+}
+
+.empty-state {
+  text-align: center;
+  color: #5e7383;
+  padding: 24px 8px;
+}
+
+.empty-state i {
+  font-size: 20px;
+  margin-bottom: 8px;
+  display: block;
+}
