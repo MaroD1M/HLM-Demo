@@ -390,3 +390,107 @@ body {
     font-size: 1.45rem;
   }
 }
+
+
+/* Hardlink table compact layout */
+.hardlink-table {
+  min-width: 980px;
+  table-layout: auto;
+}
+
+.hardlink-table .col-name {
+  width: 11%;
+  min-width: 120px;
+}
+
+.hardlink-table .col-path {
+  width: 28%;
+}
+
+.hardlink-table .col-delete {
+  width: 13%;
+  min-width: 140px;
+}
+
+.hardlink-table .col-state {
+  width: 8%;
+  min-width: 88px;
+}
+
+.hardlink-table .col-actions {
+  width: 22%;
+  min-width: 280px;
+}
+
+.hardlink-table td,
+.hardlink-table th {
+  padding: 0.52rem 0.5rem;
+}
+
+.hardlink-table .actions-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(118px, 1fr));
+  gap: 6px;
+}
+
+.hardlink-table .actions-row form,
+.hardlink-table .actions-row .btn {
+  width: 100%;
+}
+
+/* checkbox groups with small section title */
+.field-title {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #2e4d5d;
+}
+
+.field-checks.field-checks-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Mapping hash width */
+.mapping-table .col-hash {
+  width: 16%;
+  min-width: 220px;
+}
+
+.mapping-table code {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Settings import/export alignment */
+.settings-transfer {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.settings-transfer form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.settings-transfer input[type="file"] {
+  min-width: 260px;
+}
+
+@media (max-width: 992px) {
+  .field-checks.field-checks-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-transfer,
+  .settings-transfer form {
+    grid-template-columns: 1fr;
+  }
+}

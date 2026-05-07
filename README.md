@@ -14,7 +14,7 @@
 
 </div>
 
-> 当前版本：`v0.2.3`（2026-05-07）
+> 当前版本：`v0.2.4`（2026-05-07）
 
 ---
 
@@ -54,6 +54,8 @@ cp .env.example .env
 - `SECRET_KEY`（必填）
 - `MEDIA_ROOT`（必填，宿主机媒体根目录）
 - `APP_USERNAME` / `APP_PASSWORD`（可选；两者都设置才启用登录）
+- `APP_DEV_MODE` / `APP_DEV_AUTO_PULL`（可选；开发模式自动拉取）
+- `APP_DEV_PROXY_URL`（可选；开发模式拉取/依赖同步代理，容器内生效）
 
 > 登录机制说明：
 > - 同时设置 `APP_USERNAME` 与 `APP_PASSWORD`：启用登录页认证

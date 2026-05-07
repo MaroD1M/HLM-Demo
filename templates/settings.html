@@ -94,9 +94,9 @@
 
 <div class="card p-3 mt-3">
   <h6 class="mb-3">配置导入/导出<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="导出会自动隐藏关键口令；导入只覆盖支持的配置项。"></i></h6>
-  <div class="d-flex flex-wrap gap-2 align-items-center">
+  <div class="settings-transfer">
     <a class="btn btn-outline-secondary" href="/settings/export">导出配置</a>
-    <form class="js-ajax-form" data-target="settingsPagePanel" action="/settings/import" method="POST" enctype="multipart/form-data" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+    <form class="js-ajax-form" data-target="settingsPagePanel" action="/settings/import" method="POST" enctype="multipart/form-data" >
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input class="form-control" type="file" name="config_file" accept="application/json" required>
       <button class="btn btn-outline-primary" type="submit">导入配置</button>
