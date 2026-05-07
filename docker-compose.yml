@@ -24,6 +24,24 @@ services:
       # 应用日志分割（避免日志过大）
       APP_LOG_MAX_MB: ${APP_LOG_MAX_MB:-10}
       APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
+      # 开发模式：仅用于测试环境。true 时可启用重启自动拉取最新代码
+      APP_DEV_MODE: ${APP_DEV_MODE:-false}
+      # 开发模式自动拉取：每次容器重启时从 GitHub 拉取指定分支最新代码
+      APP_DEV_AUTO_PULL: ${APP_DEV_AUTO_PULL:-false}
+      # 开发仓库地址（开发模式下必填）
+      APP_DEV_GIT_REPO: ${APP_DEV_GIT_REPO:-}
+      # 开发分支（默认 master）
+      APP_DEV_GIT_BRANCH: ${APP_DEV_GIT_BRANCH:-master}
+      # 开发模式可选：requirements 变更时自动同步依赖
+      APP_DEV_AUTO_PIP_SYNC: ${APP_DEV_AUTO_PIP_SYNC:-false}
+      # 依赖同步超时秒数（避免网络异常长时间卡住启动）
+      APP_DEV_PIP_SYNC_TIMEOUT: ${APP_DEV_PIP_SYNC_TIMEOUT:-120}
+      # 私有仓库可选 Token（明文环境变量有泄露风险，请谨慎）
+      APP_DEV_GIT_TOKEN: ${APP_DEV_GIT_TOKEN:-}
+      # 开发模式代理（容器内生效，勿用127.0.0.1）
+      APP_DEV_PROXY_URL: ${APP_DEV_PROXY_URL:-}
+      # 开发模式代理白名单（可选）
+      APP_DEV_NO_PROXY: ${APP_DEV_NO_PROXY:-localhost,127.0.0.1,::1}
     volumes:
       # 必须：数据库与运行状态
       - ./data/instance:/app/instance
@@ -31,6 +49,8 @@ services:
       - ./data/backups:/app/data/backups
       # 建议：应用文件日志目录（配合日志分割）
       - ./data/logs:/app/data/logs
+      # 开发模式代码目录（保留拉取到的仓库）
+      - ./data/devsrc:/app-devsrc
       # 推荐：只映射一个“媒体根目录”，任务里自行填写子目录
       # 例如：源目录 /media/downloads，目标目录 /media/library
       - ${MEDIA_ROOT:-./data/media}:/media

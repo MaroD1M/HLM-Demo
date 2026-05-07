@@ -23,6 +23,9 @@ services:
       PYTHONUNBUFFERED: "1"
       APP_LOG_MAX_MB: ${APP_LOG_MAX_MB:-10}
       APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
+      # 生产环境强制关闭开发模式自动拉取
+      APP_DEV_MODE: "false"
+      APP_DEV_AUTO_PULL: "false"
     volumes:
       # 必须：数据库与运行状态
       - ./data/instance:/app/instance

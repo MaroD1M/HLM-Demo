@@ -14,7 +14,7 @@
 
       <div class="table-responsive">
         <table class="table table-sm align-middle table-fixed mapping-table">
-          <thead><tr><th class="col-narrow"><input type="checkbox" onclick="toggleAllByClass('map-check', this.checked)"></th><th class="col-wide">源文件</th><th class="col-wide">目标文件</th><th class="col-mid">来源</th><th class="col-mid">关联状态</th><th class="col-narrow">失败计数</th><th class="col-mid">上次失败时间</th><th class="col-narrow">下载器 ID</th><th class="col-mid">种子 Hash</th><th class="col-actions">操作</th></tr></thead>
+          <thead><tr><th class="col-narrow"><input type="checkbox" onclick="toggleAllByClass('map-check', this.checked)"></th><th class="col-wide">源文件</th><th class="col-wide">目标文件</th><th class="col-mid">来源</th><th class="col-mid">关联状态</th><th class="col-narrow">失败计数</th><th class="col-mid">上次失败时间</th><th class="col-narrow">下载器 ID</th><th class="col-hash">种子 Hash</th><th class="col-actions">操作</th></tr></thead>
           <tbody>
             {% if mappings %}
               {% for m in mappings %}
@@ -44,7 +44,7 @@
                 </td>
                 <td class="wrap-any"><small>{{ fmt_dt(m.backfill_last_attempt_at) if m.backfill_last_attempt_at else '-' }}</small></td>
                 <td>{{ m.downloader_id or '-' }}</td>
-                <td class="wrap-any"><code>{{ m.torrent_hash or '-' }}</code></td>
+                <td class="wrap-any col-hash"><code title="{{ m.torrent_hash or '-' }}">{{ m.torrent_hash or '-' }}</code></td>
                 <td class="col-actions"><div class="actions-row">
                   {% if not m.torrent_hash %}
                   <form action="/mapping/link/retry" method="POST" class="m-0 js-ajax-form" data-target="mappingPanel">

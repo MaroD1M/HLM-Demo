@@ -39,7 +39,7 @@
 
         <div class="col-12"><div class="section-card"><div class="section-title mb-2">删除联动（内建于本任务）</div><div class="form-text mb-2">执行顺序：先删除联动扫描，再执行硬链接扫描。</div><div class="row g-3">
         <div class="col-md-6">
-          <div class="field-checks">
+          <label class="field-title">删除监控范围</label><div class="field-checks">
           <div class="form-check"><input class="form-check-input" type="checkbox" name="monitor_source_delete" checked><label class="form-check-label">监控源目录删除</label></div>
           <div class="form-check"><input class="form-check-input" type="checkbox" name="monitor_dest_delete" checked><label class="form-check-label">监控目标目录删除</label></div>
         </div>
@@ -49,7 +49,7 @@
         <div class="col-md-3"><label class="form-label">删除冷却(秒)<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="同一映射在冷却时间内不会重复触发删除联动，避免抖动。"></i></label><input class="form-control" type="number" name="delete_cooldown_seconds" value="120" min="0"></div>
         <div class="col-md-3"><label class="form-label">单次最大删除<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="本轮最多处理条数，超过会顺延到下轮，防止一次性误操作过多。"></i></label><input class="form-control" type="number" name="delete_max_deletes_per_run" value="20" min="1"></div>
         <div class="col-md-6">
-          <div class="field-checks">
+          <label class="field-title">执行与通知选项</label><div class="field-checks field-checks-3">
           <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_dry_run"><label class="form-check-label">仅记录不执行（试运行）</label></div>
           <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_notify_on_delete" checked><label class="form-check-label">成功通知</label></div>
           <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_notify_on_risky_delete" checked><label class="form-check-label">风险通知</label></div>
