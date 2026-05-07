@@ -15,7 +15,7 @@
 </div>
 
 <div class="alert alert-info py-2">
-  <div class="mb-1"><strong>系统任务说明：</strong>“系统缓存清理”会清理缓存/部分映射追踪记录，默认禁用，建议仅排障时手动执行。</div>
+  <div class="mb-1"><strong>系统任务说明：</strong>“系统缓存清理（高风险）”会清理缓存追踪记录（不删真实文件），建议仅排障时手动执行。</div>
   <strong>Cron 快速帮助：</strong>
   <code>分 时 日 月 周</code>（24小时制）
   <span class="ms-2">例如 <code>0 3 * * *</code> = 每天 <strong>03:00</strong> 执行。</span>
@@ -31,7 +31,7 @@
   <ul class="mb-0">
     <li><code>0 3 * * *</code>：每天 03:00 执行</li>
     <li><code>30 3 * * *</code>：每天 03:30 执行</li>
-    <li><code>*/10 * * * *</code>：每 10 分钟执行</li>
+    <li><code>*/10 * * * *</code>：每 10 分钟执行一次</li>
     <li><code>0 */6 * * *</code>：每 6 小时整点执行（00:00 / 06:00 / 12:00 / 18:00）</li>
   </ul>
 </div>
@@ -57,7 +57,7 @@
               
               <option value="backfill_mapping">映射回填任务</option>
               <option value="clean_logs">清理日志</option>
-              <option value="clean_cache">清理缓存</option>
+              <option value="clean_cache">清理缓存（高风险）</option>
               <option value="db_backup">数据库备份</option>
             </select>
           </div>

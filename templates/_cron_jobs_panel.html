@@ -1,3 +1,10 @@
+{% set task_type_text = {
+  'batch_hardlink':'批量硬链接',
+  'backfill_mapping':'映射回填',
+  'clean_logs':'日志清理',
+  'clean_cache':'缓存清理',
+  'db_backup':'数据库备份'
+} %}
 <div class="card p-3 mb-3">
   <div class="table-responsive">
     <table class="table align-middle">
@@ -15,7 +22,7 @@
         {% for j in jobs %}
         <tr>
           <td>{{ j.name }}</td>
-          <td><div>{{ j.task_type }}</div><div class="small text-muted wrap-any">{{ j.description or "-" }}</div></td>
+          <td><div><span class="badge-soft">{{ task_type_text.get(j.task_type, j.task_type) }}</span>{% if j.task_type=="clean_cache" %} <span class="badge text-bg-warning">高风险</span>{% endif %}</div><div class="small text-muted wrap-any mt-1">{{ j.description or "-" }}</div></td>
           <td><code>{{ j.cron_expression }}</code></td>
           <td><small class="text-muted">{{ cron_hints.get(j.id, '-') }}</small></td>
           <td>
@@ -28,7 +35,7 @@
           <td>
             <form class="d-inline js-ajax-form" action="/cron/run/{{ j.id }}" method="POST" data-target="cronJobsPanel">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button class="btn btn-sm btn-outline-primary">立即执行</button>
+              <button class="btn btn-sm btn-outline-primary">立即执行一次</button>
             </form>
             <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editCronModal{{ j.id }}">修改计划</button>
             <form class="d-inline js-ajax-form" action="/cron/toggle/{{ j.id }}" method="POST" data-target="cronJobsPanel">
@@ -69,7 +76,7 @@
               
               <option value="backfill_mapping" {% if j.task_type=='backfill_mapping' %}selected{% endif %}>映射回填任务</option>
               <option value="clean_logs" {% if j.task_type=='clean_logs' %}selected{% endif %}>清理日志</option>
-              <option value="clean_cache" {% if j.task_type=='clean_cache' %}selected{% endif %}>清理缓存</option>
+              <option value="clean_cache" {% if j.task_type=='clean_cache' %}selected{% endif %}>清理缓存（高风险）</option>
               <option value="db_backup" {% if j.task_type=='db_backup' %}selected{% endif %}>数据库备份</option>
             </select>
           </div>
