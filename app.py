@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import requests
-from flask import Flask, request, session, abort
+from flask import Flask, request, session, abort, redirect, url_for, render_template, flash
 from core.services.backfill_service import scan_backfill_rows
 from core.routes.api import init_api_routes
 from core.routes.web import init_web_routes
@@ -59,6 +59,7 @@ app.config['APP_PASSWORD'] = os.environ.get('APP_PASSWORD', '')
 app.config['REQUEST_TIMEOUT_SECONDS'] = int(os.environ.get('REQUEST_TIMEOUT_SECONDS', '10'))
 app.config['ACCESS_LOG_ENABLED'] = os.environ.get('ACCESS_LOG_ENABLED', 'true').lower() == 'true'
 app.config['APP_VERSION'] = (Path(__file__).resolve().parent / 'VERSION').read_text(encoding='utf-8').strip() if (Path(__file__).resolve().parent / 'VERSION').exists() else 'dev'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=max(1, int(os.environ.get('LOGIN_REMEMBER_DAYS', '14') or '14')))
 
 try:
     APP_TZ = ZoneInfo(os.environ.get('TZ', 'Asia/Shanghai'))
@@ -194,6 +195,16 @@ AUTH_STATE = {}
 APP_BOOTSTRAPPED = False
 
 
+def _auth_enabled():
+    username = (app.config.get('APP_USERNAME') or '').strip()
+    password = app.config.get('APP_PASSWORD') or ''
+    return bool(username and password)
+
+
+def _is_logged_in():
+    return bool(session.get('logged_in'))
+
+
 def _get_client_ip():
     # Prefer reverse-proxy forwarded IP if present.
     xff = (request.headers.get('X-Forwarded-For') or '').strip()
@@ -246,7 +257,7 @@ def ensure_csrf_token():
 
 @app.context_processor
 def inject_csrf_token():
-    return {'csrf_token': ensure_csrf_token(), 'fmt_dt': format_datetime_local}
+    return {'csrf_token': ensure_csrf_token(), 'fmt_dt': format_datetime_local, 'auth_enabled': _auth_enabled(), 'is_logged_in': _is_logged_in()}
 
 
 def format_datetime_local(dt_obj, fmt='%Y-%m-%d %H:%M:%S'):
@@ -265,26 +276,13 @@ def security_guard():
     if request.endpoint == 'static':
         return
 
-    # Allow unauthenticated health checks for container/runtime probes.
-    if request.endpoint in {'api_bp.api_health'}:
+    # Allow unauthenticated health checks and auth pages.
+    if request.endpoint in {'api_bp.api_health', 'login_page', 'logout'}:
         return
 
-    if app.config['APP_USERNAME'] and app.config['APP_PASSWORD']:
-        client_ip = _get_client_ip()
-        blocked, remain_seconds = _auth_is_blocked(client_ip)
-        if blocked:
-            app.logger.warning('auth_blocked method=%s path=%s ip=%s remain=%ss', request.method, request.path, client_ip, remain_seconds)
-            return ('Too Many Requests: 登录失败次数过多，请30分钟后重试或重启容器。', 429, {'Retry-After': str(remain_seconds)})
-
-        auth = request.authorization
-        if not auth or auth.username != app.config['APP_USERNAME'] or auth.password != app.config['APP_PASSWORD']:
-            blocked_until = _record_auth_failure(client_ip)
-            if blocked_until:
-                app.logger.warning('auth_failed_blocked method=%s path=%s ip=%s blocked_until=%s', request.method, request.path, client_ip, blocked_until.isoformat())
-                return ('Too Many Requests: 1分钟内错误超过3次，已封禁30分钟。', 429, {'Retry-After': str(AUTH_BLOCK_SECONDS)})
-            app.logger.warning('auth_failed method=%s path=%s ip=%s', request.method, request.path, client_ip)
-            return ('Unauthorized', 401, {'WWW-Authenticate': 'Basic realm="HLM"'})
-        _clear_auth_failure(client_ip)
+    if _auth_enabled() and not _is_logged_in():
+        next_path = request.full_path if request.query_string else request.path
+        return redirect(url_for('login_page', next=next_path))
 
     if app.config.get('ACCESS_LOG_ENABLED', True):
         app.logger.info('request method=%s path=%s endpoint=%s ip=%s', request.method, request.path, request.endpoint, request.remote_addr)
@@ -293,6 +291,56 @@ def security_guard():
         session_token = session.get('_csrf_token')
         if not session_token or not request_token or request_token != session_token:
             abort(400, description='Invalid CSRF token')
+
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login_page():
+    if not _auth_enabled():
+        return redirect('/')
+
+    if _is_logged_in():
+        return redirect(request.args.get('next') or '/')
+
+    if request.method == 'POST':
+        client_ip = _get_client_ip()
+        blocked, remain_seconds = _auth_is_blocked(client_ip)
+        if blocked:
+            flash(f'登录失败次数过多，请 {remain_seconds} 秒后再试。', 'danger')
+            return render_template('login.html', next_path=(request.form.get('next') or '/')), 429
+
+        username = (request.form.get('username') or '').strip()
+        password = request.form.get('password') or ''
+        remember = request.form.get('remember_me') == 'on'
+        next_path = (request.form.get('next') or '/').strip() or '/'
+
+        if username == app.config['APP_USERNAME'] and password == app.config['APP_PASSWORD']:
+            session['logged_in'] = True
+            session['login_user'] = username
+            session.permanent = bool(remember)
+            _clear_auth_failure(client_ip)
+            flash('登录成功', 'success')
+            if not next_path.startswith('/'):
+                next_path = '/'
+            return redirect(next_path)
+
+        blocked_until = _record_auth_failure(client_ip)
+        if blocked_until:
+            flash('1分钟内错误超过3次，已封禁30分钟。', 'danger')
+            return render_template('login.html', next_path=next_path), 429
+        flash('用户名或密码错误', 'danger')
+        return render_template('login.html', next_path=next_path), 401
+
+    return render_template('login.html', next_path=(request.args.get('next') or '/'))
+
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.pop('logged_in', None)
+    session.pop('login_user', None)
+    session.permanent = False
+    flash('已退出登录', 'success')
+    return redirect('/login' if _auth_enabled() else '/')
 
 
 def get_config(key, default=None):
@@ -737,6 +785,9 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
     linked_removed = 0
     pending_source_hits = 0
     pending_source_samples = []
+    pending_log_mode = (get_config('pending_source_log_mode', 'aggregate') or 'aggregate').strip().lower()
+    if pending_log_mode not in {'aggregate', 'detail'}:
+        pending_log_mode = 'aggregate'
 
     def _prune_empty_dirs_from(file_path: str, root_path: str):
         try:
@@ -783,7 +834,16 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
         if source_type == 'pending':
             row.last_seen_at = now
             pending_source_hits += 1
-            if len(pending_source_samples) < 5:
+            if pending_log_mode == 'detail':
+                log_operation(
+                    'delete_pending_source',
+                    'FileLinkMap',
+                    row.id,
+                    task.name,
+                    f'来源待判定，暂不执行删种: path={deleted_path}, match={pending_match_by or "no_match"}, hash={pending_hash or "-"}',
+                    False,
+                )
+            elif len(pending_source_samples) < 5:
                 pending_source_samples.append(
                     f'id={row.id},match={pending_match_by or "no_match"},hash={pending_hash or "-"}'
                 )
@@ -858,7 +918,7 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
         deleted_torrents += int(deleted_cnt or 0)
         pending_total += int(pending_cnt or 0)
 
-    if pending_source_hits > 0:
+    if pending_source_hits > 0 and pending_log_mode == 'aggregate':
         sample_text = '; '.join(pending_source_samples) if pending_source_samples else '-'
         log_operation(
             'delete_pending_source',
@@ -1423,6 +1483,7 @@ def init_defaults():
         ('pending_source_guard_enabled', 'true', '删除联动来源待判定保护开关'),
         ('pending_source_guard_seconds', '900', '删除联动来源待判定窗口（秒）'),
         ('pending_source_warn_threshold', '200', '系统诊断：待判定映射告警阈值'),
+        ('pending_source_log_mode', 'aggregate', '待判定来源日志模式（aggregate/detail）'),
         ('manual_dest_delete_delete_source', 'true', '手动来源：删除目标后自动删除源文件'),
         ('manual_source_delete_delete_dest', 'true', '手动来源：删除源文件后自动删除目标文件'),
         ('downloader_dest_delete_delete_source', 'true', '下载器来源：删除目标后自动删除源文件'),

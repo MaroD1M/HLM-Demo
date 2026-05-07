@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}定时任务 - Hardlink Manager{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h3 class="mb-0">定时任务</h3>
+<div class="page-head">
+  <h3 class="mb-0">定时任务 <i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="用于自动执行扫描、回填、备份等任务；建议先手动验证后再定时。"></i></h3>
   <div>
     <form class="d-inline js-ajax-form" action="/cron/backup-now" method="POST" data-target="cronJobsPanel">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -51,7 +51,7 @@
             <input class="form-control" name="name" required>
           </div>
           <div class="mb-2">
-            <label class="form-label">任务类型</label>
+            <label class="form-label">任务类型<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="不同类型需要的目标不同：硬链接任务需选择目标任务，系统维护类无需目标。"></i></label>
             <select class="form-select" name="task_type" id="task_type" onchange="updateTargetField()">
               <option value="batch_hardlink">批量创建硬链接</option>
               
@@ -66,7 +66,7 @@
             <select class="form-select" name="target_id" id="target_id"></select>
           </div>
           <div class="mb-2">
-            <label class="form-label">Cron</label>
+            <label class="form-label">Cron<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="格式是 分 时 日 月 周；建议避开下载高峰时段。"></i></label>
             <input class="form-control cron-input" name="custom_cron" placeholder="*/10 * * * *" required data-preview-target="cronPreviewAdd">
             <div class="form-text">格式：分 时 日 月 周（24小时制）</div>
           </div>

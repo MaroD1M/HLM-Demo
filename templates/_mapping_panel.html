@@ -13,8 +13,8 @@
       </div>
 
       <div class="table-responsive">
-        <table class="table table-sm align-middle">
-          <thead><tr><th><input type="checkbox" onclick="toggleAllByClass('map-check', this.checked)"></th><th>源文件</th><th>目标文件</th><th>来源</th><th>关联状态</th><th>失败计数</th><th>上次失败时间</th><th>下载器 ID</th><th>种子 Hash</th><th>操作</th></tr></thead>
+        <table class="table table-sm align-middle table-fixed">
+          <thead><tr><th class="col-narrow"><input type="checkbox" onclick="toggleAllByClass('map-check', this.checked)"></th><th class="col-wide">源文件</th><th class="col-wide">目标文件</th><th class="col-mid">来源</th><th class="col-mid">关联状态</th><th class="col-narrow">失败计数</th><th class="col-mid">上次失败时间</th><th class="col-narrow">下载器 ID</th><th class="col-mid">种子 Hash</th><th class="col-actions">操作</th></tr></thead>
           <tbody>
             {% if mappings %}
               {% for m in mappings %}
@@ -45,7 +45,7 @@
                 <td class="wrap-any"><small>{{ fmt_dt(m.backfill_last_attempt_at) if m.backfill_last_attempt_at else '-' }}</small></td>
                 <td>{{ m.downloader_id or '-' }}</td>
                 <td class="wrap-any"><code>{{ m.torrent_hash or '-' }}</code></td>
-                <td class="d-flex gap-1 flex-wrap">
+                <td class="col-actions"><div class="actions-row">
                   {% if not m.torrent_hash %}
                   <form action="/mapping/link/retry" method="POST" class="m-0 js-ajax-form" data-target="mappingPanel">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -69,11 +69,11 @@
                     <input type="hidden" name="map_id" value="{{ m.id }}">
                     <button class="btn btn-sm btn-outline-danger" data-bs-toggle="tooltip" title="仅删除映射记录，不删除真实文件">删除映射</button>
                   </form>
-                </td>
+                </div></td>
               </tr>
               {% endfor %}
             {% else %}
-              <tr><td colspan="10" class="text-muted">暂无映射记录</td></tr>
+              <tr><td colspan="10"><div class="empty-state"><i class="fa-regular fa-folder-open"></i>暂无映射记录，先执行硬链接任务后会自动生成。</div></td></tr>
             {% endif %}
           </tbody>
         </table>
@@ -103,7 +103,7 @@
       </div>
 
       <div class="table-responsive">
-        <table class="table table-sm align-middle">
+        <table class="table table-sm align-middle table-fixed">
           <thead><tr><th><input type="checkbox" onclick="toggleAllByClass('cache-check', this.checked)"></th><th>源文件</th><th>目标文件</th><th>操作</th></tr></thead>
           <tbody>
             {% if caches %}
@@ -122,7 +122,7 @@
               </tr>
               {% endfor %}
             {% else %}
-              <tr><td colspan="4" class="text-muted">暂无缓存记录</td></tr>
+              <tr><td colspan="4"><div class="empty-state"><i class="fa-regular fa-folder"></i>暂无缓存记录。</div></td></tr>
             {% endif %}
           </tbody>
         </table>

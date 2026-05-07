@@ -1,8 +1,9 @@
 <div class="card p-3">
   <div class="table-responsive">
-    <table class="table">
-      <thead><tr><th>名称</th><th>源目录</th><th>目标目录</th><th>删除联动</th><th>状态</th><th>操作</th></tr></thead>
+    <table class="table align-middle table-fixed">
+      <thead><tr><th class="col-mid">名称</th><th class="col-wide">源目录</th><th class="col-wide">目标目录</th><th class="col-mid">删除联动</th><th class="col-narrow">状态</th><th class="col-actions">操作</th></tr></thead>
       <tbody>
+      {% if tasks %}
       {% for t in tasks %}
       <tr>
         <td>{{ t.name }}</td>
@@ -10,14 +11,17 @@
         <td>{{ t.dest_dir }}</td>
         <td><small>{{ "源删" if t.monitor_source_delete else "" }} {{ "目标删" if t.monitor_dest_delete else "" }}{% if t.delete_dry_run %} / 试运行{% endif %}</small></td>
         <td>{% if t.enabled %}<span class="badge text-bg-success">启用</span>{% else %}<span class="badge text-bg-secondary">禁用</span>{% endif %}</td>
-        <td>
+        <td class="col-actions"><div class="actions-row">
           <form class="d-inline js-ajax-form" action="/hardlink/execute/{{ t.id }}" method="POST" data-target="hardlinkJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">立即执行</button></form>
           <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editHardlinkModal{{ t.id }}">修改</button>
           <form class="d-inline js-ajax-form" action="/hardlink/toggle/{{ t.id }}" method="POST" data-target="hardlinkJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">{{ '禁用' if t.enabled else '启用' }}</button></form>
           <form class="d-inline js-ajax-form" action="/hardlink/delete/{{ t.id }}" method="POST" data-target="hardlinkJobsPanel" data-confirm="确认删除该硬链接任务？"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>
-        </td>
+        </div></td>
       </tr>
       {% endfor %}
+      {% else %}
+      <tr><td colspan="6"><div class="empty-state"><i class="fa-regular fa-folder-open"></i>暂无硬链接任务，点击右上角“新建任务”开始配置。</div></td></tr>
+      {% endif %}
       </tbody>
     </table>
   </div>
@@ -29,7 +33,8 @@
     <form class="js-ajax-form" data-target="hardlinkJobsPanel" action="/hardlink/update/{{ t.id }}" method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="modal-header"><h5 class="modal-title">修改硬链接任务：{{ t.name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body row g-3">
+      <div class="modal-body"><div class="row g-3">
+        <div class="col-12"><div class="section-card"><div class="section-title mb-2">基础设置</div><div class="row g-3">
         <div class="col-md-6"><label class="form-label">任务名称</label><input class="form-control" name="name" value="{{ t.name }}" required></div>
         <div class="col-md-6"><label class="form-label">扩展名白名单</label><input class="form-control" name="extensions" value="{{ t.extensions }}"></div>
         <div class="col-md-6"><label class="form-label">源目录</label><input class="form-control" name="source_dir" value="{{ t.source_dir }}" required></div>
@@ -41,8 +46,9 @@
           <div class="form-check"><input class="form-check-input" type="checkbox" name="create_folder" {% if t.create_folder %}checked{% endif %}><label class="form-check-label">按源目录建同名文件夹</label></div>
           <div class="form-check"><input class="form-check-input" type="checkbox" name="use_cache" {% if t.use_cache %}checked{% endif %}><label class="form-check-label">启用缓存</label></div>
         </div>
+      </div></div></div>
 
-        <div class="col-12"><hr><h6 class="mb-2">删除联动（内建于本任务）</h6></div>
+        <div class="col-12"><div class="section-card"><div class="section-title mb-2">删除联动（内建于本任务）</div><div class="row g-3">
         <div class="col-md-6 d-flex align-items-end gap-3">
           <div class="form-check"><input class="form-check-input" type="checkbox" name="monitor_source_delete" {% if t.monitor_source_delete %}checked{% endif %}><label class="form-check-label">监控源目录删除</label></div>
           <div class="form-check"><input class="form-check-input" type="checkbox" name="monitor_dest_delete" {% if t.monitor_dest_delete %}checked{% endif %}><label class="form-check-label">监控目标目录删除</label></div>
@@ -56,7 +62,8 @@
           <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_notify_on_delete" {% if t.delete_notify_on_delete %}checked{% endif %}><label class="form-check-label">成功通知</label></div>
           <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_notify_on_risky_delete" {% if t.delete_notify_on_risky_delete %}checked{% endif %}><label class="form-check-label">风险通知</label></div>
         </div>
-      </div>
+      </div></div></div>
+      </div></div>
       <div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-brand" type="submit">保存修改</button></div>
     </form>
   </div></div>

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}日志 - Hardlink Manager{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+<div class="page-head">
   <h3 class="mb-0">日志与执行历史</h3>
   <form action="/logs/clear" method="POST" onsubmit="return confirm('确认清空操作日志？')" class="d-flex gap-2 flex-wrap">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -43,7 +43,7 @@
 <div id="logsPanel" class="row g-3">
   <div class="col-lg-6">
     <div class="card p-3 h-100">
-      <h5 class="mb-3">操作日志</h5>
+      <h5 class="mb-3">操作日志<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="失败不一定代表系统异常，可能是保护策略触发（如待判定来源暂不删种）。"></i></h5>
       <div class="table-responsive">
         <table class="table align-middle">
           <thead>
@@ -94,7 +94,7 @@
 
   <div class="col-lg-6">
     <div class="card p-3 h-100">
-      <h5 class="mb-3">任务执行历史</h5>
+      <h5 class="mb-3">任务执行历史<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="记录每次任务执行结果与耗时，便于判断是否需要调整定时频率或任务阈值。"></i></h5>
       <div class="table-responsive">
         <table class="table align-middle">
           <thead>

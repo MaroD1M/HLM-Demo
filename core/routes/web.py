@@ -15,7 +15,7 @@ SETTINGS_SAVE_KEYS = (
     'manual_dest_delete_delete_source', 'manual_source_delete_delete_dest',
     'downloader_dest_delete_delete_source', 'downloader_source_delete_delete_dest',
     'downloader_dest_delete_delete_torrent', 'downloader_source_delete_delete_torrent',
-    'pending_source_guard_enabled', 'pending_source_guard_seconds', 'pending_source_warn_threshold',
+    'pending_source_guard_enabled', 'pending_source_guard_seconds', 'pending_source_warn_threshold', 'pending_source_log_mode',
     'github_version_check_enabled', 'github_repo', 'github_api_base',
     'app_log_max_mb', 'app_log_backup_count', 'version_check_cache_minutes', 'critical_action_passphrase',
 )
@@ -919,7 +919,7 @@ def init_web_routes(ctx: RouteDeps):
         log_q = OperationLog.query
         if q:
             like = f"%{q}%"
-            log_q = log_q.filter((OperationLog.message.like(like)) | (OperationLog.target_name.like(like)) | (OperationLog.operation_type.like(like)))
+            log_q = log_q.filter((OperationLog.message.like(like)) | (OperationLog.target_name.like(like)) | (OperationLog.operation_type.like(like)) | (OperationLog.target_type.like(like)))
         if op:
             log_q = log_q.filter(OperationLog.operation_type == op)
         if success == 'ok':
@@ -1018,7 +1018,7 @@ def init_web_routes(ctx: RouteDeps):
         checks.append(('代理配置', True, (get_config('proxy_url','') or '').strip() or '未设置（直连）'))
         checks.append(('应用版本', True, get_release_info().get('local_version','-')))
         checks.append(('日志目录', True, str(Path('data/logs').resolve())))
-        checks.append(('待判定来源保护', True, f"enabled={get_config('pending_source_guard_enabled','true')}, window={get_config('pending_source_guard_seconds','900')}s"))
+        checks.append(('待判定来源保护', True, f"enabled={get_config('pending_source_guard_enabled','true')}, window={get_config('pending_source_guard_seconds','900')}s, log_mode={get_config('pending_source_log_mode','aggregate')}"))
 
         pending_count = FileLinkMap.query.filter(FileLinkMap.source_type == 'pending', FileLinkMap.deleted_at.is_(None)).count()
         try:
