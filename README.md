@@ -5,7 +5,7 @@
 # 🔗 Hardlink Manager · 媒体硬链接自动化中心
 
 **让下载目录自动入库，让删除联动可控可靠。**  
-**面向新手开箱即用，也兼顾多任务与扩展性。**
+**兼顾日常自用部署与二次开发调试。**
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-Web-black?style=flat-square&logo=flask)
@@ -18,54 +18,112 @@
 
 ---
 
-## 🌟 核心能力
+## ✨ 你能得到什么
 
-- 多任务硬链接（电影/剧集/动漫等可并行管理）
-- 删除联动（冷却、阈值、试运行、通知）
-- 待判定来源保护（避免映射重建窗口期误判）
-- 映射与缓存管理（批量操作、重试回填、失败计数）
-- 版本检查与数据库迁移（支持升级前备份）
-- 本地静态资源（无外链 CSS/字体依赖）
-
----
-
-## 🖼️ 页面说明
-
-- 仪表盘：总览状态、近期执行、快捷入口
-- 硬链接任务：新建/编辑任务与删除联动策略
-- 疑似误删处理：处理高风险待确认删除
-- 映射与缓存：回填、筛选、批量清理
-- 定时任务：统一调度管理
-- 系统设置：路径白名单、代理、通知、版本检查等
-- 系统诊断/日志：排查运行与配置问题
+- 🧠 **多任务管理**：电影/剧集/动漫等可以分任务并行管理
+- 🔁 **硬链接自动化**：定时或手动执行，减少重复操作
+- 🧹 **删除联动可控**：冷却、阈值、试运行、通知，降低误删风险
+- 🛡️ **待判定保护**：映射重建窗口期保守处理，避免误删种
+- 📦 **映射与缓存面板**：支持筛选、重试、批量清理
+- 🪵 **日志 + 诊断**：出问题更容易定位
 
 ---
 
-## 🚀 快速开始（Docker Compose）
+## 🗺️ 页面导览（第一次使用建议先看）
 
-### 1）复制配置
+- 🏠 **仪表盘**：看全局状态、近期执行、快捷入口
+- 🔗 **硬链接任务**：设置源目录、目标目录、扩展名、删除联动
+- 🧹 **疑似误删处理**：处理高风险待确认记录
+- 🧭 **映射与缓存**：查看映射关系、重试关联、清理缓存
+- ⏰ **定时任务**：统一调度执行
+- ⚙️ **系统设置**：路径白名单、通知、版本检查、备份参数
+- 🔍 **系统诊断 / 日志**：排查配置和运行问题
+
+---
+
+## 🚀 快速开始（适合日常自用）
+
+下面这份 Compose 可以直接用。  
+你只需要改 **4 处**：
+
+1. `SECRET_KEY`  
+2. `APP_USERNAME`  
+3. `APP_PASSWORD`  
+4. 宿主机媒体目录（`/你的媒体目录`）
+
+### 1）新建项目目录并进入
 
 ```bash
-cp .env.example .env
+mkdir -p hlm-demo && cd hlm-demo
 ```
 
-### 2）修改关键项
+### 2）创建 `docker-compose.yml`
 
-- `SECRET_KEY`（必填）
-- `MEDIA_ROOT`（必填，宿主机媒体根目录）
-- `APP_USERNAME` / `APP_PASSWORD`（可选；两者都设置才启用登录）
-- `APP_DEV_MODE` / `APP_DEV_AUTO_PULL`（可选；开发模式自动拉取）
-- `APP_DEV_PROXY_URL`（可选；开发模式拉取/依赖同步代理，容器内生效）
+把下面内容完整复制到 `docker-compose.yml`：
 
-> 登录机制说明：
-> - 同时设置 `APP_USERNAME` 与 `APP_PASSWORD`：启用登录页认证
-> - 任一为空：不强制登录，直接进入主界面
-> - 修改账号密码只需改环境变量并重启容器，不写入数据库
+```yaml
+services:
+  hlm:
+    image: ghcr.io/marod1m/hlm-demo:latest
+    container_name: hlm-demo
+    restart: unless-stopped
+    network_mode: bridge
 
-### 3）初始化并启动
+    ports:
+      - "5000:5000"
+
+    environment:
+      # 必改：应用密钥（请换成你自己的随机字符串）
+      SECRET_KEY: "请改成一个长随机字符串"
+
+      # 建议：登录账号密码（两项都填写才启用登录）
+      APP_USERNAME: "admin"
+      APP_PASSWORD: "123456"
+
+      # 可选：时区
+      TZ: "Asia/Shanghai"
+
+      # 可选：请求超时（秒）
+      REQUEST_TIMEOUT_SECONDS: "10"
+
+      # 可选：日志控制
+      ACCESS_LOG_ENABLED: "true"
+      APP_LOG_MAX_MB: "10"
+      APP_LOG_BACKUP_COUNT: "5"
+
+      # 固定建议
+      PYTHONUNBUFFERED: "1"
+
+    volumes:
+      # 数据库与运行状态（必须保留）
+      - ./data/instance:/app/instance
+
+      # 备份目录（建议保留）
+      - ./data/backups:/app/data/backups
+
+      # 应用日志目录（建议保留）
+      - ./data/logs:/app/data/logs
+
+      # 必改：把左侧路径改成你自己的媒体根目录
+      - /你的媒体目录:/media
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+### 3）启动
 
 ```bash
-./scripts/bootstrap.sh
 docker compose up -d
 ```
 
@@ -76,46 +134,128 @@ docker compose up -d
 
 ---
 
-## 🧩 目录映射最佳实践
+## 🧪 开发调试部署（适合需要频繁改代码）
 
-推荐只映射一个媒体总目录到容器 `/media`，任务里按子目录拆分：
+这个模式适合你“重启就拉最新代码”的调试场景，不用每次都打版本构建镜像。
 
-- 电影：`/media/downloads/movie -> /media/library/movie`
-- 剧集：`/media/downloads/tv -> /media/library/tv`
-- 动漫：`/media/downloads/anime -> /media/library/anime`
+### 开发模式关键点
 
-优点：新增任务不改 Compose、结构统一、维护简单。
+- 开启后，容器重启会自动拉取指定仓库/分支最新代码
+- 可选：`requirements.txt` 变化时自动同步依赖
+- 可选：通过代理拉取 GitHub（容器内代理，**不要写 127.0.0.1**）
+
+### 开发模式 Compose 示例
+
+```yaml
+services:
+  hlm:
+    image: ghcr.io/marod1m/hlm-demo:latest
+    container_name: hlm-demo-dev
+    restart: unless-stopped
+    network_mode: bridge
+
+    ports:
+      - "5000:5000"
+
+    environment:
+      SECRET_KEY: "请改成一个长随机字符串"
+      APP_USERNAME: "admin"
+      APP_PASSWORD: "123456"
+      TZ: "Asia/Shanghai"
+      PYTHONUNBUFFERED: "1"
+
+      # ===== 开发模式 =====
+      APP_DEV_MODE: "true"
+      APP_DEV_AUTO_PULL: "true"
+      APP_DEV_GIT_REPO: "https://github.com/MaroD1M/HLM-Demo.git"
+      APP_DEV_GIT_BRANCH: "master"
+
+      # requirements 变化时自动安装依赖
+      APP_DEV_AUTO_PIP_SYNC: "true"
+      APP_DEV_PIP_SYNC_TIMEOUT: "120"
+
+      # 私有仓库可用（公开仓库可留空）
+      APP_DEV_GIT_TOKEN: ""
+
+      # 代理（容器内生效）
+      # 建议填 host.docker.internal:7890 或宿主机局域网IP:7890
+      APP_DEV_PROXY_URL: ""
+      APP_DEV_NO_PROXY: "localhost,127.0.0.1,::1"
+
+    volumes:
+      - ./data/instance:/app/instance
+      - ./data/backups:/app/data/backups
+      - ./data/logs:/app/data/logs
+      - ./data/devsrc:/app-devsrc
+      - /你的媒体目录:/media
+```
 
 ---
 
-## 🛡️ 安全与运维建议
+## 📁 路径填写规则（非常重要）
+
+页面里填写路径时，填的是**容器路径**，不是宿主机路径。
+
+- ✅ 正确：`/media/downloads/movie`
+- ❌ 错误：`/volume1/media/downloads/movie`
+
+---
+
+## 🧩 推荐任务模板（可直接照抄）
+
+- 电影任务：
+  - 源目录：`/media/downloads/movie`
+  - 目标目录：`/media/library/movie`
+
+- 剧集任务：
+  - 源目录：`/media/downloads/tv`
+  - 目标目录：`/media/library/tv`
+
+- 动漫任务：
+  - 源目录：`/media/downloads/anime`
+  - 目标目录：`/media/library/anime`
+
+---
+
+## 🔐 登录与账号密码机制
+
+- 同时设置 `APP_USERNAME` 和 `APP_PASSWORD`：启用登录页
+- 任一为空：不强制登录，直接进入主界面
+- 修改账号密码：改 Compose 里的环境变量后重启容器即可
+- 账号密码**不写入数据库**
+
+---
+
+## 🛡️ 生产使用建议
 
 - 使用强随机 `SECRET_KEY`
-- 建议内网访问，避免公网裸露
+- 仅在内网开放端口
 - 定期备份 `./data/instance` 与 `./data/backups`
-- 风险场景建议保留：
-  - `delete_match_strict_mode=true`
-  - `notify_on_risky_delete=true`
+- 删除联动建议保持保守策略（严格匹配 + 风险通知开启）
 
 ---
 
-## 🧯 常见问题
+## ❓常见问题
 
-### Q1：为什么我访问不到登录页？
-未同时设置 `APP_USERNAME` 与 `APP_PASSWORD` 时，系统默认不强制登录。
+### Q1：为什么访问 `/login` 会跳回首页？
+因为没同时设置账号和密码，系统默认不强制登录。
 
-### Q2：忘记账号密码怎么办？
-直接修改环境变量中的 `APP_USERNAME` / `APP_PASSWORD`，重启后生效。
+### Q2：自动拉取代码没生效？
+检查是否同时满足：
+- `APP_DEV_MODE=true`
+- `APP_DEV_AUTO_PULL=true`
+- `APP_DEV_GIT_REPO` 正确
 
-### Q3：页面里应该填宿主机路径还是容器路径？
-填容器路径（例如 `/media/...`），不是宿主机路径（例如 `/volume1/...`）。
+### Q3：我配了代理还是拉不下来？
+确认代理地址是容器可访问地址，别写 `127.0.0.1`。  
+建议改为 `host.docker.internal:端口` 或宿主机局域网 IP。
 
-### Q4：出现“待判定”是什么意思？
-表示来源尚在回填确认窗口，删除联动会保守处理，避免误删。
+### Q4：导入/导出配置会不会包含口令？
+导出会隐藏关键口令；导入只覆盖支持的配置项。
 
 ---
 
-## 🧑‍💻 本地开发
+## 🧑‍💻 本地开发（非 Docker）
 
 ```bash
 python3 -m venv .venv
@@ -125,7 +265,7 @@ python3 -m venv .venv
 
 ---
 
-## 📁 项目结构
+## 📦 项目结构
 
 ```text
 app.py
