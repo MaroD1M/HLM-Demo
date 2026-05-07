@@ -57,10 +57,10 @@
           <div class="form-check"><input class="form-check-input" type="checkbox" name="monitor_dest_delete" {% if t.monitor_dest_delete %}checked{% endif %}><label class="form-check-label">监控目标目录删除</label></div>
         </div>
         </div>
-        <div class="col-md-6"><label class="form-label">删除联动下载器（可选）</label><select class="form-select" name="delete_downloader_id"><option value="">不关联</option>{% for d in downloaders %}<option value="{{ d.id }}" {% if t.delete_downloader_id==d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
-        <div class="col-md-6"><label class="form-label">删除联动通知器（可选）</label><select class="form-select" name="delete_notifier_id"><option value="">不关联</option>{% for n in notifiers %}<option value="{{ n.id }}" {% if t.delete_notifier_id==n.id %}selected{% endif %}>{{ n.name }}</option>{% endfor %}</select></div>
-        <div class="col-md-3"><label class="form-label">删除冷却(秒)</label><input class="form-control" type="number" name="delete_cooldown_seconds" value="{{ t.delete_cooldown_seconds or 120 }}" min="0"></div>
-        <div class="col-md-3"><label class="form-label">单次最大删除</label><input class="form-control" type="number" name="delete_max_deletes_per_run" value="{{ t.delete_max_deletes_per_run or 20 }}" min="1"></div>
+        <div class="col-md-6 section-subcard"><label class="field-title">关联下载器</label><label class="form-label">删除联动下载器（可选）</label><select class="form-select" name="delete_downloader_id"><option value="">不关联</option>{% for d in downloaders %}<option value="{{ d.id }}" {% if t.delete_downloader_id==d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
+        <div class="col-md-6 section-subcard"><label class="field-title">关联通知</label><label class="form-label">删除联动通知器（可选）</label><select class="form-select" name="delete_notifier_id"><option value="">不关联</option>{% for n in notifiers %}<option value="{{ n.id }}" {% if t.delete_notifier_id==n.id %}selected{% endif %}>{{ n.name }}</option>{% endfor %}</select></div>
+        <div class="col-md-3 section-subcard"><label class="field-title">节流控制</label><label class="form-label">删除冷却(秒)</label><input class="form-control" type="number" name="delete_cooldown_seconds" value="{{ t.delete_cooldown_seconds or 120 }}" min="0"></div>
+        <div class="col-md-3 section-subcard"><label class="field-title">阈值控制</label><label class="form-label">单次最大删除</label><input class="form-control" type="number" name="delete_max_deletes_per_run" value="{{ t.delete_max_deletes_per_run or 20 }}" min="1"></div>
         <div class="col-md-6 section-subcard">
           <label class="field-title">执行与通知选项</label><div class="field-checks field-checks-3">
           <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_dry_run" {% if t.delete_dry_run %}checked{% endif %}><label class="form-check-label">仅记录不执行</label></div>

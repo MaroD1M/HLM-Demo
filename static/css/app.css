@@ -686,3 +686,25 @@ body {
   flex: 1 1 320px;
   min-width: 260px;
 }
+
+
+/* Hardlink section harmonization */
+.section-card > .row > .section-subcard,
+.modal .section-subcard {
+  min-height: 96px;
+}
+
+.section-subcard .form-label {
+  margin-bottom: 4px;
+}
+
+.section-subcard .field-title {
+  margin-bottom: 6px;
+}
+
+@media (max-width: 992px) {
+  .section-card > .row > .section-subcard,
+  .modal .section-subcard {
+    min-height: auto;
+  }
+}
