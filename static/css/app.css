@@ -494,3 +494,106 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Visual section subtitle consistency */
+.field-title {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid #cfe1ee;
+  border-radius: 999px;
+  background: #eef6fc;
+  color: #0c4f66;
+  font-size: 0.84rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+/* keep checkbox labels tidy on desktop */
+.field-checks .form-check-label {
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+/* clearer table boundaries for logs/mapping/cache */
+.table-grid thead th {
+  border-bottom: 1px solid #cfdbe6;
+  background: #f4f8fd;
+}
+
+.table-grid tbody td {
+  border-bottom: 1px solid #e6eef5;
+}
+
+.table-grid tbody tr:hover td {
+  background: #f9fcff;
+}
+
+/* logs table readability */
+.logs-op-table .col-time { min-width: 148px; }
+.logs-op-table .col-type { min-width: 140px; }
+.logs-op-table .col-target { min-width: 150px; }
+.logs-op-table .col-result { min-width: 72px; }
+.logs-op-table .col-message { min-width: 260px; }
+
+/* mapping hash should wrap fully */
+.mapping-table .col-hash {
+  width: 16%;
+  min-width: 220px;
+}
+
+.mapping-table code {
+  display: inline;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+/* mapping/caches stronger column boundaries */
+.mapping-table td,
+.mapping-table th,
+.cache-table td,
+.cache-table th {
+  border-right: 1px solid #edf2f7;
+}
+
+.mapping-table td:last-child,
+.mapping-table th:last-child,
+.cache-table td:last-child,
+.cache-table th:last-child {
+  border-right: none;
+}
+
+/* settings transfer block: export and import in clear stacked rows */
+.settings-transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.settings-transfer .transfer-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.settings-transfer form {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.settings-transfer input[type="file"] {
+  min-width: 280px;
+  flex: 1 1 320px;
+}
+
+@media (max-width: 992px) {
+  .field-checks .form-check-label {
+    white-space: normal;
+  }
+}

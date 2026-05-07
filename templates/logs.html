@@ -45,14 +45,14 @@
     <div class="card p-3 h-100">
       <h5 class="mb-3">操作日志<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="失败不一定代表系统异常，可能是保护策略触发（如待判定来源暂不删种）。"></i></h5>
       <div class="table-responsive">
-        <table class="table align-middle">
+        <table class="table align-middle table-grid logs-op-table">
           <thead>
             <tr>
-              <th>时间</th>
-              <th>类型</th>
-              <th>目标</th>
-              <th>结果</th>
-              <th>消息</th>
+              <th class="col-time">时间</th>
+              <th class="col-type">类型</th>
+              <th class="col-target">目标</th>
+              <th class="col-result">结果</th>
+              <th class="col-message">消息</th>
             </tr>
           </thead>
           <tbody>
@@ -96,7 +96,7 @@
     <div class="card p-3 h-100">
       <h5 class="mb-3">任务执行历史<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="记录每次任务执行结果与耗时，便于判断是否需要调整定时频率或任务阈值。"></i></h5>
       <div class="table-responsive">
-        <table class="table align-middle">
+        <table class="table align-middle table-grid">
           <thead>
             <tr>
               <th>开始时间</th>
