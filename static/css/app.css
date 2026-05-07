@@ -597,3 +597,92 @@ body {
     white-space: normal;
   }
 }
+
+
+/* Unified mini section card inside modal/form groups */
+.section-subcard {
+  border: 1px solid #dbe7f1;
+  border-radius: 10px;
+  background: #f9fcff;
+  padding: 10px 12px;
+}
+
+/* Keep field titles visually consistent with section titles */
+.field-title {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.62rem;
+  border: 1px solid #c7ddeb;
+  border-radius: 999px;
+  background: #edf6fd;
+  color: #0d4f67;
+  font-size: 0.84rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.field-checks {
+  gap: 8px 14px;
+}
+
+.field-checks .form-check-label {
+  line-height: 1.35;
+  white-space: normal;
+}
+
+/* Logs/mapping/cache clearer boundaries */
+.table-grid thead th {
+  background: #f3f8ff;
+  border-bottom: 1px solid #d2dfeb;
+}
+
+.table-grid tbody td {
+  border-bottom: 1px solid #e6eef5;
+  border-right: 1px solid #edf2f7;
+}
+
+.table-grid tbody td:last-child,
+.table-grid thead th:last-child {
+  border-right: none;
+}
+
+.table-grid tbody tr:hover td {
+  background: #f9fcff;
+}
+
+/* Hash content should wrap full value */
+.mapping-table .col-hash {
+  min-width: 220px;
+}
+
+.mapping-table code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+/* Settings transfer stack */
+.settings-transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-transfer .transfer-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.settings-transfer form {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.settings-transfer input[type="file"] {
+  flex: 1 1 320px;
+  min-width: 260px;
+}
