@@ -97,13 +97,14 @@
   <div class="settings-transfer">
     <div class="transfer-row">
       <a class="btn btn-outline-secondary" href="/settings/export">导出配置</a>
-      <span class="text-muted">导出为 JSON 文件（敏感字段自动隐藏）。</span>
+      <span class="text-muted">导出为 JSON 文件（关键口令等安全字段会隐藏，导入后需按需重新填写）。</span>
     </div>
     <div class="transfer-row">
       <form class="js-ajax-form" data-target="settingsPagePanel" action="/settings/import" method="POST" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input class="form-control" type="file" name="config_file" accept="application/json" required>
         <button class="btn btn-outline-primary" type="submit">导入配置</button>
+        <span class="text-muted">导入不会恢复口令类字段，这是安全设计。</span>
       </form>
     </div>
   </div>
