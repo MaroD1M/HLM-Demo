@@ -82,7 +82,7 @@ def create_hardlink_for_file(task, file_path, cache_model, map_model, db, safe_u
     mapping.file_key = key
     mapping.last_seen_at = datetime.now(UTC)
     mapping.deleted_at = None
-    # New links are manual by default; backfill upgrades to downloader when matched.
-    mapping.source_type = 'manual'
+    # New links start as pending to avoid misclassifying downloader files before backfill finishes.
+    mapping.source_type = 'pending'
 
     return True, f'{file_path} -> {dest_file}'

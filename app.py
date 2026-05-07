@@ -581,6 +581,64 @@ def try_match_torrent_by_mapping_or_name(deleted_path: Path, downloader: Downloa
     return None, 'no_match'
 
 
+def _config_bool(key, default='false'):
+    return str(get_config(key, default)).lower() == 'true'
+
+
+def _config_int(key, default=0):
+    try:
+        return int(get_config(key, str(default)) or str(default))
+    except Exception:
+        return int(default)
+
+
+def _as_aware_utc(dt_obj):
+    if not dt_obj:
+        return None
+    if dt_obj.tzinfo is None:
+        return dt_obj.replace(tzinfo=UTC)
+    return dt_obj.astimezone(UTC)
+
+
+def _effective_source_type_for_delete(row, deleted_path: str, downloader):
+    raw_source_type = (row.source_type or '').strip().lower()
+    if raw_source_type == 'downloader':
+        return 'downloader', None, None
+
+    has_hash = bool((row.torrent_hash or '').strip())
+    has_downloader = bool(row.downloader_id)
+    if has_hash and has_downloader:
+        return 'downloader', None, None
+
+    now = datetime.now(UTC)
+    created_at = _as_aware_utc(getattr(row, 'created_at', None)) or now
+    age_seconds = max(0, int((now - created_at).total_seconds()))
+
+    pending_enabled = _config_bool('pending_source_guard_enabled', 'true')
+    pending_window = max(0, _config_int('pending_source_guard_seconds', 900))
+    treat_unknown_as_pending = raw_source_type in {'', 'pending'}
+    treat_recent_manual_as_pending = raw_source_type == 'manual' and age_seconds <= pending_window
+    needs_pending_guard = pending_enabled and (treat_unknown_as_pending or treat_recent_manual_as_pending)
+
+    if not needs_pending_guard:
+        return 'manual', None, None
+
+    if downloader is None:
+        return 'pending', None, 'pending_no_downloader'
+
+    torrent_hash, match_by = try_match_torrent_by_mapping_or_name(Path(deleted_path), downloader)
+    if torrent_hash and match_by in {'mapping_hash'}:
+        row.torrent_hash = torrent_hash
+        row.downloader_id = downloader.id
+        row.source_type = 'downloader'
+        row.backfill_fail_count = 0
+        row.backfill_last_attempt_at = None
+        return 'downloader', torrent_hash, match_by
+
+    # For pending rows we avoid using weak name/path match as auto downloader decision.
+    return 'pending', torrent_hash, match_by or 'no_match'
+
+
 def create_pending_delete_action(task, row, deleted_path, torrent_hash, match_by, reason):
     exists = DeletePendingAction.query.filter_by(
         task_id=task.id,
@@ -677,6 +735,8 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
     pending_total = 0
     hit_total = 0
     linked_removed = 0
+    pending_source_hits = 0
+    pending_source_samples = []
 
     def _prune_empty_dirs_from(file_path: str, root_path: str):
         try:
@@ -719,22 +779,23 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
 
         src = str(row.source_path or '')
         dst = str(row.dest_path or '')
-        raw_source_type = (row.source_type or '').strip().lower()
-        if raw_source_type in {'manual', 'downloader'}:
-            source_type = raw_source_type
-        else:
-            # 仅在来源字段缺失/异常时才做兜底推断，避免把 manual 误判为 downloader 触发删种。
-            has_hash = bool((row.torrent_hash or '').strip())
-            has_downloader = bool(row.downloader_id)
-            source_type = 'downloader' if (has_hash and has_downloader) else 'manual'
+        source_type, pending_hash, pending_match_by = _effective_source_type_for_delete(row, deleted_path, downloader)
+        if source_type == 'pending':
+            row.last_seen_at = now
+            pending_source_hits += 1
+            if len(pending_source_samples) < 5:
+                pending_source_samples.append(
+                    f'id={row.id},match={pending_match_by or "no_match"},hash={pending_hash or "-"}'
+                )
 
+        policy_source_type = 'manual' if source_type == 'pending' else source_type
         if deleted_side == 'source':
             counterpart = dst
-            policy_key = 'manual_source_delete_delete_dest' if source_type == 'manual' else 'downloader_source_delete_delete_dest'
+            policy_key = 'manual_source_delete_delete_dest' if policy_source_type == 'manual' else 'downloader_source_delete_delete_dest'
             action_label = 'source_deleted'
         else:
             counterpart = src
-            policy_key = 'manual_dest_delete_delete_source' if source_type == 'manual' else 'downloader_dest_delete_delete_source'
+            policy_key = 'manual_dest_delete_delete_source' if policy_source_type == 'manual' else 'downloader_dest_delete_delete_source'
             action_label = 'dest_deleted'
 
         counterpart_removed = None
@@ -776,6 +837,10 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
         proxy.notify_on_delete = bool(task.delete_notify_on_delete)
         proxy.notify_on_risky_delete = bool(task.delete_notify_on_risky_delete)
 
+        if source_type == 'pending':
+            db.session.flush()
+            continue
+
         ok, deleted_cnt, _hits, pending_cnt = scan_delete_rows(
             proxy,
             [row],
@@ -793,8 +858,19 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
         deleted_torrents += int(deleted_cnt or 0)
         pending_total += int(pending_cnt or 0)
 
+    if pending_source_hits > 0:
+        sample_text = '; '.join(pending_source_samples) if pending_source_samples else '-'
+        log_operation(
+            'delete_pending_source',
+            'HardlinkTask',
+            task.id,
+            task.name,
+            f'本轮待判定来源 {pending_source_hits} 条，暂不删种；样例: {sample_text}',
+            False,
+        )
+
     db.session.commit()
-    return True, f'删除联动完成：本轮处理 {hit_total}/{total_candidates}，联动删种 {deleted_torrents}，待确认 {pending_total}，对侧删除 {linked_removed}'
+    return True, f'删除联动完成：本轮处理 {hit_total}/{total_candidates}，联动删种 {deleted_torrents}，待确认 {pending_total}，对侧删除 {linked_removed}，待判定 {pending_source_hits}'
 
 
 
@@ -1344,6 +1420,9 @@ def init_defaults():
         ('notify_on_delete', 'true', '启用删除通知'),
         ('notify_on_risky_delete', 'true', '疑似误删风险通知'),
         ('delete_match_strict_mode', 'true', '删除联动仅精确匹配自动执行'),
+        ('pending_source_guard_enabled', 'true', '删除联动来源待判定保护开关'),
+        ('pending_source_guard_seconds', '900', '删除联动来源待判定窗口（秒）'),
+        ('pending_source_warn_threshold', '200', '系统诊断：待判定映射告警阈值'),
         ('manual_dest_delete_delete_source', 'true', '手动来源：删除目标后自动删除源文件'),
         ('manual_source_delete_delete_dest', 'true', '手动来源：删除源文件后自动删除目标文件'),
         ('downloader_dest_delete_delete_source', 'true', '下载器来源：删除目标后自动删除源文件'),

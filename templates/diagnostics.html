@@ -44,3 +44,26 @@
   </div>
 </div>
 {% endblock %}
+
+
+<div class="card p-3 mt-3">
+  <h5>最近待判定来源事件</h5>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr><th>时间</th><th>目标</th><th>详情</th></tr></thead>
+      <tbody>
+      {% if pending_events %}
+        {% for e in pending_events %}
+          <tr>
+            <td>{{ fmt_dt(e.created_at) }}</td>
+            <td>{{ e.target_type or '-' }}#{{ e.target_id or '-' }}</td>
+            <td class="wrap-any"><small>{{ e.message or '-' }}</small></td>
+          </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="3" class="text-muted">暂无待判定来源事件</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>

@@ -1,6 +1,6 @@
   <div class="col-lg-7">
     <div class="card p-3 h-100">
-      <h5>文件映射（关联关系）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单删、批量删、全选/反选；支持查看回填失败次数并手动重置。"></i></h5>
+      <h5>文件映射（关联关系）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单删、批量删、全选/反选；支持查看回填失败次数并手动重置。来源=待判定 时表示映射刚重建或尚在回填窗口，删除联动会保守处理。"></i></h5>
       <form id="mapBulkForm" action="/mapping/link/bulk-delete" method="POST" class="d-none js-ajax-form" data-target="mappingPanel">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       </form>
@@ -22,7 +22,16 @@
                 <td><input class="form-check-input map-check" type="checkbox" value="{{ m.id }}"></td>
                 <td class="wrap-any"><small>{{ m.source_path }}</small></td>
                 <td class="wrap-any"><small>{{ m.dest_path }}</small></td>
-                <td><span class="badge bg-light text-dark">{{ '下载器文件' if (m.source_type or 'manual')=='downloader' else '手动文件' }}</span></td>
+                <td>
+                  {% set st = (m.source_type or 'manual') %}
+                  {% if st == 'downloader' %}
+                    <span class="badge text-bg-primary">下载器文件</span>
+                  {% elif st == 'pending' %}
+                    <span class="badge text-bg-warning">待判定</span>
+                  {% else %}
+                    <span class="badge bg-light text-dark">手动文件</span>
+                  {% endif %}
+                </td>
                 <td>{% if m.torrent_hash %}<span class="badge text-bg-success">已关联</span>{% else %}<span class="badge text-bg-secondary">未关联</span>{% endif %}</td>
                 <td>
                   {% if (m.backfill_fail_count or 0) > 2 %}
