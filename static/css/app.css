@@ -158,3 +158,235 @@ h5 { font-size: var(--fs-20); }
   margin-bottom: 8px;
   display: block;
 }
+/* Global readability */
+body {
+  font-size: 15px;
+}
+
+.main {
+  font-size: 0.98rem;
+}
+
+/* Sidebar readability */
+.side .brand {
+  font-size: 1.08rem;
+}
+
+.side .nav-link {
+  font-size: 0.96rem;
+  font-weight: 600;
+  padding: 0.58rem 0.7rem;
+  gap: 10px;
+}
+
+.side .nav-link span {
+  line-height: 1.35;
+}
+
+/* Common table action usability */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.actions-row form {
+  margin: 0;
+}
+
+.actions-row .btn {
+  white-space: nowrap;
+}
+
+/* Hardlink task list */
+.hardlink-table {
+  min-width: 1180px;
+}
+
+.hardlink-table .col-actions {
+  min-width: 350px;
+}
+
+/* Mapping/caches table: keep operation visible and avoid giant horizontal drag */
+.mapping-table {
+  min-width: 1280px;
+  table-layout: auto;
+}
+
+.mapping-table th,
+.mapping-table td {
+  vertical-align: middle;
+}
+
+.mapping-table .col-actions {
+  min-width: 280px;
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: #fff;
+  box-shadow: -10px 0 10px -12px rgba(12, 32, 54, 0.35);
+}
+
+.mapping-table thead .col-actions {
+  z-index: 3;
+  background: #f3f8ff;
+}
+
+.cache-table {
+  min-width: 760px;
+  table-layout: auto;
+}
+
+/* Modal form layout consistency */
+.field-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  align-items: start;
+}
+
+.field-checks .form-check {
+  margin: 0;
+  min-height: 1.75rem;
+}
+
+@media (max-width: 992px) {
+  .field-checks {
+    grid-template-columns: 1fr;
+  }
+
+  .side .nav-link {
+    font-size: 0.94rem;
+  }
+}
+
+/* ---- Fine tuning round 2 (readability + layout ergonomics) ---- */
+.side {
+  width: 272px;
+}
+
+.side .nav-link {
+  white-space: normal;
+  align-items: flex-start;
+  line-height: 1.4;
+}
+
+.side .nav-link i {
+  margin-top: 2px;
+}
+
+.page-head h3 {
+  font-size: 1.55rem;
+}
+
+/* Hardlink task operation column: stable two-column action layout */
+.hardlink-table .actions-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(118px, 1fr));
+  gap: 8px;
+}
+
+.hardlink-table .actions-row form,
+.hardlink-table .actions-row .btn {
+  width: 100%;
+}
+
+.hardlink-table .actions-row .btn {
+  text-align: center;
+}
+
+/* Mapping table: keep key operations visible with less horizontal drag */
+.mapping-table .col-wide {
+  width: 23%;
+}
+
+.mapping-table .col-mid {
+  width: 10%;
+}
+
+.mapping-table .col-narrow {
+  width: 7%;
+}
+
+.mapping-table .wrap-any {
+  max-width: 240px;
+}
+
+.mapping-table .actions-row {
+  justify-content: flex-start;
+}
+
+.cache-table td:last-child,
+.cache-table th:last-child {
+  min-width: 130px;
+}
+
+@media (max-width: 1200px) {
+  .hardlink-table .actions-row {
+    grid-template-columns: 1fr;
+  }
+
+  .hardlink-table .col-actions {
+    min-width: 280px;
+  }
+}
+
+@media (max-width: 960px) {
+  .side {
+    width: auto;
+  }
+
+  .side .nav-link {
+    align-items: center;
+  }
+
+  .page-head h3 {
+    font-size: 1.35rem;
+  }
+}
+
+
+/* Content typography scale (page body, not sidebar) */
+.main {
+  font-size: 1rem;
+}
+
+.main h3 {
+  font-size: 1.7rem;
+}
+
+.main .card,
+.main .table,
+.main .form-control,
+.main .form-select,
+.main .btn,
+.main .alert,
+.main .form-label {
+  font-size: 0.95rem;
+}
+
+.main .form-text,
+.main small,
+.main .text-muted {
+  font-size: 0.86rem;
+}
+
+.main .btn-sm {
+  font-size: 0.88rem;
+}
+
+@media (max-width: 960px) {
+  .main {
+    font-size: 0.98rem;
+  }
+
+  .main h3 {
+    font-size: 1.45rem;
+  }
+}

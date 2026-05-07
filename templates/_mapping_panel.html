@@ -13,7 +13,7 @@
       </div>
 
       <div class="table-responsive">
-        <table class="table table-sm align-middle table-fixed">
+        <table class="table table-sm align-middle table-fixed mapping-table">
           <thead><tr><th class="col-narrow"><input type="checkbox" onclick="toggleAllByClass('map-check', this.checked)"></th><th class="col-wide">源文件</th><th class="col-wide">目标文件</th><th class="col-mid">来源</th><th class="col-mid">关联状态</th><th class="col-narrow">失败计数</th><th class="col-mid">上次失败时间</th><th class="col-narrow">下载器 ID</th><th class="col-mid">种子 Hash</th><th class="col-actions">操作</th></tr></thead>
           <tbody>
             {% if mappings %}
@@ -103,7 +103,7 @@
       </div>
 
       <div class="table-responsive">
-        <table class="table table-sm align-middle table-fixed">
+        <table class="table table-sm align-middle table-fixed cache-table">
           <thead><tr><th><input type="checkbox" onclick="toggleAllByClass('cache-check', this.checked)"></th><th>源文件</th><th>目标文件</th><th>操作</th></tr></thead>
           <tbody>
             {% if caches %}
