@@ -34,12 +34,21 @@ app.logger.setLevel(logging.INFO)
 
 def init_console_logger():
     # Ensure logs are always visible in container stdout (e.g., Synology Container Manager).
-    has_stream = any(isinstance(h, logging.StreamHandler) for h in app.logger.handlers)
-    if not has_stream:
+    # FileHandler is a StreamHandler subclass, so we must explicitly check for stdout/stderr streams.
+    has_stdout_stream = False
+    for h in app.logger.handlers:
+        if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler):
+            stream = getattr(h, 'stream', None)
+            if stream in {sys.stdout, sys.stderr}:
+                has_stdout_stream = True
+                break
+
+    if not has_stdout_stream:
         sh = logging.StreamHandler(sys.stdout)
         sh.setLevel(logging.INFO)
         sh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s'))
         app.logger.addHandler(sh)
+
     app.logger.propagate = True
 
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default-secret-key-for-dev-only')
@@ -128,8 +137,8 @@ def get_release_info(force_refresh=False):
                         'checked_at': cache_checked,
                         'message': f'缓存({int(age_min)}分钟内)',
                     }
-            except Exception:
-                pass
+            except Exception as exc:
+                app.logger.debug('version cache parse failed: %s', exc)
     try:
         resp = requests.get(url, timeout=app.config['REQUEST_TIMEOUT_SECONDS'], proxies=_outbound_proxies(), headers={'Accept': 'application/vnd.github+json'})
         if resp.status_code == 404:
@@ -358,7 +367,29 @@ def validate_host(host):
 
 
 def validate_cron_expression(expr):
-    return len((expr or '').split()) == 5
+    parts = (expr or '').strip().split()
+    if len(parts) != 5:
+        return False
+
+    def _ok(part, lo, hi):
+        part = (part or '').strip()
+        if part == '*':
+            return True
+        if part.startswith('*/'):
+            step = part[2:]
+            return step.isdigit() and int(step) > 0
+        if part.isdigit():
+            v = int(part)
+            return lo <= v <= hi
+        return False
+
+    return (
+        _ok(parts[0], 0, 59) and
+        _ok(parts[1], 0, 23) and
+        _ok(parts[2], 1, 31) and
+        _ok(parts[3], 1, 12) and
+        _ok(parts[4], 0, 7)
+    )
 
 
 def _is_path_within_root(path_obj: Path, root_obj: Path):
@@ -377,8 +408,8 @@ def safe_unlink(path_obj):
     try:
         if path_obj.exists() and path_obj.is_file():
             path_obj.unlink()
-    except Exception:
-        pass
+    except Exception as exc:
+        app.logger.warning('safe_unlink_failed path=%s err=%s', path_obj, exc)
 
 
 def send_telegram_notification(notifier, message):
@@ -688,12 +719,14 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
 
         src = str(row.source_path or '')
         dst = str(row.dest_path or '')
-        source_type = (row.source_type or 'manual').strip().lower()
-        if source_type not in {'manual', 'downloader'}:
-            source_type = 'manual'
-        # 历史数据兜底：只要已有下载器关联信息，按下载器来源处理。
-        if source_type == 'manual' and (((row.torrent_hash or '').strip()) or row.downloader_id):
-            source_type = 'downloader'
+        raw_source_type = (row.source_type or '').strip().lower()
+        if raw_source_type in {'manual', 'downloader'}:
+            source_type = raw_source_type
+        else:
+            # 仅在来源字段缺失/异常时才做兜底推断，避免把 manual 误判为 downloader 触发删种。
+            has_hash = bool((row.torrent_hash or '').strip())
+            has_downloader = bool(row.downloader_id)
+            source_type = 'downloader' if (has_hash and has_downloader) else 'manual'
 
         if deleted_side == 'source':
             counterpart = dst
@@ -1386,6 +1419,7 @@ def reconcile_stale_running_executions():
 
 def init_app():
     global APP_BOOTSTRAPPED
+    init_console_logger()
     if app.config['SECRET_KEY'] == 'default-secret-key-for-dev-only':
         app.logger.warning('Using default SECRET_KEY; set SECRET_KEY in production to avoid session forgery risk.')
 

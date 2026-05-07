@@ -112,12 +112,14 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
             break
         src = str(row.source_path or '')
         dst = str(row.dest_path or '')
-        source_type = (row.source_type or 'manual').strip().lower()
-        if source_type not in {'manual', 'downloader'}:
-            source_type = 'manual'
-        # 历史数据兜底：已有下载器关联信息时，按下载器来源处理。
-        if source_type == 'manual' and (((row.torrent_hash or '').strip()) or row.downloader_id):
-            source_type = 'downloader'
+        raw_source_type = (row.source_type or '').strip().lower()
+        if raw_source_type in {'manual', 'downloader'}:
+            source_type = raw_source_type
+        else:
+            # 仅在来源字段缺失/异常时才做兜底推断，避免把 manual 误判为 downloader 触发删种。
+            has_hash = bool((row.torrent_hash or '').strip())
+            has_downloader = bool(row.downloader_id)
+            source_type = 'downloader' if (has_hash and has_downloader) else 'manual'
 
         # Determine which side was deleted and optionally remove the counterpart file.
         deleted_is_source = bool(src and deleted_path_str == src)
