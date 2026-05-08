@@ -26,7 +26,7 @@
 </div>
 
 
-<div class="card p-3 mb-3">
+<div class="section-card mb-3">
   <h6 class="mb-2">常用 Cron 示例（24小时制）</h6>
   <ul class="mb-0">
     <li><code>0 3 * * *</code>：每天 03:00 执行</li>
@@ -37,7 +37,7 @@
 </div>
 
 <div class="modal fade" id="addCronModal" tabindex="-1">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <form class="js-ajax-form" data-target="cronJobsPanel" action="/cron/add" method="POST">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -46,34 +46,43 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <div class="mb-2">
-            <label class="form-label">任务名称</label>
-            <input class="form-control" name="name" required>
+          <div class="section-card mb-3">
+            <div class="section-title mb-2">任务信息</div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">任务名称</label>
+                <input class="form-control" name="name" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">任务类型<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="不同类型需要的目标不同：硬链接任务需选择目标任务，系统维护类无需目标。"></i></label>
+                <select class="form-select" name="task_type" id="task_type" onchange="updateTargetField()">
+                  <option value="batch_hardlink">批量创建硬链接</option>
+                  <option value="backfill_mapping">映射回填任务</option>
+                  <option value="clean_logs">清理日志</option>
+                  <option value="clean_cache">清理缓存（高风险）</option>
+                  <option value="db_backup">数据库备份</option>
+                </select>
+              </div>
+              <div class="col-12" id="target_wrap">
+                <label id="target_label" class="form-label">关联任务</label>
+                <select class="form-select" name="target_id" id="target_id"></select>
+              </div>
+            </div>
           </div>
-          <div class="mb-2">
-            <label class="form-label">任务类型<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="不同类型需要的目标不同：硬链接任务需选择目标任务，系统维护类无需目标。"></i></label>
-            <select class="form-select" name="task_type" id="task_type" onchange="updateTargetField()">
-              <option value="batch_hardlink">批量创建硬链接</option>
-              
-              <option value="backfill_mapping">映射回填任务</option>
-              <option value="clean_logs">清理日志</option>
-              <option value="clean_cache">清理缓存（高风险）</option>
-              <option value="db_backup">数据库备份</option>
-            </select>
-          </div>
-          <div class="mb-2" id="target_wrap">
-            <label id="target_label" class="form-label">关联任务</label>
-            <select class="form-select" name="target_id" id="target_id"></select>
-          </div>
-          <div class="mb-2">
-            <label class="form-label">Cron<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="格式是 分 时 日 月 周；建议避开下载高峰时段。"></i></label>
-            <input class="form-control cron-input" name="custom_cron" placeholder="*/10 * * * *" required data-preview-target="cronPreviewAdd">
-            <div class="form-text">格式：分 时 日 月 周（24小时制）</div>
-          </div>
-          <div class="alert alert-secondary py-2" id="cronPreviewAdd">请输入 Cron 表达式查看解释</div>
-          <div class="mb-2">
-            <label class="form-label">说明</label>
-            <textarea class="form-control" name="description"></textarea>
+          <div class="section-card">
+            <div class="section-title mb-2">执行计划</div>
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label">Cron<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="格式是 分 时 日 月 周；建议避开下载高峰时段。"></i></label>
+                <input class="form-control cron-input" name="custom_cron" placeholder="*/10 * * * *" required data-preview-target="cronPreviewAdd">
+                <div class="form-text">格式：分 时 日 月 周（24小时制）</div>
+              </div>
+              <div class="col-12 alert alert-secondary py-2" id="cronPreviewAdd">请输入 Cron 表达式查看解释</div>
+              <div class="col-12">
+                <label class="form-label">说明</label>
+                <textarea class="form-control" name="description"></textarea>
+              </div>
+            </div>
           </div>
         </div>
         <div class="modal-footer">

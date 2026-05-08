@@ -1,6 +1,6 @@
-<div class="card p-3">
-  <div class="table-responsive">
-    <table class="table align-middle table-fixed hardlink-table">
+<div class="section-card">
+  <div class="table-responsive table-shell">
+    <table class="table align-middle table-fixed hardlink-table table-grid">
       <thead><tr><th class="col-name">名称</th><th class="col-path">源目录</th><th class="col-path">目标目录</th><th class="col-delete">删除联动</th><th class="col-state">状态</th><th class="col-actions">操作</th></tr></thead>
       <tbody>
       {% if tasks %}
@@ -33,43 +33,62 @@
     <form class="js-ajax-form" data-target="hardlinkJobsPanel" action="/hardlink/update/{{ t.id }}" method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="modal-header"><h5 class="modal-title">修改硬链接任务：{{ t.name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body"><div class="row g-3">
-        <div class="col-12"><div class="section-card"><div class="section-title mb-2">基础设置</div><div class="row g-3">
-        <div class="col-md-6"><label class="form-label">任务名称</label><input class="form-control" name="name" value="{{ t.name }}" required></div>
-        <div class="col-md-6"><label class="form-label">扩展名白名单</label><input class="form-control" name="extensions" value="{{ t.extensions }}"></div>
-        <div class="col-md-6"><label class="form-label">源目录</label><input class="form-control" name="source_dir" value="{{ t.source_dir }}" required></div>
-        <div class="col-md-6"><label class="form-label">目标目录</label><input class="form-control" name="dest_dir" value="{{ t.dest_dir }}" required></div>
-        <div class="col-md-6"><label class="form-label">排除目录</label><input class="form-control" name="exclude_dirs" value="{{ t.exclude_dirs or '' }}"></div>
-        <div class="col-md-6"><label class="form-label">排除扩展名</label><input class="form-control" name="exclude_extensions" value="{{ t.exclude_extensions or '' }}"></div>
-        <div class="col-md-6"><label class="form-label">最小文件年龄(秒)</label><input class="form-control" type="number" name="min_file_age_seconds" value="{{ t.min_file_age_seconds }}"></div>
-        <div class="col-md-6 section-subcard">
-          <label class="field-title">入库行为选项</label><div class="field-checks">
-          <div class="form-check"><input class="form-check-input" type="checkbox" name="create_folder" {% if t.create_folder %}checked{% endif %}><label class="form-check-label">按源目录建同名文件夹</label></div>
-          <div class="form-check"><input class="form-check-input" type="checkbox" name="use_cache" {% if t.use_cache %}checked{% endif %}><label class="form-check-label">启用缓存</label></div>
+      <div class="modal-body">
+        <div class="section-card mb-3">
+          <div class="section-title mb-2">基础设置</div>
+          <div class="row g-3">
+            <div class="col-md-6"><label class="form-label">任务名称</label><input class="form-control" name="name" value="{{ t.name }}" required></div>
+            <div class="col-md-6"><label class="form-label">扩展名白名单</label><input class="form-control" name="extensions" value="{{ t.extensions }}"></div>
+            <div class="col-md-6"><label class="form-label">源目录</label><input class="form-control" name="source_dir" value="{{ t.source_dir }}" required></div>
+            <div class="col-md-6"><label class="form-label">目标目录</label><input class="form-control" name="dest_dir" value="{{ t.dest_dir }}" required></div>
+            <div class="col-md-6"><label class="form-label">排除目录</label><input class="form-control" name="exclude_dirs" value="{{ t.exclude_dirs or '' }}"></div>
+            <div class="col-md-6"><label class="form-label">排除扩展名</label><input class="form-control" name="exclude_extensions" value="{{ t.exclude_extensions or '' }}"></div>
+            <div class="col-md-6"><label class="form-label">最小文件年龄(秒)</label><input class="form-control" type="number" name="min_file_age_seconds" value="{{ t.min_file_age_seconds }}"></div>
+          </div>
         </div>
-        </div>
-      </div></div></div>
 
-        <div class="col-12"><div class="section-card"><div class="section-title mb-2">删除联动（内建于本任务）</div><div class="row g-3">
-        <div class="col-md-6 section-subcard">
-          <label class="field-title">删除监控范围</label><div class="field-checks">
-          <div class="form-check"><input class="form-check-input" type="checkbox" name="monitor_source_delete" {% if t.monitor_source_delete %}checked{% endif %}><label class="form-check-label">监控源目录删除</label></div>
-          <div class="form-check"><input class="form-check-input" type="checkbox" name="monitor_dest_delete" {% if t.monitor_dest_delete %}checked{% endif %}><label class="form-check-label">监控目标目录删除</label></div>
+        <div class="section-card mb-3">
+          <div class="section-title mb-2">入库行为</div>
+          <div class="row g-3">
+            <div class="col-md-6 section-subcard">
+              <label class="field-title">创建目录</label>
+              <div class="field-checks">
+                <div class="field-checks-wide">
+                  <div class="form-check"><input class="form-check-input" type="checkbox" name="create_folder" {% if t.create_folder %}checked{% endif %}><label class="form-check-label">按源目录建同名文件夹</label></div>
+                  <div class="form-text field-note">示例：源 <code>/media/源目录/a.mkv</code> -&gt; 目标 <code>/media/目标目录/a/a.mkv</code>；不勾选则为 <code>/media/目标目录/a.mkv</code></div>
+                </div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="use_cache" {% if t.use_cache %}checked{% endif %}><label class="form-check-label">启用缓存</label></div>
+              </div>
+            </div>
+          </div>
         </div>
+
+        <div class="section-card">
+          <div class="section-title mb-2">删除联动（内建于本任务）</div>
+          <div class="form-text mb-2">执行顺序：先删除联动扫描，再执行硬链接扫描。</div>
+          <div class="row g-3">
+            <div class="col-md-6 section-subcard">
+              <label class="field-title">删除监控范围</label>
+              <div class="field-checks">
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="monitor_source_delete" {% if t.monitor_source_delete %}checked{% endif %}><label class="form-check-label">监控源目录删除</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="monitor_dest_delete" {% if t.monitor_dest_delete %}checked{% endif %}><label class="form-check-label">监控目标目录删除</label></div>
+              </div>
+            </div>
+            <div class="col-md-6 section-subcard"><label class="field-title">关联下载器</label><label class="form-label">删除联动下载器（可选）</label><select class="form-select" name="delete_downloader_id"><option value="">不关联</option>{% for d in downloaders %}<option value="{{ d.id }}" {% if t.delete_downloader_id==d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
+            <div class="col-md-6 section-subcard"><label class="field-title">关联通知</label><label class="form-label">删除联动通知器（可选）</label><select class="form-select" name="delete_notifier_id"><option value="">不关联</option>{% for n in notifiers %}<option value="{{ n.id }}" {% if t.delete_notifier_id==n.id %}selected{% endif %}>{{ n.name }}</option>{% endfor %}</select></div>
+            <div class="col-md-3 section-subcard"><label class="field-title">节流控制</label><label class="form-label">删除冷却(秒)</label><input class="form-control" type="number" name="delete_cooldown_seconds" value="{{ t.delete_cooldown_seconds or 120 }}" min="0"></div>
+            <div class="col-md-3 section-subcard"><label class="field-title">阈值控制</label><label class="form-label">单次最大删除</label><input class="form-control" type="number" name="delete_max_deletes_per_run" value="{{ t.delete_max_deletes_per_run or 20 }}" min="1"></div>
+            <div class="col-md-6 section-subcard">
+              <label class="field-title">执行与通知选项</label>
+              <div class="field-checks field-checks-3">
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_dry_run" {% if t.delete_dry_run %}checked{% endif %}><label class="form-check-label">仅记录不执行</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_notify_on_delete" {% if t.delete_notify_on_delete %}checked{% endif %}><label class="form-check-label">成功通知</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_notify_on_risky_delete" {% if t.delete_notify_on_risky_delete %}checked{% endif %}><label class="form-check-label">风险通知</label></div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="col-md-6 section-subcard"><label class="field-title">关联下载器</label><label class="form-label">删除联动下载器（可选）</label><select class="form-select" name="delete_downloader_id"><option value="">不关联</option>{% for d in downloaders %}<option value="{{ d.id }}" {% if t.delete_downloader_id==d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
-        <div class="col-md-6 section-subcard"><label class="field-title">关联通知</label><label class="form-label">删除联动通知器（可选）</label><select class="form-select" name="delete_notifier_id"><option value="">不关联</option>{% for n in notifiers %}<option value="{{ n.id }}" {% if t.delete_notifier_id==n.id %}selected{% endif %}>{{ n.name }}</option>{% endfor %}</select></div>
-        <div class="col-md-3 section-subcard"><label class="field-title">节流控制</label><label class="form-label">删除冷却(秒)</label><input class="form-control" type="number" name="delete_cooldown_seconds" value="{{ t.delete_cooldown_seconds or 120 }}" min="0"></div>
-        <div class="col-md-3 section-subcard"><label class="field-title">阈值控制</label><label class="form-label">单次最大删除</label><input class="form-control" type="number" name="delete_max_deletes_per_run" value="{{ t.delete_max_deletes_per_run or 20 }}" min="1"></div>
-        <div class="col-md-6 section-subcard">
-          <label class="field-title">执行与通知选项</label><div class="field-checks field-checks-3">
-          <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_dry_run" {% if t.delete_dry_run %}checked{% endif %}><label class="form-check-label">仅记录不执行</label></div>
-          <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_notify_on_delete" {% if t.delete_notify_on_delete %}checked{% endif %}><label class="form-check-label">成功通知</label></div>
-          <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_notify_on_risky_delete" {% if t.delete_notify_on_risky_delete %}checked{% endif %}><label class="form-check-label">风险通知</label></div>
-        </div>
-        </div>
-      </div></div></div>
-      </div></div>
+      </div>
       <div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-brand" type="submit">保存修改</button></div>
     </form>
   </div></div>

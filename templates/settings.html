@@ -2,72 +2,83 @@
 {% block title %}设置 - Hardlink Manager{% endblock %}
 {% block content %}
 <div class="page-head"><h3 class="mb-0">系统设置</h3></div>
-<div class="card p-3" id="settingsPagePanel">
+
+<div class="alert alert-info py-2">
+  这里分成“默认模板 / 联动策略 / 网络通知 / 版本更新 / 备份”几块，方便快速定位。
+</div>
+
+<div class="section-card" id="settingsPagePanel">
   <form class="js-ajax-form" data-target="settingsPagePanel" action="/settings/save" method="POST">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
     <div class="section-card mb-3">
       <div class="section-title mb-2">通用模板（新建任务默认值）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="仅作为新建任务默认值，已创建任务不会被覆盖。"></i></div>
       <div class="row g-3">
-        <div class="col-md-6"><label class="form-label">默认扩展名</label><input class="form-control" name="default_extensions" value="{{ settings.get('default_extensions', '.mkv,.mp4,.avi,.mov') }}"></div>
-        <div class="col-md-6"><label class="form-label">默认排除目录</label><input class="form-control" name="default_exclude_dirs" value="{{ settings.get('default_exclude_dirs', 'sample,subs') }}"></div>
+        <div class="col-md-6 section-subcard">
+          <label class="form-label">默认扩展名</label>
+          <input class="form-control" name="default_extensions" value="{{ settings.get('default_extensions', '.mkv,.mp4,.avi,.mov') }}">
+        </div>
+        <div class="col-md-6 section-subcard">
+          <label class="form-label">默认排除目录</label>
+          <input class="form-control" name="default_exclude_dirs" value="{{ settings.get('default_exclude_dirs', 'sample,subs') }}">
+        </div>
       </div>
     </div>
 
     <div class="section-card mb-3">
       <div class="section-title mb-2">日志与清理<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="建议开启自动清理并限制单文件大小，避免小磁盘被日志占满。"></i></div>
       <div class="row g-3">
-        <div class="col-md-3"><label class="form-label">日志保留天数</label><input class="form-control" type="number" name="log_retention_days" value="{{ settings.get('log_retention_days', 30) }}"></div>
-        <div class="col-md-3"><label class="form-label">自动清理日志</label><select class="form-select" name="auto_clean_logs"><option value="true" {% if settings.get('auto_clean_logs')=='true' %}selected{% endif %}>启用</option><option value="false" {% if settings.get('auto_clean_logs')=='false' %}selected{% endif %}>禁用</option></select></div>
-        <div class="col-md-3"><label class="form-label">应用日志单文件(MB)</label><input class="form-control" type="number" min="1" name="app_log_max_mb" value="{{ settings.get('app_log_max_mb', 10) }}"></div>
-        <div class="col-md-3"><label class="form-label">应用日志保留文件数</label><input class="form-control" type="number" min="1" name="app_log_backup_count" value="{{ settings.get('app_log_backup_count', 5) }}"></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">日志保留天数</label><input class="form-control" type="number" name="log_retention_days" value="{{ settings.get('log_retention_days', 30) }}"></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">自动清理日志</label><select class="form-select" name="auto_clean_logs"><option value="true" {% if settings.get('auto_clean_logs')=='true' %}selected{% endif %}>启用</option><option value="false" {% if settings.get('auto_clean_logs')=='false' %}selected{% endif %}>禁用</option></select></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">应用日志单文件(MB)</label><input class="form-control" type="number" min="1" name="app_log_max_mb" value="{{ settings.get('app_log_max_mb', 10) }}"></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">应用日志保留文件数</label><input class="form-control" type="number" min="1" name="app_log_backup_count" value="{{ settings.get('app_log_backup_count', 5) }}"></div>
       </div>
     </div>
 
     <div class="section-card mb-3">
       <div class="section-title mb-2">删除联动与通知<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="严格模式下仅精确匹配自动删种；疑似误删会进入待确认列表。"></i></div>
       <div class="row g-3">
-        <div class="col-md-4"><label class="form-label">删种同时删文件</label><select class="form-select" name="delete_files_with_torrent"><option value="true" {% if settings.get('delete_files_with_torrent')=='true' %}selected{% endif %}>是</option><option value="false" {% if settings.get('delete_files_with_torrent')=='false' %}selected{% endif %}>否</option></select></div>
-        <div class="col-md-4"><label class="form-label">删除通知</label><select class="form-select" name="notify_on_delete"><option value="true" {% if settings.get('notify_on_delete')=='true' %}selected{% endif %}>开</option><option value="false" {% if settings.get('notify_on_delete')=='false' %}selected{% endif %}>关</option></select></div>
-        <div class="col-md-4"><label class="form-label">疑似误删通知</label><select class="form-select" name="notify_on_risky_delete"><option value="true" {% if settings.get('notify_on_risky_delete','true')=='true' %}selected{% endif %}>开（推荐）</option><option value="false" {% if settings.get('notify_on_risky_delete')=='false' %}selected{% endif %}>关</option></select></div>
-        <div class="col-md-4"><label class="form-label">自动删种匹配策略</label><select class="form-select" name="delete_match_strict_mode"><option value="true" {% if settings.get('delete_match_strict_mode','true')=='true' %}selected{% endif %}>严格（仅精确匹配自动删种）</option><option value="false" {% if settings.get('delete_match_strict_mode')=='false' %}selected{% endif %}>宽松（名称/路径匹配也可自动删种）</option></select></div>
-        <div class="col-md-4"><label class="form-label">待判定来源保护</label><select class="form-select" name="pending_source_guard_enabled"><option value="true" {% if settings.get('pending_source_guard_enabled','true')=='true' %}selected{% endif %}>开启（推荐）</option><option value="false" {% if settings.get('pending_source_guard_enabled')=='false' %}selected{% endif %}>关闭</option></select></div>
-        <div class="col-md-4"><label class="form-label">待判定窗口(秒)</label><input class="form-control" type="number" min="0" name="pending_source_guard_seconds" value="{{ settings.get('pending_source_guard_seconds', 900) }}"><div class="form-text">窗口内新映射不会被直接当作手动来源触发自动删种。</div></div>
-        <div class="col-md-4"><label class="form-label">待判定告警阈值</label><input class="form-control" type="number" min="1" name="pending_source_warn_threshold" value="{{ settings.get('pending_source_warn_threshold', 200) }}"><div class="form-text">系统诊断中，待判定数量达到该值会标记异常。</div></div>
-        <div class="col-md-4"><label class="form-label">待判定日志模式</label><select class="form-select" name="pending_source_log_mode"><option value="aggregate" {% if settings.get('pending_source_log_mode','aggregate')=='aggregate' %}selected{% endif %}>聚合（默认）</option><option value="detail" {% if settings.get('pending_source_log_mode')=='detail' %}selected{% endif %}>明细（逐条）</option></select><div class="form-text">明细模式便于排查单条记录，聚合模式更省日志。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">删种同时删文件</label><select class="form-select" name="delete_files_with_torrent"><option value="true" {% if settings.get('delete_files_with_torrent')=='true' %}selected{% endif %}>是</option><option value="false" {% if settings.get('delete_files_with_torrent')=='false' %}selected{% endif %}>否</option></select></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">删除通知</label><select class="form-select" name="notify_on_delete"><option value="true" {% if settings.get('notify_on_delete')=='true' %}selected{% endif %}>开</option><option value="false" {% if settings.get('notify_on_delete')=='false' %}selected{% endif %}>关</option></select></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">疑似误删通知</label><select class="form-select" name="notify_on_risky_delete"><option value="true" {% if settings.get('notify_on_risky_delete','true')=='true' %}selected{% endif %}>开（推荐）</option><option value="false" {% if settings.get('notify_on_risky_delete')=='false' %}selected{% endif %}>关</option></select></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">自动删种匹配策略</label><select class="form-select" name="delete_match_strict_mode"><option value="true" {% if settings.get('delete_match_strict_mode','true')=='true' %}selected{% endif %}>严格（仅精确匹配自动删种）</option><option value="false" {% if settings.get('delete_match_strict_mode')=='false' %}selected{% endif %}>宽松（名称/路径匹配也可自动删种）</option></select></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">待判定来源保护</label><select class="form-select" name="pending_source_guard_enabled"><option value="true" {% if settings.get('pending_source_guard_enabled','true')=='true' %}selected{% endif %}>开启（推荐）</option><option value="false" {% if settings.get('pending_source_guard_enabled')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">待判定窗口(秒)</label><input class="form-control" type="number" min="0" name="pending_source_guard_seconds" value="{{ settings.get('pending_source_guard_seconds', 900) }}"><div class="form-text">窗口内新映射不会被直接当作手动来源触发自动删种。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">待判定告警阈值</label><input class="form-control" type="number" min="1" name="pending_source_warn_threshold" value="{{ settings.get('pending_source_warn_threshold', 200) }}"><div class="form-text">系统诊断中，待判定数量达到该值会标记异常。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">待判定日志模式</label><select class="form-select" name="pending_source_log_mode"><option value="aggregate" {% if settings.get('pending_source_log_mode','aggregate')=='aggregate' %}selected{% endif %}>聚合（默认）</option><option value="detail" {% if settings.get('pending_source_log_mode')=='detail' %}selected{% endif %}>明细（逐条）</option></select><div class="form-text">明细模式便于排查单条记录，聚合模式更省日志。</div></div>
       </div>
     </div>
 
     <div class="section-card mb-3">
       <div class="section-title mb-2">来源感知联动策略<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="按文件来源分别控制联动策略：手动文件=手动复制到源目录；下载器文件=可关联到种子。全局通知开关 + 任务通知开关都开启时才会发通知。"></i></div>
       <div class="row g-3">
-        <div class="col-md-6"><label class="form-label">手动文件：删除目标后删除源文件</label><select class="form-select" name="manual_dest_delete_delete_source"><option value="true" {% if settings.get('manual_dest_delete_delete_source','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('manual_dest_delete_delete_source')=='false' %}selected{% endif %}>关闭</option></select></div>
-        <div class="col-md-6"><label class="form-label">手动文件：删除源文件后删除目标</label><select class="form-select" name="manual_source_delete_delete_dest"><option value="true" {% if settings.get('manual_source_delete_delete_dest','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('manual_source_delete_delete_dest')=='false' %}selected{% endif %}>关闭</option></select></div>
-        <div class="col-md-4"><label class="form-label">下载器文件：删除目标后删除源文件</label><select class="form-select" name="downloader_dest_delete_delete_source"><option value="true" {% if settings.get('downloader_dest_delete_delete_source','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_dest_delete_delete_source')=='false' %}selected{% endif %}>关闭</option></select></div>
-        <div class="col-md-4"><label class="form-label">下载器文件：删除源文件后删除目标</label><select class="form-select" name="downloader_source_delete_delete_dest"><option value="true" {% if settings.get('downloader_source_delete_delete_dest','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_source_delete_delete_dest')=='false' %}selected{% endif %}>关闭</option></select></div>
-        <div class="col-md-4"><label class="form-label">下载器文件：删除目标后删除种子</label><select class="form-select" name="downloader_dest_delete_delete_torrent"><option value="true" {% if settings.get('downloader_dest_delete_delete_torrent','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_dest_delete_delete_torrent')=='false' %}selected{% endif %}>关闭</option></select></div>
-        <div class="col-md-4"><label class="form-label">下载器文件：删除源文件后删除种子</label><select class="form-select" name="downloader_source_delete_delete_torrent"><option value="true" {% if settings.get('downloader_source_delete_delete_torrent','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_source_delete_delete_torrent')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">手动文件：删除目标后删除源文件</label><select class="form-select" name="manual_dest_delete_delete_source"><option value="true" {% if settings.get('manual_dest_delete_delete_source','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('manual_dest_delete_delete_source')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">手动文件：删除源文件后删除目标</label><select class="form-select" name="manual_source_delete_delete_dest"><option value="true" {% if settings.get('manual_source_delete_delete_dest','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('manual_source_delete_delete_dest')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">下载器文件：删除目标后删除源文件</label><select class="form-select" name="downloader_dest_delete_delete_source"><option value="true" {% if settings.get('downloader_dest_delete_delete_source','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_dest_delete_delete_source')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">下载器文件：删除源文件后删除目标</label><select class="form-select" name="downloader_source_delete_delete_dest"><option value="true" {% if settings.get('downloader_source_delete_delete_dest','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_source_delete_delete_dest')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">下载器文件：删除目标后删除种子</label><select class="form-select" name="downloader_dest_delete_delete_torrent"><option value="true" {% if settings.get('downloader_dest_delete_delete_torrent','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_dest_delete_delete_torrent')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">下载器文件：删除源文件后删除种子</label><select class="form-select" name="downloader_source_delete_delete_torrent"><option value="true" {% if settings.get('downloader_source_delete_delete_torrent','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_source_delete_delete_torrent')=='false' %}selected{% endif %}>关闭</option></select></div>
       </div>
     </div>
 
     <div class="section-card mb-3">
       <div class="section-title mb-2">网络与通知<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="代理用于 Telegram 和 GitHub 检查；留空为直连。"></i></div>
       <div class="row g-3">
-        <div class="col-md-6"><label class="form-label">路径白名单根目录</label><input class="form-control" name="allowed_roots" value="{{ settings.get('allowed_roots','') }}" placeholder="/downloads,/media"></div>
-        <div class="col-md-6"><label class="form-label">统一外网代理地址</label><input class="form-control" name="proxy_url" value="{{ settings.get('proxy_url','') }}" placeholder="http://127.0.0.1:7890"><div class="form-text">用于 Telegram 与 GitHub 版本检查；留空则直连。</div></div>
-        <div class="col-md-6"><label class="form-label">Telegram API Base</label><input class="form-control" name="tg_api_base" value="{{ settings.get('tg_api_base','https://api.telegram.org') }}"></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">路径白名单根目录</label><input class="form-control" name="allowed_roots" value="{{ settings.get('allowed_roots','') }}" placeholder="/downloads,/media"></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">统一外网代理地址</label><input class="form-control" name="proxy_url" value="{{ settings.get('proxy_url','') }}" placeholder="http://127.0.0.1:7890"><div class="form-text">用于 Telegram 与 GitHub 版本检查；留空则直连。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">Telegram API Base</label><input class="form-control" name="tg_api_base" value="{{ settings.get('tg_api_base','https://api.telegram.org') }}"></div>
       </div>
     </div>
 
     <div class="section-card mb-3">
       <div class="section-title mb-2">版本与更新<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="建议仓库填写 owner/repo；若未发 release，会自动回退到 tag 检查。"></i></div>
       <div class="row g-3">
-        <div class="col-md-6"><label class="form-label">启用 GitHub 版本检查</label><select class="form-select" name="github_version_check_enabled"><option value="true" {% if settings.get('github_version_check_enabled','true')=='true' %}selected{% endif %}>启用</option><option value="false" {% if settings.get('github_version_check_enabled')=='false' %}selected{% endif %}>禁用</option></select></div>
-        <div class="col-md-6"><label class="form-label">GitHub 仓库（owner/repo）</label><input class="form-control" name="github_repo" value="{{ settings.get('github_repo','marod1m/HLM-Demo') }}"></div>
-        <div class="col-md-6"><label class="form-label">GitHub API Base</label><input class="form-control" name="github_api_base" value="{{ settings.get('github_api_base','https://api.github.com') }}"></div>
-        <div class="col-md-3"><label class="form-label">版本检查缓存(分钟)</label><input class="form-control" type="number" min="1" name="version_check_cache_minutes" value="{{ settings.get('version_check_cache_minutes',720) }}"></div>
-        <div class="col-md-9"><label class="form-label">关键操作口令（可选）</label><input class="form-control" type="password" name="critical_action_passphrase" placeholder="留空=不启用；设置后清空日志/清空缓存/确认删种需输入"></div>
-        <div class="col-12">
+        <div class="col-md-6 section-subcard"><label class="form-label">启用 GitHub 版本检查</label><select class="form-select" name="github_version_check_enabled"><option value="true" {% if settings.get('github_version_check_enabled','true')=='true' %}selected{% endif %}>启用</option><option value="false" {% if settings.get('github_version_check_enabled')=='false' %}selected{% endif %}>禁用</option></select></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">GitHub 仓库（owner/repo）</label><input class="form-control" name="github_repo" value="{{ settings.get('github_repo','marod1m/HLM-Demo') }}"></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">GitHub API Base</label><input class="form-control" name="github_api_base" value="{{ settings.get('github_api_base','https://api.github.com') }}"></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">版本检查缓存(分钟)</label><input class="form-control" type="number" min="1" name="version_check_cache_minutes" value="{{ settings.get('version_check_cache_minutes',720) }}"></div>
+        <div class="col-md-9 section-subcard"><label class="form-label">关键操作口令（可选）</label><input class="form-control" type="password" name="critical_action_passphrase" placeholder="留空=不启用；设置后清空日志/清空缓存/确认删种需输入"></div>
+        <div class="col-12 section-subcard">
           <div class="alert {{ 'alert-warning' if release and release.get('has_update') else 'alert-secondary' }} py-2 mb-0 wrap-any">
             <div>本地版本：<code>{{ release.get('local_version','-') if release else '-' }}</code>；远程版本：<code>{{ release.get('remote_version','-') if release else '-' }}</code>；仓库：<code>{{ release.get('repo','-') if release else '-' }}</code></div>
             <div class="small text-muted">状态：{{ release.get('message','-') if release else '-' }}{% if release and release.get('checked_at') %}（{{ release.get('checked_at') }}）{% endif %}</div>
@@ -79,8 +90,8 @@
     <div class="section-card mb-2">
       <div class="section-title mb-2">备份<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="目录建议映射到宿主机，防止容器重建后丢失备份。"></i></div>
       <div class="row g-3">
-        <div class="col-md-8"><label class="form-label">数据库备份目录</label><input class="form-control" name="backup_dir" value="{{ settings.get('backup_dir','/app/data/backups') }}"></div>
-        <div class="col-md-4"><label class="form-label">备份保留份数</label><input class="form-control" type="number" min="1" name="backup_keep_last" value="{{ settings.get('backup_keep_last', 7) }}"></div>
+        <div class="col-md-8 section-subcard"><label class="form-label">数据库备份目录</label><input class="form-control" name="backup_dir" value="{{ settings.get('backup_dir','/app/data/backups') }}"></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">备份保留份数</label><input class="form-control" type="number" min="1" name="backup_keep_last" value="{{ settings.get('backup_keep_last', 7) }}"></div>
       </div>
     </div>
 
@@ -92,8 +103,8 @@
   </form>
 </div>
 
-<div class="card p-3 mt-3">
-  <h6 class="mb-3">配置导入/导出<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="导出会自动隐藏关键口令；导入只覆盖支持的配置项。"></i></h6>
+<div class="section-card mt-3">
+  <div class="section-title mb-2">配置导入/导出<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="导出会自动隐藏关键口令；导入只覆盖支持的配置项。"></i></div>
   <div class="settings-transfer">
     <div class="transfer-row">
       <a class="btn btn-outline-secondary" href="/settings/export">导出配置</a>
