@@ -10,7 +10,7 @@
   </form>
 </div>
 
-<div class="section-card mb-3 list-toolbar">
+<div class="section-card mb-3">
   <div class="section-title mb-2">筛选条件</div>
   <form class="row g-2 js-ajax-filter" data-target="logsPanel" method="GET" action="/logs">
     <div class="col-md-4">
@@ -79,9 +79,9 @@
           </tbody>
         </table>
       </div>
-      <div class="list-footer">
+      <div class="d-flex justify-content-between align-items-center">
         <small class="text-muted">第 {{ page }} / {{ total_pages }} 页</small>
-        <div class="pager">
+        <div>
           {% if page>1 %}
             <a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page-1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}">上一页</a>
           {% endif %}
@@ -97,7 +97,7 @@
     <div class="section-card h-100">
       <div class="section-title mb-2">任务执行历史<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="记录每次任务执行结果与耗时，便于判断是否需要调整定时频率或任务阈值。"></i></div>
       <div class="table-responsive table-shell">
-        <table class="table align-middle table-grid logs-exec-table">
+        <table class="table align-middle table-grid">
           <thead>
             <tr>
               <th>开始时间</th>

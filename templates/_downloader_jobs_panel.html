@@ -12,12 +12,12 @@
         <td>{{ d.host }}:{{ d.port }}</td>
         <td><small>{{ d.proxy_url or '全局' }}</small></td>
         <td>{% if d.enabled %}<span class="badge text-bg-success">启用</span>{% else %}<span class="badge text-bg-secondary">禁用</span>{% endif %}</td>
-        <td class="col-actions"><div class="actions-row actions-stack">
+        <td>
           <form class="d-inline js-ajax-form" action="/downloader/test/{{ d.id }}" method="POST" data-target="downloaderJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">测试</button></form>
           <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editDownloaderModal{{ d.id }}">修改</button>
           <form class="d-inline js-ajax-form" action="/downloader/toggle/{{ d.id }}" method="POST" data-target="downloaderJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">{{ '禁用' if d.enabled else '启用' }}</button></form>
           <form class="d-inline js-ajax-form" action="/downloader/delete/{{ d.id }}" method="POST" data-target="downloaderJobsPanel" data-confirm="确认删除该下载器？"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>
-        </div></td>
+        </td>
       </tr>
     {% endfor %}
     </tbody>
