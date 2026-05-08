@@ -3,10 +3,6 @@
 {% block content %}
 <div class="page-head"><h3 class="mb-0">系统设置</h3></div>
 
-<div class="alert alert-info py-2">
-  这里分成“默认模板 / 联动策略 / 网络通知 / 版本更新 / 备份”几块，方便快速定位。
-</div>
-
 <div class="section-card" id="settingsPagePanel">
   <form class="js-ajax-form" data-target="settingsPagePanel" action="/settings/save" method="POST">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
