@@ -54,6 +54,8 @@
               <td>{{ e.duration_ms or 0 }}ms</td>
               <td>{% if e.id in stale_running_ids %}<span class="text-muted">需刷新状态</span>{% elif e.status=='running' %}<form class="d-inline" action="/executions/stop/{{ e.id }}" method="POST" onsubmit="return confirm('确认停止该任务？')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">停止</button></form>{% else %}<form class="d-inline" action="/executions/retry/{{ e.id }}" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">重试</button></form>{% endif %}</td>
             </tr>
+          {% else %}
+            <tr><td colspan="6"><div class="empty-state"><i class="fa-regular fa-clock"></i>暂无最近执行记录</div></td></tr>
           {% endfor %}
           </tbody>
         </table>
@@ -74,6 +76,8 @@
               <td>{{ log.target_name or '-' }}</td>
               <td>{% if log.success %}<span class="badge text-bg-success">成功</span>{% else %}<span class="badge text-bg-danger">失败</span>{% endif %}</td>
             </tr>
+          {% else %}
+            <tr><td colspan="4"><div class="empty-state"><i class="fa-regular fa-file-lines"></i>暂无最近日志</div></td></tr>
           {% endfor %}
           </tbody>
         </table>

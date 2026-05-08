@@ -9,12 +9,12 @@
   --lh-tight: 1.25;
   --lh-normal: 1.5;
   --lh-relaxed: 1.7;
-  --line-soft: var(--line-soft);
-  --line-mid: var(--line-mid);
-  --line-cell: var(--line-cell);
-  --line-cell-right: var(--line-cell-right);
-  --surface-soft: var(--surface-soft);
-  --surface-hover: var(--surface-hover);
+  --line-soft: #dbe7f1;
+  --line-mid: #d2dfeb;
+  --line-cell: #e6eef5;
+  --line-cell-right: #edf2f7;
+  --surface-soft: #f3f8ff;
+  --surface-hover: #f9fcff;
 }
 
 html, body {
@@ -156,10 +156,6 @@ h5 { font-size: var(--fs-20); }
   display: block;
 }
 /* Global readability */
-body {
-  font-size: 15px;
-}
-
 /* Sidebar readability */
 .side .brand {
   font-size: 1.08rem;
@@ -278,10 +274,6 @@ body {
   width: 7%;
 }
 
-.mapping-table .wrap-any {
-  max-width: 240px;
-}
-
 .mapping-table .actions-row {
   justify-content: flex-start;
 }
@@ -321,7 +313,7 @@ body {
 }
 
 .main h3 {
-  font-size: 1.7rem;
+  font-size: 1.55rem;
 }
 
 .main .card,
@@ -480,10 +472,11 @@ body {
 
 /* Hash content should wrap full value */
 .mapping-table .col-hash {
-  min-width: 220px;
+  min-width: 320px;
 }
 
 .mapping-table code {
+  display: block;
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-all;
