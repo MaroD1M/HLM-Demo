@@ -45,7 +45,7 @@
                 <td class="wrap-any"><small>{{ fmt_dt(m.backfill_last_attempt_at) if m.backfill_last_attempt_at else '-' }}</small></td>
                 <td>{{ m.downloader_id or '-' }}</td>
                 <td class="wrap-any col-hash"><code title="{{ m.torrent_hash or '-' }}">{{ m.torrent_hash or '-' }}</code></td>
-                <td class="col-actions"><div class="actions-row">
+                <td class="col-actions"><div class="actions-row actions-stack">
                   {% if not m.torrent_hash %}
                   <form action="/mapping/link/retry" method="POST" class="m-0 js-ajax-form" data-target="mappingPanel">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -78,9 +78,9 @@
           </tbody>
         </table>
       </div>
-      <div class="d-flex justify-content-between align-items-center">
+      <div class="list-footer">
         <small class="text-muted">第 {{ map_page }} / {{ map_total_pages }} 页</small>
-        <div>
+        <div class="pager">
           {% if map_page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page-1 }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}">上一页</a>{% endif %}
           {% if map_page<map_total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page+1 }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}">下一页</a>{% endif %}
         </div>
@@ -127,9 +127,9 @@
           </tbody>
         </table>
       </div>
-      <div class="d-flex justify-content-between align-items-center">
+      <div class="list-footer">
         <small class="text-muted">第 {{ cache_page }} / {{ cache_total_pages }} 页</small>
-        <div>
+        <div class="pager">
           {% if cache_page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page }}&cache_page={{ cache_page-1 }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}">上一页</a>{% endif %}
           {% if cache_page<cache_total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page }}&cache_page={{ cache_page+1 }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}">下一页</a>{% endif %}
         </div>

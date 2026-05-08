@@ -718,6 +718,7 @@ def init_web_routes(ctx: RouteDeps):
             mapping_q = mapping_q.filter(
                 (FileLinkMap.source_path.like(like)) |
                 (FileLinkMap.dest_path.like(like)) |
+                (FileLinkMap.file_key.like(like)) |
                 (FileLinkMap.torrent_hash.like(like))
             )
         if hash_state == 'linked':
