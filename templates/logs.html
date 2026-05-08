@@ -10,7 +10,8 @@
   </form>
 </div>
 
-<div class="card p-3 mb-3">
+<div class="section-card mb-3">
+  <div class="section-title mb-2">筛选条件</div>
   <form class="row g-2 js-ajax-filter" data-target="logsPanel" method="GET" action="/logs">
     <div class="col-md-4">
       <input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索消息 / 目标 / 类型">
@@ -42,9 +43,9 @@
 
 <div id="logsPanel" class="row g-3">
   <div class="col-lg-6">
-    <div class="card p-3 h-100">
-      <h5 class="mb-3">操作日志<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="失败不一定代表系统异常，可能是保护策略触发（如待判定来源暂不删种）。"></i></h5>
-      <div class="table-responsive">
+    <div class="section-card h-100">
+      <div class="section-title mb-2">操作日志<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="失败不一定代表系统异常，可能是保护策略触发（如待判定来源暂不删种）。"></i></div>
+      <div class="table-responsive table-shell">
         <table class="table align-middle table-grid logs-op-table">
           <thead>
             <tr>
@@ -93,9 +94,9 @@
   </div>
 
   <div class="col-lg-6">
-    <div class="card p-3 h-100">
-      <h5 class="mb-3">任务执行历史<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="记录每次任务执行结果与耗时，便于判断是否需要调整定时频率或任务阈值。"></i></h5>
-      <div class="table-responsive">
+    <div class="section-card h-100">
+      <div class="section-title mb-2">任务执行历史<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="记录每次任务执行结果与耗时，便于判断是否需要调整定时频率或任务阈值。"></i></div>
+      <div class="table-responsive table-shell">
         <table class="table align-middle table-grid">
           <thead>
             <tr>

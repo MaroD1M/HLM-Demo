@@ -17,7 +17,8 @@
   </div>
 </div>
 
-<div class="card p-3 mb-3">
+<div class="section-card mb-3">
+  <div class="section-title mb-2">筛选条件</div>
   <form class="row g-2 js-ajax-filter" data-target="mappingPanel" method="GET" action="/mapping">
     <div class="col-md-5"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索路径 / hash"></div>
     <div class="col-md-3">
@@ -35,7 +36,7 @@
         <option value="pending" {% if source_type=='pending' %}selected{% endif %}>待判定</option>
       </select>
     </div>
-    <div class="col-md-2 d-flex gap-2"><button class="btn btn-brand" type="submit">筛选</button><a class="btn btn-outline-secondary" href="/mapping">重置</a></div>
+    <div class="col-md-2 d-flex gap-2"><button class="btn btn-brand w-50" type="submit">筛选</button><a class="btn btn-outline-secondary w-50" href="/mapping">重置</a></div>
   </form>
 </div>
 

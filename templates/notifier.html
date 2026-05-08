@@ -8,13 +8,13 @@
 
 <div class="page-head">
   <h3 class="mb-0">通知器</h3>
-  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addNotifierModal">新增</button>
+  <button class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#addNotifierModal">新增</button>
 </div>
 
 <div id="notifierJobsPanel">{% include "_notifier_jobs_panel.html" %}</div>
 
 <div class="modal fade" id="addNotifierModal" tabindex="-1">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <form class="js-ajax-form" data-target="notifierJobsPanel" action="/notifier/add" method="POST">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -23,32 +23,42 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <div class="mb-2">
-            <label class="form-label">名称</label>
-            <input class="form-control" name="name" required>
+          <div class="section-card mb-3">
+            <div class="section-title mb-2">基础信息</div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">名称</label>
+                <input class="form-control" name="name" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">类型</label>
+                <select class="form-select" name="type">
+                  <option value="telegram">Telegram</option>
+                </select>
+              </div>
+            </div>
           </div>
-          <div class="mb-2">
-            <label class="form-label">类型</label>
-            <select class="form-select" name="type">
-              <option value="telegram">Telegram</option>
-            </select>
-          </div>
-          <div class="mb-2">
-            <label class="form-label">Bot Token</label>
-            <input class="form-control" name="api_key" required>
-          </div>
-          <div class="mb-2">
-            <label class="form-label">聊天 ID</label>
-            <input class="form-control" name="chat_id">
-          </div>
-          <div class="mb-2">
-            <label class="form-label">任务代理(可选)</label>
-            <input class="form-control" name="proxy_url" placeholder="留空=使用系统设置中的统一代理">
+          <div class="section-card">
+            <div class="section-title mb-2">连接配置</div>
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label">Bot Token</label>
+                <input class="form-control" name="api_key" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">聊天 ID</label>
+                <input class="form-control" name="chat_id">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">任务代理(可选)</label>
+                <input class="form-control" name="proxy_url" placeholder="留空=使用系统设置中的统一代理">
+              </div>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-          <button class="btn btn-primary" type="submit">保存</button>
+          <button class="btn btn-brand" type="submit">保存</button>
         </div>
       </form>
     </div>

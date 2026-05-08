@@ -15,10 +15,10 @@
 </div>
 <div class="row g-3">
   <div class="col-lg-6">
-    <div class="card p-3">
-      <h5>最近执行<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="可在这里重试失败任务或停止运行中任务；状态失效表示进程已结束但历史状态未刷新。"></i></h5>
-      <div class="table-responsive">
-        <table class="table">
+    <div class="section-card">
+      <div class="section-title mb-2">最近执行<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="可在这里重试失败任务或停止运行中任务；状态失效表示进程已结束但历史状态未刷新。"></i></div>
+      <div class="table-responsive table-shell">
+        <table class="table table-grid">
           <thead><tr><th>时间</th><th>任务</th><th>来源</th><th>状态</th><th>耗时</th><th>操作</th></tr></thead>
           <tbody>
           {% for e in recent_executions %}
@@ -35,10 +35,10 @@
     </div>
   </div>
   <div class="col-lg-6">
-    <div class="card p-3">
-      <h5>最近日志<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="展示最近操作结果；点击“查看事件”可快速定位待判定来源相关日志。"></i></h5>
-      <div class="table-responsive">
-        <table class="table">
+    <div class="section-card">
+      <div class="section-title mb-2">最近日志<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="展示最近操作结果；点击“查看事件”可快速定位待判定来源相关日志。"></i></div>
+      <div class="table-responsive table-shell">
+        <table class="table table-grid">
           <thead><tr><th>时间</th><th>类型</th><th>目标</th><th>结果</th></tr></thead>
           <tbody>
           {% for log in recent_logs %}

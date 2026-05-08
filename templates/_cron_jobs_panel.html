@@ -5,9 +5,9 @@
   'clean_cache':'缓存清理',
   'db_backup':'数据库备份'
 } %}
-<div class="card p-3 mb-3">
-  <div class="table-responsive">
-    <table class="table align-middle table-fixed">
+<div class="section-card mb-3">
+  <div class="table-responsive table-shell">
+    <table class="table align-middle table-fixed table-grid">
       <thead>
         <tr>
           <th class="col-mid">名称</th>
@@ -61,7 +61,7 @@
 {% if jobs %}
 {% for j in jobs %}
 <div class="modal fade" id="editCronModal{{ j.id }}" tabindex="-1">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <form class="js-ajax-form" action="/cron/update/{{ j.id }}" method="POST" data-target="cronJobsPanel">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -70,34 +70,44 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <div class="mb-2">
-            <label class="form-label">任务名称</label>
-            <input class="form-control" name="name" value="{{ j.name }}" required>
+          <div class="section-card mb-3">
+            <div class="section-title mb-2">任务信息</div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">任务名称</label>
+                <input class="form-control" name="name" value="{{ j.name }}" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">任务类型</label>
+                <select class="form-select cron-edit-task-type" name="task_type" data-edit-id="{{ j.id }}">
+                  <option value="batch_hardlink" {% if j.task_type=='batch_hardlink' %}selected{% endif %}>批量创建硬链接</option>
+                  <option value="backfill_mapping" {% if j.task_type=='backfill_mapping' %}selected{% endif %}>映射回填任务</option>
+                  <option value="clean_logs" {% if j.task_type=='clean_logs' %}selected{% endif %}>清理日志</option>
+                  <option value="clean_cache" {% if j.task_type=='clean_cache' %}selected{% endif %}>清理缓存（高风险）</option>
+                  <option value="db_backup" {% if j.task_type=='db_backup' %}selected{% endif %}>数据库备份</option>
+                </select>
+              </div>
+              <div class="col-12" id="editTargetWrap{{ j.id }}">
+                <label class="form-label" id="editTargetLabel{{ j.id }}">关联任务</label>
+                <select class="form-select" name="target_id" id="editTargetId{{ j.id }}"></select>
+              </div>
+            </div>
           </div>
-          <div class="mb-2">
-            <label class="form-label">任务类型</label>
-            <select class="form-select cron-edit-task-type" name="task_type" data-edit-id="{{ j.id }}">
-              <option value="batch_hardlink" {% if j.task_type=='batch_hardlink' %}selected{% endif %}>批量创建硬链接</option>
-              <option value="backfill_mapping" {% if j.task_type=='backfill_mapping' %}selected{% endif %}>映射回填任务</option>
-              <option value="clean_logs" {% if j.task_type=='clean_logs' %}selected{% endif %}>清理日志</option>
-              <option value="clean_cache" {% if j.task_type=='clean_cache' %}selected{% endif %}>清理缓存（高风险）</option>
-              <option value="db_backup" {% if j.task_type=='db_backup' %}selected{% endif %}>数据库备份</option>
-            </select>
+          <div class="section-card">
+            <div class="section-title mb-2">执行计划</div>
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label">Cron 表达式</label>
+                <input class="form-control cron-input" name="custom_cron" value="{{ j.cron_expression }}" required data-preview-target="cronPreview{{ j.id }}">
+                <div class="form-text">格式：分 时 日 月 周（24小时制）</div>
+              </div>
+              <div class="col-12">
+                <label class="form-label">说明</label>
+                <textarea class="form-control" name="description">{{ j.description or '' }}</textarea>
+              </div>
+              <div class="col-12 alert alert-secondary py-2 mb-0" id="cronPreview{{ j.id }}">{{ cron_hints.get(j.id, '自定义 Cron（可参考下方示例）') }}</div>
+            </div>
           </div>
-          <div class="mb-2" id="editTargetWrap{{ j.id }}">
-            <label class="form-label" id="editTargetLabel{{ j.id }}">关联任务</label>
-            <select class="form-select" name="target_id" id="editTargetId{{ j.id }}"></select>
-          </div>
-          <div class="mb-2">
-            <label class="form-label">Cron 表达式</label>
-            <input class="form-control cron-input" name="custom_cron" value="{{ j.cron_expression }}" required data-preview-target="cronPreview{{ j.id }}">
-            <div class="form-text">格式：分 时 日 月 周（24小时制）</div>
-          </div>
-          <div class="mb-2">
-            <label class="form-label">说明</label>
-            <textarea class="form-control" name="description">{{ j.description or '' }}</textarea>
-          </div>
-          <div class="alert alert-secondary py-2 mb-0" id="cronPreview{{ j.id }}">{{ cron_hints.get(j.id, '自定义 Cron（可参考下方示例）') }}</div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">取消</button>

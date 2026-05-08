@@ -1,5 +1,5 @@
   <div class="col-lg-7">
-    <div class="card p-3 h-100">
+    <div class="section-card h-100">
       <h5>文件映射（关联关系）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单删、批量删、全选/反选；支持查看回填失败次数并手动重置。来源=待判定 时表示映射刚重建或尚在回填窗口，删除联动会保守处理。"></i></h5>
       <form id="mapBulkForm" action="/mapping/link/bulk-delete" method="POST" class="d-none js-ajax-form" data-target="mappingPanel">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -12,7 +12,7 @@
         <button type="button" class="btn btn-sm btn-outline-danger" onclick="submitBulkSelection('mapBulkForm','map-check','map_ids','确认批量删除选中的映射记录？仅删除数据库映射，不删除真实文件。')">批量删除映射</button>
       </div>
 
-      <div class="table-responsive">
+      <div class="table-responsive table-shell">
         <table class="table table-sm align-middle table-fixed mapping-table table-grid">
           <thead><tr><th class="col-narrow"><input type="checkbox" onclick="toggleAllByClass('map-check', this.checked)"></th><th class="col-wide">源文件</th><th class="col-wide">目标文件</th><th class="col-mid">来源</th><th class="col-mid">关联状态</th><th class="col-narrow">失败计数</th><th class="col-mid">上次失败时间</th><th class="col-narrow">下载器 ID</th><th class="col-hash">种子 Hash</th><th class="col-actions">操作</th></tr></thead>
           <tbody>
@@ -89,7 +89,7 @@
   </div>
 
   <div class="col-lg-5">
-    <div class="card p-3 h-100">
+    <div class="section-card h-100">
       <h5>硬链接缓存（命中后跳过）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单删、批量删、全选/反选。"></i></h5>
       <form id="cacheBulkForm" action="/mapping/cache/bulk-delete" method="POST" class="d-none js-ajax-form" data-target="mappingPanel">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -102,7 +102,7 @@
         <button type="button" class="btn btn-sm btn-outline-danger" onclick="submitBulkSelection('cacheBulkForm','cache-check','cache_ids','确认批量删除选中的缓存记录？删除后这些源文件可再次硬链接。')">批量删除缓存</button>
       </div>
 
-      <div class="table-responsive">
+      <div class="table-responsive table-shell">
         <table class="table table-sm align-middle table-fixed cache-table table-grid">
           <thead><tr><th><input type="checkbox" onclick="toggleAllByClass('cache-check', this.checked)"></th><th>源文件</th><th>目标文件</th><th>操作</th></tr></thead>
           <tbody>

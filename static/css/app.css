@@ -438,15 +438,6 @@ body {
   width: 100%;
 }
 
-/* checkbox groups with small section title */
-.field-title {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #2e4d5d;
-}
-
 .field-checks.field-checks-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -465,32 +456,8 @@ body {
   text-overflow: ellipsis;
 }
 
-/* Settings import/export alignment */
-.settings-transfer {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 10px;
-  align-items: center;
-}
-
-.settings-transfer form {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
-  align-items: center;
-}
-
-.settings-transfer input[type="file"] {
-  min-width: 260px;
-}
-
 @media (max-width: 992px) {
   .field-checks.field-checks-3 {
-    grid-template-columns: 1fr;
-  }
-
-  .settings-transfer,
-  .settings-transfer form {
     grid-template-columns: 1fr;
   }
 }
@@ -516,39 +483,12 @@ body {
   white-space: nowrap;
 }
 
-/* clearer table boundaries for logs/mapping/cache */
-.table-grid thead th {
-  border-bottom: 1px solid #cfdbe6;
-  background: #f4f8fd;
-}
-
-.table-grid tbody td {
-  border-bottom: 1px solid #e6eef5;
-}
-
-.table-grid tbody tr:hover td {
-  background: #f9fcff;
-}
-
 /* logs table readability */
 .logs-op-table .col-time { min-width: 148px; }
 .logs-op-table .col-type { min-width: 140px; }
 .logs-op-table .col-target { min-width: 150px; }
 .logs-op-table .col-result { min-width: 72px; }
 .logs-op-table .col-message { min-width: 260px; }
-
-/* mapping hash should wrap fully */
-.mapping-table .col-hash {
-  width: 16%;
-  min-width: 220px;
-}
-
-.mapping-table code {
-  display: inline;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-all;
-}
 
 /* mapping/caches stronger column boundaries */
 .mapping-table td,
@@ -563,33 +503,6 @@ body {
 .cache-table td:last-child,
 .cache-table th:last-child {
   border-right: none;
-}
-
-/* settings transfer block: export and import in clear stacked rows */
-.settings-transfer {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: stretch;
-}
-
-.settings-transfer .transfer-row {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.settings-transfer form {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.settings-transfer input[type="file"] {
-  min-width: 280px;
-  flex: 1 1 320px;
 }
 
 @media (max-width: 992px) {
@@ -623,6 +536,15 @@ body {
 
 .field-checks {
   gap: 8px 14px;
+}
+
+.field-checks-wide {
+  grid-column: 1 / -1;
+}
+
+.field-note {
+  margin-top: 2px;
+  white-space: normal;
 }
 
 .field-checks .form-check-label {
@@ -707,4 +629,104 @@ body {
   .modal .section-subcard {
     min-height: auto;
   }
+}
+
+
+/* Unified list/table framing */
+.table-shell {
+  border: 1px solid #dbe7f1;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 10px 26px rgba(12, 32, 54, 0.05);
+}
+
+.table-shell .table {
+  margin-bottom: 0;
+}
+
+.table-shell .table > :not(caption) > * > * {
+  border-bottom-width: 1px;
+}
+
+.table-grid {
+  margin-bottom: 0;
+}
+
+.table-grid thead th {
+  background: #f3f8ff;
+  border-bottom: 1px solid #d2dfeb;
+  white-space: nowrap;
+}
+
+.table-grid tbody td {
+  border-bottom: 1px solid #e6eef5;
+  border-right: 1px solid #edf2f7;
+}
+
+.table-grid tbody td:last-child,
+.table-grid thead th:last-child {
+  border-right: none;
+}
+
+.table-grid tbody tr:hover td {
+  background: #f9fcff;
+}
+
+.table-grid .btn,
+.table-grid .btn-sm,
+.table-grid .badge {
+  white-space: nowrap;
+}
+
+@media (max-width: 992px) {
+  .table-grid thead th {
+    white-space: normal;
+  }
+}
+
+/* Modal form section rhythm */
+.modal .section-card + .section-card {
+  margin-top: 0;
+}
+
+.modal .section-subcard {
+  min-height: auto;
+}
+
+.modal .section-card .row.g-3 > [class*="col-"] {
+  min-width: 0;
+}
+
+
+/* Final UI rhythm pass */
+.page-head {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(216, 225, 234, 0.75);
+  margin-bottom: 18px;
+}
+
+.page-head h3 {
+  font-size: 1.42rem;
+  letter-spacing: 0.2px;
+}
+
+.section-title {
+  font-size: 0.98rem;
+  letter-spacing: 0.2px;
+}
+
+.btn,
+.btn-sm {
+  border-radius: 10px;
+}
+
+.btn-sm {
+  padding-left: 0.62rem;
+  padding-right: 0.62rem;
+}
+
+.modal .btn,
+.page-head .btn {
+  box-shadow: none;
 }

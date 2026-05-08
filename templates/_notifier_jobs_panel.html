@@ -1,5 +1,6 @@
-<div class="card p-3">
-  <table class="table">
+<div class="section-card">
+  <div class="table-responsive table-shell">
+    <table class="table table-grid">
     <thead>
       <tr><th>名称</th><th>类型</th><th>聊天 ID</th><th>代理</th><th>状态</th><th>操作</th></tr>
     </thead>
@@ -20,22 +21,33 @@
       </tr>
     {% endfor %}
     </tbody>
-  </table>
+    </table>
+  </div>
 </div>
 
 {% for n in notifiers %}
 <div class="modal fade" id="editNotifierModal{{ n.id }}" tabindex="-1">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <form class="js-ajax-form" data-target="notifierJobsPanel" action="/notifier/update/{{ n.id }}" method="POST">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="modal-header"><h5 class="modal-title">修改通知器：{{ n.name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
-          <div class="mb-2"><label class="form-label">名称</label><input class="form-control" name="name" value="{{ n.name }}" required></div>
-          <div class="mb-2"><label class="form-label">类型</label><select class="form-select" name="type"><option value="telegram" {% if n.type=='telegram' %}selected{% endif %}>Telegram</option></select></div>
-          <div class="mb-2"><label class="form-label">Bot Token</label><input class="form-control" name="api_key" value="{{ n.api_key }}" required></div>
-          <div class="mb-2"><label class="form-label">聊天 ID</label><input class="form-control" name="chat_id" value="{{ n.chat_id or '' }}"></div>
-          <div class="mb-2"><label class="form-label">任务代理(可选)</label><input class="form-control" name="proxy_url" value="{{ n.proxy_url or '' }}" placeholder="留空=使用系统设置中的统一代理"></div>
+          <div class="section-card mb-3">
+            <div class="section-title mb-2">基础信息</div>
+            <div class="row g-3">
+              <div class="col-md-6"><label class="form-label">名称</label><input class="form-control" name="name" value="{{ n.name }}" required></div>
+              <div class="col-md-6"><label class="form-label">类型</label><select class="form-select" name="type"><option value="telegram" {% if n.type=='telegram' %}selected{% endif %}>Telegram</option></select></div>
+            </div>
+          </div>
+          <div class="section-card">
+            <div class="section-title mb-2">连接配置</div>
+            <div class="row g-3">
+              <div class="col-12"><label class="form-label">Bot Token</label><input class="form-control" name="api_key" value="{{ n.api_key }}" required></div>
+              <div class="col-md-6"><label class="form-label">聊天 ID</label><input class="form-control" name="chat_id" value="{{ n.chat_id or '' }}"></div>
+              <div class="col-md-6"><label class="form-label">任务代理(可选)</label><input class="form-control" name="proxy_url" value="{{ n.proxy_url or '' }}" placeholder="留空=使用系统设置中的统一代理"></div>
+            </div>
+          </div>
         </div>
         <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="submit" class="btn btn-brand">保存修改</button></div>
       </form>
