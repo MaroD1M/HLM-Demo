@@ -3,7 +3,7 @@
   <small class="text-muted">支持筛选、勾选与批量处理</small>
 </div>
 
-  <form class="row g-2 mb-3 js-ajax-filter" data-target="deleteJobsPanel" method="GET" action="/delete-monitor">
+  <form class="row g-2 mb-3 js-ajax-filter list-toolbar" data-target="deleteJobsPanel" method="GET" action="/delete-monitor">
     <div class="col-md-6"><input class="form-control" name="pending_q" value="{{ pending_q or '' }}" placeholder="按路径/种子/原因搜索"></div>
     <div class="col-md-3">
       <select class="form-select" name="pending_match">
@@ -45,10 +45,10 @@
           <td class="wrap-any"><code>{{ p.deleted_path }}</code></td>
           <td class="wrap-any"><code>{{ p.torrent_hash or '-' }}</code></td>
           <td class="wrap-any">{{ p.reason or '-' }}</td>
-          <td>
+          <td class="col-actions"><div class="actions-row actions-stack">
             <button class="btn btn-sm btn-outline-danger" type="submit" formaction="/delete-monitor/pending/confirm/{{ p.id }}" formmethod="post" onclick="return confirm('确认执行删种？此操作不可撤销。')">确认删除</button>
             <button class="btn btn-sm btn-outline-secondary" type="submit" formaction="/delete-monitor/pending/reject/{{ p.id }}" formmethod="post">驳回</button>
-          </td>
+          </div></td>
         </tr>
         {% endfor %}
         </tbody>

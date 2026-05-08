@@ -14,11 +14,11 @@
   </div>
 </div>
 
-<div class="alert alert-info py-2">
-  <div class="mb-1"><strong>系统任务说明：</strong>“系统缓存清理（高风险）”会清理缓存追踪记录（不删真实文件），建议仅排障时手动执行。</div>
-  <strong>Cron 快速帮助：</strong>
-  <code>分 时 日 月 周</code>（24小时制）
-  <span class="ms-2">例如 <code>0 3 * * *</code> = 每天 <strong>03:00</strong> 执行。</span>
+
+<div class="section-card mb-3 cron-help-card">
+  <div class="section-title mb-2">使用提示</div>
+  <div class="small text-muted mb-1">“系统缓存清理（高风险）”仅清理追踪记录，不删除真实文件，建议排障时手动执行。</div>
+  <div class="small text-muted">Cron：<code>分 时 日 月 周</code>（24小时制），例如 <code>0 3 * * *</code> 表示每天 03:00 执行。</div>
 </div>
 
 <div id="cronJobsPanel">

@@ -34,3 +34,15 @@ data/backups/*
 # Runtime logs
 data/logs/*
 !data/logs/.gitkeep
+
+# local planning docs (do not commit)
+docs/plan/
+
+# local runtime db/artifacts
+instance/*.db
+instance/*.sqlite*
+
+# local temp/log artifacts
+*.log
+*.bak
+*.tmp

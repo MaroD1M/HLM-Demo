@@ -133,7 +133,7 @@ window.HLMAjax={
             document.body.classList.remove('modal-open');
             document.body.style.removeProperty('padding-right');
             document.querySelectorAll('.modal form.js-ajax-form').forEach((f)=>{ if(f.hasAttribute('data-keep-values')) return; try{f.reset&&f.reset();}catch(_){}});
-            window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();if(window.initCronEditModal) window.initCronEditModal();if(window.bindMappingPanel) window.bindMappingPanel();
+            window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();if(window.initCronEditModal) window.initCronEditModal();if(window.bindMappingPanel) window.bindMappingPanel();if(window.HLMInitTooltips) window.HLMInitTooltips();
           }
         }catch(err){
           const msg=(err&&err.message&&String(err.message).startsWith('NON_JSON_'))
@@ -173,6 +173,7 @@ window.HLMAjax.bindFilters=function(){
           if(window.bindCronPreview) window.bindCronPreview();
           if(window.initCronEditModal) window.initCronEditModal();
           if(window.bindMappingPanel) window.bindMappingPanel();
+          if(window.HLMInitTooltips) window.HLMInitTooltips();
           window.HLMNotice && window.HLMNotice('筛选已更新','success');
         }
       }catch(_){window.HLMNotice && window.HLMNotice('筛选失败，请稍后重试','danger');}
@@ -182,10 +183,15 @@ window.HLMAjax.bindFilters=function(){
 };
 
 window.addEventListener('DOMContentLoaded',()=>{window.HLMAjax.bind();window.HLMAjax.bindFilters();});
-window.addEventListener('DOMContentLoaded',()=>{
-  const nodes=[].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-  nodes.forEach((el)=>new bootstrap.Tooltip(el));
-});
+window.HLMInitTooltips=function(root){
+  const scope=root||document;
+  const nodes=[].slice.call(scope.querySelectorAll('[data-bs-toggle="tooltip"]'));
+  nodes.forEach((el)=>{
+    if(bootstrap.Tooltip.getInstance(el)) return;
+    new bootstrap.Tooltip(el);
+  });
+};
+window.addEventListener('DOMContentLoaded',()=>{window.HLMInitTooltips();});
 </script>
 {% block scripts %}{% endblock %}
 </body>

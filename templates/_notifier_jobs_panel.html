@@ -12,12 +12,12 @@
         <td>{{ n.chat_id or '-' }}</td>
         <td><small>{{ n.proxy_url or '全局' }}</small></td>
         <td>{% if n.enabled %}<span class="badge text-bg-success">启用</span>{% else %}<span class="badge text-bg-secondary">禁用</span>{% endif %}</td>
-        <td>
+        <td class="col-actions"><div class="actions-row actions-stack">
           <form class="d-inline js-ajax-form" action="/notifier/test/{{ n.id }}" method="POST" data-target="notifierJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">测试</button></form>
           <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editNotifierModal{{ n.id }}">修改</button>
           <form class="d-inline js-ajax-form" action="/notifier/toggle/{{ n.id }}" method="POST" data-target="notifierJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">{{ '禁用' if n.enabled else '启用' }}</button></form>
           <form class="d-inline js-ajax-form" action="/notifier/delete/{{ n.id }}" method="POST" data-target="notifierJobsPanel" data-confirm="确认删除该通知器？"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>
-        </td>
+        </div></td>
       </tr>
     {% endfor %}
     </tbody>
