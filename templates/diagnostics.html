@@ -6,13 +6,13 @@
 <div class="section-card mb-3">
   <div class="section-title mb-2">环境检查</div>
   <div class="table-responsive table-shell">
-    <table class="table table-grid diagnostics-check-table">
+    <table class="table table-grid">
       <thead><tr><th>检查项</th><th>状态</th><th>详情</th></tr></thead>
       <tbody>
       {% for name, ok, detail in checks %}
         <tr>
           <td>{{ name }}</td>
-          <td>{% if ok %}<span class="badge text-bg-success diag-status-ok">正常</span>{% else %}<span class="badge text-bg-danger diag-status-danger">异常</span>{% endif %}</td>
+          <td>{% if ok %}<span class="badge text-bg-success">正常</span>{% else %}<span class="badge text-bg-danger">异常</span>{% endif %}</td>
           <td class="wrap-any">{{ detail }}</td>
         </tr>
       {% endfor %}
@@ -24,7 +24,7 @@
 <div class="section-card mb-3">
   <div class="section-title mb-2">当前运行中的任务</div>
   <div class="table-responsive table-shell">
-    <table class="table table-sm align-middle table-grid diagnostics-run-table">
+    <table class="table table-sm align-middle table-grid">
       <thead><tr><th>执行ID</th><th>任务</th><th>类型</th><th>来源</th><th>已运行</th><th>操作</th></tr></thead>
       <tbody>
       {% if running_rows %}
@@ -49,7 +49,7 @@
 <div class="section-card">
   <div class="section-title mb-2">最近待判定来源事件</div>
   <div class="table-responsive table-shell">
-    <table class="table table-sm align-middle table-grid diagnostics-pending-table">
+    <table class="table table-sm align-middle table-grid">
       <thead><tr><th>时间</th><th>目标</th><th>详情</th></tr></thead>
       <tbody>
       {% if pending_events %}

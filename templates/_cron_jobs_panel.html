@@ -33,7 +33,7 @@
               <span class="badge text-bg-secondary">禁用</span>
             {% endif %}
           </td>
-          <td class="col-actions"><div class="actions-row actions-stack">
+          <td class="col-actions"><div class="actions-row">
             <form class="d-inline js-ajax-form" action="/cron/run/{{ j.id }}" method="POST" data-target="cronJobsPanel">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn btn-sm btn-outline-primary">立即执行一次</button>
