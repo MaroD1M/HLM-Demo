@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased]
+
+### 优化
+- qB 连接层重构：新增会话复用与失效自动重登，减少重复登录与连接开销。
+- 映射回填性能优化：候选文件列表预取支持受控并发，降低逐条串行请求延迟。
+- 映射回填准确率优化：新增候选评分排序（路径命中优先，其次名称命中），并支持路径归一化映射。
+- 回填任务资源控制：批次大小/候选上限/文件列表并发/失败阈值均支持配置，并加入批次自动调优。
+
+### 新增
+- 新增回填相关配置项：`backfill_batch_limit`、`backfill_max_candidates`、`backfill_file_fetch_workers`、`backfill_max_failures`、`backfill_path_mappings`。
+- 下载器配置新增 `会话复用时长(秒)`（`session_ttl_seconds`），支持按下载器单独控制 qB 会话复用时长。
+- 新增回填指标日志 `backfill_metrics`（行数、命中/冲突/跳过、候选均值、filelist 请求与缓存命中）。
+
+### Internal
+- 数据库迁移升级至 `v8`，新增复合索引：
+  - `idx_file_link_map_backfill_lookup (torrent_hash, deleted_at, backfill_fail_count, downloader_id)`
+  - `idx_file_link_map_source_state (source_type, deleted_at, last_seen_at)`
+- 回归测试通过：`tests/test_backfill_service.py`、`tests/test_source_type_guard.py`、`tests/test_routes_smoke.py`（16/16）。
+
 ## [v0.2.5] - 2026-05-08
 
 ### 优化

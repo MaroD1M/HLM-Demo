@@ -57,7 +57,12 @@
                 <label class="form-label">密码</label>
                 <input class="form-control" type="password" name="password">
               </div>
-              <div class="col-12">
+              <div class="col-md-6">
+                <label class="form-label">会话复用时长(秒)</label>
+                <input class="form-control" type="number" name="session_ttl_seconds" min="60" max="86400" placeholder="留空=系统默认(900)">
+                <div class="form-text">建议 300-3600；过小会频繁重登，过大可能延迟失效会话更新。</div>
+              </div>
+              <div class="col-md-6">
                 <label class="form-label">任务代理(可选)</label>
                 <input class="form-control" name="proxy_url" placeholder="留空=使用系统设置中的统一代理">
               </div>

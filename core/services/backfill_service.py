@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 
@@ -7,6 +8,74 @@ def _norm(v):
 
 def _basename(v):
     return Path(str(v or '')).name.lower()
+
+
+
+
+def _safe_normalize_path(normalize_path, value):
+    if not value:
+        return ''
+    if not normalize_path:
+        return _norm(value)
+    try:
+        return _norm(normalize_path(value))
+    except Exception:
+        return _norm(value)
+
+
+def _score_candidate(file_name, source_parent, torrent, normalize_path=None):
+    t_name = _norm(torrent.get('name', ''))
+    save_path = _safe_normalize_path(normalize_path, torrent.get('save_path', ''))
+    content_path = _safe_normalize_path(normalize_path, torrent.get('content_path', ''))
+
+    name_hit = bool(file_name and file_name in t_name)
+    path_hit = bool(source_parent and (source_parent in save_path or source_parent in content_path))
+
+    score = 0
+    if path_hit:
+        score += 60
+    if name_hit:
+        score += 35
+
+    # Tie-breaker: prefer more specific (deeper) path evidence.
+    path_depth = 0
+    if path_hit:
+        path_depth = max(save_path.count('/'), content_path.count('/'))
+        score += min(path_depth, 10)
+
+    return score, name_hit, path_hit, path_depth
+
+
+def _candidate_hashes(candidate_torrents):
+    hashes = []
+    for torrent in candidate_torrents or []:
+        th = str(torrent.get('hash') or '').strip()
+        if th:
+            hashes.append(th)
+    return hashes
+
+
+def _prefetch_torrent_files(downloader, candidate_torrents, list_torrent_files, files_cache, max_workers=4):
+    all_hashes = _candidate_hashes(candidate_torrents)
+    missing = [th for th in all_hashes if th not in files_cache]
+    if not missing:
+        return {'requested': 0, 'cache_hits': len(all_hashes)}
+
+    workers = max(1, min(int(max_workers or 1), len(missing)))
+    if workers <= 1:
+        for th in missing:
+            files_cache[th] = list_torrent_files(downloader, th)
+        return {'requested': len(missing), 'cache_hits': len(all_hashes) - len(missing)}
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        future_map = {pool.submit(list_torrent_files, downloader, th): th for th in missing}
+        for fut in as_completed(future_map):
+            th = future_map[fut]
+            try:
+                files_cache[th] = fut.result()
+            except Exception:
+                files_cache[th] = None
+    return {'requested': len(missing), 'cache_hits': len(all_hashes) - len(missing)}
 
 
 def _match_by_filelist(row, downloader, candidate_torrents, list_torrent_files, files_cache=None, exact_cache=None):
@@ -63,7 +132,7 @@ def _match_by_filelist(row, downloader, candidate_torrents, list_torrent_files, 
     return result
 
 
-def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_files, log_operation, should_stop=None, max_failures=2, allow_global_fallback=True, max_candidates=120):
+def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_files, log_operation, should_stop=None, max_failures=2, allow_global_fallback=True, max_candidates=120, file_fetch_workers=4, normalize_path=None):
     """Backfill torrent hash for mapping rows.
 
     Strategy:
@@ -74,6 +143,9 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
     matched = 0
     conflicts = 0
     skipped = 0
+    total_candidates = 0
+    total_filelist_requested = 0
+    total_filelist_cache_hits = 0
 
     groups = {}
     for row in rows:
@@ -95,11 +167,14 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
         for row in items:
             if should_stop and should_stop():
                 log_operation('backfill_stopped', 'FileLinkMap', None, '映射回填', '收到停止指令，已中止本轮回填', False)
+                total_rows = len(rows or [])
+                avg_candidates = (total_candidates / max(1, total_rows)) if total_rows else 0
+                log_operation('backfill_metrics', 'FileLinkMap', None, '映射回填', f'rows={total_rows};matched={matched};conflicts={conflicts};skipped={skipped};avg_candidates={avg_candidates:.2f};filelist_requested={total_filelist_requested};filelist_cache_hits={total_filelist_cache_hits}')
                 return matched, conflicts, skipped
+
             src = Path(row.source_path or '')
             dst = Path(row.dest_path or '')
 
-            # Source-first: if source exists, do not let destination directory shape dominate.
             use_src = src.exists() and src.is_file()
             use_dst = (not use_src) and dst.exists() and dst.is_file()
             if not use_src and not use_dst:
@@ -109,28 +184,26 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
 
             probe = src if use_src else dst
             file_name = _norm(probe.name)
-            source_parent = _norm(src.parent if use_src else '')
+            source_parent = _safe_normalize_path(normalize_path, src.parent if use_src else '')
 
-            # First-pass candidate narrowing (cheap)
             candidates = []
             matched_hash = None
             reason = 'candidate_empty'
             for torrent in torrents:
-                t_name = _norm(torrent.get('name', ''))
-                save_path = _norm(torrent.get('save_path', ''))
-                content_path = _norm(torrent.get('content_path', ''))
-
-                # Primary candidate condition: basename appears in torrent name.
-                # Secondary path hint only uses source parent (if source exists).
-                name_hit = bool(file_name and file_name in t_name)
-                path_hit = bool(source_parent and (source_parent in save_path or source_parent in content_path))
+                score, name_hit, path_hit, _depth = _score_candidate(
+                    file_name,
+                    source_parent,
+                    torrent,
+                    normalize_path=normalize_path,
+                )
                 if name_hit or path_hit:
-                    candidates.append(torrent)
+                    t = dict(torrent)
+                    t['_score'] = score
+                    candidates.append(t)
 
             fallback_mode = False
             if not candidates:
                 if allow_global_fallback:
-                    # Fallback: only for periodic backfill. Single-row retry should avoid full-scan CPU spikes.
                     fallback_mode = True
                     candidates = torrents
                 else:
@@ -138,13 +211,19 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
                     reason = 'candidate_empty_skip_fast'
                     candidates = []
 
+            if candidates:
+                candidates.sort(key=lambda t: (int(t.get('_score', 0)), str(t.get('hash') or '')), reverse=True)
+
             if candidates and max_candidates and len(candidates) > int(max_candidates):
                 candidates = candidates[:int(max_candidates)]
 
-            # Strong decision by torrent file list exactness.
             if candidates:
+                total_candidates += len(candidates)
+                fetch_stats = _prefetch_torrent_files(downloader, candidates, list_torrent_files, files_cache, max_workers=file_fetch_workers) or {}
+                total_filelist_requested += int(fetch_stats.get('requested', 0) or 0)
+                total_filelist_cache_hits += int(fetch_stats.get('cache_hits', 0) or 0)
                 matched_hash, reason = _match_by_filelist(row, downloader, candidates, list_torrent_files, files_cache=files_cache, exact_cache=exact_cache)
-            
+
             if fallback_mode and reason == 'filelist_no_match':
                 reason = 'candidate_empty_fallback_no_match'
             if matched_hash:
@@ -159,7 +238,6 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
                 log_operation('backfill_matched', 'FileLinkMap', row.id, probe.name, f'hash={matched_hash};reason={reason}')
                 continue
 
-            # track failed attempts to avoid repeated expensive retries forever
             fail_count = int(getattr(row, 'backfill_fail_count', 0) or 0) + 1
             row.backfill_fail_count = fail_count
             row.backfill_last_attempt_at = __import__('datetime').datetime.now(__import__('datetime').UTC)
@@ -176,4 +254,7 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
                 skipped += 1
                 log_operation('backfill_skipped', 'FileLinkMap', row.id, probe.name, reason, False)
 
+    total_rows = len(rows or [])
+    avg_candidates = (total_candidates / max(1, total_rows)) if total_rows else 0
+    log_operation('backfill_metrics', 'FileLinkMap', None, '映射回填', f'rows={total_rows};matched={matched};conflicts={conflicts};skipped={skipped};avg_candidates={avg_candidates:.2f};filelist_requested={total_filelist_requested};filelist_cache_hits={total_filelist_cache_hits}')
     return matched, conflicts, skipped

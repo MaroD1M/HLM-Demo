@@ -95,3 +95,55 @@ def test_backfill_conflict_when_multiple_hashes_match_same_file(tmp_path):
     assert (matched, conflicts, skipped) == (0, 1, 0)
     assert row.torrent_hash is None
     assert any(item[0] == 'backfill_conflict' for item in logs)
+
+
+def test_backfill_path_mapping_improves_candidate_selection(tmp_path):
+    src_dir = tmp_path / 'host' / 'downloads' / 'show'
+    src_dir.mkdir(parents=True)
+    src = src_dir / 'a.mkv'
+    data = b'z' * 256
+    src.write_bytes(data)
+
+    row = Row(3, str(src), str(tmp_path / 'dst' / 'a.mkv'), len(data), downloader_id=1)
+    dl = SimpleNamespace(id=1, enabled=True, type='qbittorrent')
+
+    torrents = [
+        {'hash': 'bad', 'name': 'a.mkv', 'save_path': '/other/path', 'content_path': '/other/path/a.mkv'},
+        {'hash': 'good', 'name': 'a.mkv', 'save_path': '/mnt/media/downloads/show', 'content_path': '/mnt/media/downloads/show/a.mkv'},
+    ]
+
+    def downloader_resolver(_):
+        return dl
+
+    def list_torrents(_):
+        return torrents
+
+    calls = []
+
+    def list_torrent_files(_, th):
+        calls.append(th)
+        if th == 'good':
+            return [{'name': 'a.mkv', 'size': len(data)}]
+        return []
+
+    logs = []
+
+    def log_operation(*args):
+        logs.append(args)
+
+    def normalize_path(v):
+        text = str(v or '').replace('\\\\', '/').replace('\\', '/')
+        low = text.lower()
+        prefix = str(tmp_path / 'host').replace('\\\\', '/').replace('\\', '/').lower()
+        if low.startswith(prefix):
+            return '/mnt/media' + text[len(prefix):]
+        return text
+
+    matched, conflicts, skipped = scan_backfill_rows(
+        [row], downloader_resolver, list_torrents, list_torrent_files, log_operation, normalize_path=normalize_path
+    )
+
+    assert (matched, conflicts, skipped) == (1, 0, 0)
+    assert row.torrent_hash == 'good'
+    assert calls[0] == 'good'
+    assert any(item[0] == 'backfill_matched' for item in logs)

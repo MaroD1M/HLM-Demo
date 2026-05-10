@@ -73,6 +73,7 @@ class Downloader(db.Model):
     username = db.Column(db.String(100))
     encrypted_password = db.Column(db.String(500))
     proxy_url = db.Column(db.String(300))
+    session_ttl_seconds = db.Column(db.Integer)
     enabled = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))

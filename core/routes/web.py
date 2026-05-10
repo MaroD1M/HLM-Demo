@@ -552,7 +552,11 @@ def init_web_routes(ctx: RouteDeps):
         if port is None or port < 1 or port > 65535:
             return _json_or_redirect(False, '端口号必须在 1-65535', '/downloader', status=400)
 
-        d = Downloader(name=name, type=request.form.get('type', 'qbittorrent'), host=host, port=port, username=request.form.get('username'), proxy_url=(request.form.get('proxy_url') or '').strip() or None)
+        session_ttl_seconds = request.form.get('session_ttl_seconds', type=int)
+        if session_ttl_seconds is not None and (session_ttl_seconds < 60 or session_ttl_seconds > 86400):
+            return _json_or_redirect(False, '会话复用时长必须在 60-86400 秒', '/downloader', status=400)
+
+        d = Downloader(name=name, type=request.form.get('type', 'qbittorrent'), host=host, port=port, username=request.form.get('username'), proxy_url=(request.form.get('proxy_url') or '').strip() or None, session_ttl_seconds=session_ttl_seconds)
         d.set_password(request.form.get('password'))
         db.session.add(d)
         db.session.commit()
@@ -593,12 +597,17 @@ def init_web_routes(ctx: RouteDeps):
         if port is None or port < 1 or port > 65535:
             return _json_or_redirect(False, '端口号必须在 1-65535', '/downloader', status=400)
 
+        session_ttl_seconds = request.form.get('session_ttl_seconds', type=int)
+        if session_ttl_seconds is not None and (session_ttl_seconds < 60 or session_ttl_seconds > 86400):
+            return _json_or_redirect(False, '会话复用时长必须在 60-86400 秒', '/downloader', status=400)
+
         d.name = name
         d.type = request.form.get('type', 'qbittorrent')
         d.host = host
         d.port = port
         d.username = request.form.get('username')
         d.proxy_url = (request.form.get('proxy_url') or '').strip() or None
+        d.session_ttl_seconds = session_ttl_seconds
         new_password = request.form.get('password')
         if (new_password or '').strip():
             d.set_password(new_password)
