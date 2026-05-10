@@ -2,7 +2,7 @@
   <div class="table-responsive table-shell">
     <table class="table table-grid">
     <thead>
-      <tr><th>名称</th><th>类型</th><th>地址</th><th>代理</th><th>状态</th><th>操作</th></tr>
+      <tr><th>名称</th><th>类型</th><th>地址</th><th>会话TTL</th><th>代理</th><th>状态</th><th>操作</th></tr>
     </thead>
     <tbody>
     {% for d in downloaders %}
@@ -10,6 +10,7 @@
         <td>{{ d.name }}</td>
         <td>{{ d.type }}</td>
         <td>{{ d.host }}:{{ d.port }}</td>
+        <td><small>{{ d.session_ttl_seconds or 900 }}s</small></td>
         <td><small>{{ d.proxy_url or '全局' }}</small></td>
         <td>{% if d.enabled %}<span class="badge text-bg-success">启用</span>{% else %}<span class="badge text-bg-secondary">禁用</span>{% endif %}</td>
         <td>
@@ -47,7 +48,8 @@
               <div class="col-md-6"><label class="form-label">端口</label><input class="form-control" type="number" name="port" value="{{ d.port }}" required></div>
               <div class="col-md-6"><label class="form-label">用户名</label><input class="form-control" name="username" value="{{ d.username or '' }}"></div>
               <div class="col-md-6"><label class="form-label">密码（留空=不修改）</label><input class="form-control" type="password" name="password"></div>
-              <div class="col-12"><label class="form-label">任务代理(可选)</label><input class="form-control" name="proxy_url" value="{{ d.proxy_url or '' }}" placeholder="留空=使用系统设置中的统一代理"></div>
+              <div class="col-md-6"><label class="form-label">会话复用时长(秒)</label><input class="form-control" type="number" name="session_ttl_seconds" min="60" max="86400" value="{{ d.session_ttl_seconds or '' }}" placeholder="留空=系统默认(900)"><div class="form-text">建议 300-3600；留空时使用系统默认值。</div></div>
+              <div class="col-md-6"><label class="form-label">任务代理(可选)</label><input class="form-control" name="proxy_url" value="{{ d.proxy_url or '' }}" placeholder="留空=使用系统设置中的统一代理"></div>
             </div>
           </div>
         </div>

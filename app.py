@@ -193,6 +193,10 @@ AUTH_FAIL_MAX_TIMES = 3
 AUTH_BLOCK_SECONDS = 1800
 AUTH_STATE = {}
 APP_BOOTSTRAPPED = False
+QB_SESSION_LOCK = Lock()
+QB_SESSION_CACHE = {}
+QB_SESSION_TTL_SECONDS = max(60, int(os.environ.get('QB_SESSION_TTL_SECONDS', '900') or '900'))
+
 
 
 def _auth_enabled():
@@ -485,16 +489,82 @@ def send_telegram_notification(notifier, message):
         return False
 
 
-def qb_session(downloader):
+def _qb_session_ttl_seconds(downloader):
+    raw = getattr(downloader, 'session_ttl_seconds', None)
+    try:
+        if raw is not None and str(raw).strip() != '':
+            return max(60, min(86400, int(raw)))
+    except Exception:
+        pass
+    return QB_SESSION_TTL_SECONDS
+
+
+def _qb_cache_key(downloader):
+    return (
+        int(getattr(downloader, 'id', 0) or 0),
+        str(getattr(downloader, 'host', '') or ''),
+        str(getattr(downloader, 'port', '') or ''),
+        str(getattr(downloader, 'username', '') or ''),
+        str(getattr(downloader, 'proxy_url', '') or ''),
+        int(_qb_session_ttl_seconds(downloader)),
+    )
+
+
+def _qb_new_session(downloader, login=True):
     session_obj = requests.Session()
     proxies = _outbound_proxies(getattr(downloader, 'proxy_url', '') or '')
     if proxies:
         session_obj.proxies.update(proxies)
-    if downloader.username and downloader.encrypted_password:
+    if login and downloader.username and downloader.encrypted_password:
         login_url = f"{downloader.host}:{downloader.port}/api/v2/auth/login"
-        resp = session_obj.post(login_url, data={'username': downloader.username, 'password': downloader.get_password()}, timeout=app.config['REQUEST_TIMEOUT_SECONDS'])
+        resp = session_obj.post(
+            login_url,
+            data={'username': downloader.username, 'password': downloader.get_password()},
+            timeout=app.config['REQUEST_TIMEOUT_SECONDS'],
+        )
         resp.raise_for_status()
     return session_obj
+
+
+def invalidate_qb_client(downloader):
+    key = _qb_cache_key(downloader)
+    with QB_SESSION_LOCK:
+        QB_SESSION_CACHE.pop(key, None)
+
+
+def get_qb_client(downloader):
+    key = _qb_cache_key(downloader)
+    now = datetime.now(UTC)
+    with QB_SESSION_LOCK:
+        cached = QB_SESSION_CACHE.get(key)
+        if cached and cached.get('expires_at') and cached['expires_at'] > now:
+            return cached['session']
+    session_obj = _qb_new_session(downloader, login=True)
+    with QB_SESSION_LOCK:
+        QB_SESSION_CACHE[key] = {
+            'session': session_obj,
+            'expires_at': now + timedelta(seconds=_qb_session_ttl_seconds(downloader)),
+        }
+    return session_obj
+
+
+def qb_request(downloader, method, api_path, params=None, data=None, retry_auth=True):
+    if not downloader or not downloader.enabled:
+        return None
+    if downloader.type != 'qbittorrent':
+        return []
+
+    client = get_qb_client(downloader)
+    url = f"{downloader.host}:{downloader.port}{api_path}"
+    resp = client.request(method, url, params=params, data=data, timeout=app.config['REQUEST_TIMEOUT_SECONDS'])
+
+    if resp.status_code in {401, 403} and retry_auth:
+        invalidate_qb_client(downloader)
+        client = get_qb_client(downloader)
+        resp = client.request(method, url, params=params, data=data, timeout=app.config['REQUEST_TIMEOUT_SECONDS'])
+
+    resp.raise_for_status()
+    return resp
 
 
 def list_torrents(downloader):
@@ -503,16 +573,11 @@ def list_torrents(downloader):
     if downloader.type != 'qbittorrent':
         return []
     try:
-        s = qb_session(downloader)
-        url = f"{downloader.host}:{downloader.port}/api/v2/torrents/info"
-        resp = s.get(url, timeout=app.config['REQUEST_TIMEOUT_SECONDS'])
-        resp.raise_for_status()
-        return resp.json()
+        resp = qb_request(downloader, 'GET', '/api/v2/torrents/info')
+        return resp.json() if resp is not None else None
     except Exception as exc:
         app.logger.error(f'list torrents failed: {exc}')
         return None
-
-
 
 
 def list_torrent_files(downloader, torrent_hash):
@@ -521,25 +586,25 @@ def list_torrent_files(downloader, torrent_hash):
     if downloader.type != 'qbittorrent':
         return []
     try:
-        sess = qb_session(downloader)
-        url = f"{downloader.host}:{downloader.port}/api/v2/torrents/files"
-        resp = sess.get(url, params={'hash': torrent_hash}, timeout=app.config['REQUEST_TIMEOUT_SECONDS'])
-        resp.raise_for_status()
-        payload = resp.json()
+        resp = qb_request(downloader, 'GET', '/api/v2/torrents/files', params={'hash': torrent_hash})
+        payload = resp.json() if resp is not None else None
         return payload if isinstance(payload, list) else []
     except Exception as exc:
         app.logger.error(f'list torrent files failed: {exc}')
         return None
 
+
 def delete_torrent(downloader, torrent_hash):
-    if downloader.type != 'qbittorrent':
+    if not downloader or downloader.type != 'qbittorrent':
         return False
     try:
-        s = qb_session(downloader)
-        url = f"{downloader.host}:{downloader.port}/api/v2/torrents/delete"
         delete_files = get_config('delete_files_with_torrent', 'false') == 'true'
-        resp = s.post(url, data={'hashes': torrent_hash, 'deleteFiles': 'true' if delete_files else 'false'}, timeout=app.config['REQUEST_TIMEOUT_SECONDS'])
-        resp.raise_for_status()
+        qb_request(
+            downloader,
+            'POST',
+            '/api/v2/torrents/delete',
+            data={'hashes': torrent_hash, 'deleteFiles': 'true' if delete_files else 'false'},
+        )
         return True
     except Exception as exc:
         app.logger.error(f'delete torrent failed: {exc}')
@@ -638,6 +703,46 @@ def _config_int(key, default=0):
         return int(get_config(key, str(default)) or str(default))
     except Exception:
         return int(default)
+
+
+def _clamp_int(value, min_value, max_value):
+    try:
+        iv = int(value)
+    except Exception:
+        iv = int(min_value)
+    return max(int(min_value), min(int(max_value), iv))
+
+
+def _load_backfill_path_mappings():
+    raw = (get_config('backfill_path_mappings', '') or '').strip()
+    mappings = []
+    if not raw:
+        return mappings
+    for chunk in raw.split(';'):
+        part = chunk.strip()
+        if not part or '=>' not in part:
+            continue
+        left, right = part.split('=>', 1)
+        src = str(left or '').strip().rstrip('/\\')
+        dst = str(right or '').strip().rstrip('/\\')
+        if src and dst:
+            mappings.append((src.lower(), dst))
+    mappings.sort(key=lambda x: len(x[0]), reverse=True)
+    return mappings
+
+
+def _normalize_for_backfill(value, mappings=None):
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    text = text.replace('\\\\', '/').replace('\\', '/')
+    lower_text = text.lower()
+    for src_low, dst in (mappings or []):
+        if lower_text == src_low or lower_text.startswith(src_low + '/'):
+            suffix = text[len(src_low):]
+            merged = (dst.rstrip('/') + suffix).replace('\\\\', '/').replace('\\', '/')
+            return merged.lower()
+    return text.lower()
 
 
 def _as_aware_utc(dt_obj):
@@ -965,7 +1070,13 @@ def scan_delete_task(task_id, should_stop=None):
         return False, '删除任务执行失败'
     return True, f'删除联动完成：本轮处理 {min(hit_count, task.max_deletes_per_run)}/{hit_count} 条，联动删除种子 {deleted_torrents} 条，待确认 {pending_count} 条'
 def scan_backfill_task(downloader_id=None, limit=500, should_stop=None):
-    query = FileLinkMap.query.filter(FileLinkMap.torrent_hash.is_(None), FileLinkMap.deleted_at.is_(None), db.func.coalesce(FileLinkMap.backfill_fail_count, 0) <= 2)
+    configured_limit = _clamp_int(get_config('backfill_batch_limit', str(limit)), 50, 3000)
+    limit = _clamp_int(limit or configured_limit, 50, 3000)
+    max_failures = _clamp_int(get_config('backfill_max_failures', '2'), 0, 10)
+    max_candidates = _clamp_int(get_config('backfill_max_candidates', '120'), 20, 500)
+    file_fetch_workers = _clamp_int(get_config('backfill_file_fetch_workers', '4'), 1, 16)
+
+    query = FileLinkMap.query.filter(FileLinkMap.torrent_hash.is_(None), FileLinkMap.deleted_at.is_(None), db.func.coalesce(FileLinkMap.backfill_fail_count, 0) <= max_failures)
     if downloader_id:
         query = query.filter(FileLinkMap.downloader_id == downloader_id)
     rows = query.limit(limit).all()
@@ -975,9 +1086,35 @@ def scan_backfill_task(downloader_id=None, limit=500, should_stop=None):
             return db.session.get(Downloader, did)
         return Downloader.query.filter_by(enabled=True, type='qbittorrent').first()
 
-    matched, conflicts, skipped = scan_backfill_rows(rows, resolve_downloader, list_torrents, list_torrent_files, log_operation, should_stop=should_stop, max_failures=2)
+    started_at = datetime.now(UTC)
+    mappings = _load_backfill_path_mappings()
+    matched, conflicts, skipped = scan_backfill_rows(
+        rows,
+        resolve_downloader,
+        list_torrents,
+        list_torrent_files,
+        log_operation,
+        should_stop=should_stop,
+        max_failures=max_failures,
+        max_candidates=max_candidates,
+        file_fetch_workers=file_fetch_workers,
+        normalize_path=lambda v: _normalize_for_backfill(v, mappings),
+    )
     db.session.commit()
-    return True, f'回填成功 {matched}，冲突 {conflicts}，跳过 {skipped}'
+
+    duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
+    processed = matched + conflicts + skipped
+    next_limit = limit
+    if processed >= int(limit * 0.9) and duration_ms < 15000:
+        next_limit = min(3000, limit + 100)
+    elif duration_ms > 45000:
+        next_limit = max(50, limit - 100)
+
+    if next_limit != configured_limit:
+        set_config('backfill_batch_limit', str(next_limit), '映射回填批次大小（自动调优）')
+        db.session.commit()
+
+    return True, f'回填成功 {matched}，冲突 {conflicts}，跳过 {skipped}（耗时 {duration_ms}ms，批次 {limit}，下次批次 {next_limit}）'
 def is_stop_requested(run_key):
     with RUN_LOCK:
         return run_key in STOP_REQUESTED_KEYS
@@ -1151,6 +1288,7 @@ def run_backfill_for_map_id(map_id, deep_retry=False):
             return False, '映射记录不存在'
         if target.torrent_hash:
             return True, '该映射已关联种子，无需重试'
+        mappings = _load_backfill_path_mappings()
         matched, conflicts, skipped = scan_backfill_rows(
             [target],
             resolve_downloader,
@@ -1161,6 +1299,7 @@ def run_backfill_for_map_id(map_id, deep_retry=False):
             max_failures=2,
             allow_global_fallback=bool(deep_retry),
             max_candidates=120 if deep_retry else 40,
+            normalize_path=lambda v: _normalize_for_backfill(v, mappings),
         )
         db.session.commit()
         db.session.refresh(target)
@@ -1452,16 +1591,35 @@ def _migration_v7():
                 db.session.execute(db.text(sql))
 
 
+def _migration_v8():
+    # Backfill-heavy query acceleration on large datasets.
+    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_file_link_map_backfill_lookup ON file_link_map(torrent_hash, deleted_at, backfill_fail_count, downloader_id)'))
+    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_file_link_map_source_state ON file_link_map(source_type, deleted_at, last_seen_at)'))
+
+
+def _migration_v9():
+    needed = {
+        'downloader': {
+            'session_ttl_seconds': 'ALTER TABLE downloader ADD COLUMN session_ttl_seconds INTEGER',
+        },
+    }
+    for table, fields in needed.items():
+        existing = {row[1] for row in db.session.execute(db.text(f'PRAGMA table_info({table})')).fetchall()}
+        for col, sql in fields.items():
+            if col not in existing:
+                db.session.execute(db.text(sql))
+
+
 def ensure_compat_columns():
     # Versioned, idempotent migrations. Supports forward upgrades safely.
     # For downgrades, restore DB from backup before running older code.
-    target = 7
+    target = 9
     current = _get_schema_version()
     if current > target:
         app.logger.warning('db schema version %s is newer than app target %s; running in compatibility mode', current, target)
         return
 
-    migrations = {1: _migration_v1, 2: _migration_v2, 3: _migration_v3, 4: _migration_v4, 5: _migration_v5, 6: _migration_v6, 7: _migration_v7}
+    migrations = {1: _migration_v1, 2: _migration_v2, 3: _migration_v3, 4: _migration_v4, 5: _migration_v5, 6: _migration_v6, 7: _migration_v7, 8: _migration_v8, 9: _migration_v9}
     for version in range(current + 1, target + 1):
         migrations[version]()
         _set_schema_version(version)
@@ -1502,6 +1660,11 @@ def init_defaults():
         ('app_log_backup_count', '5', '应用日志滚动保留文件数'),
         ('version_check_cache_minutes', '720', '版本检查缓存分钟数'),
         ('critical_action_passphrase', '', '关键操作口令（留空=不启用）'),
+        ('backfill_batch_limit', '500', '映射回填批次大小（自动调优）'),
+        ('backfill_max_candidates', '120', '映射回填候选上限'),
+        ('backfill_file_fetch_workers', '4', '映射回填文件列表并发请求数'),
+        ('backfill_max_failures', '2', '映射回填失败跳过阈值'),
+        ('backfill_path_mappings', '', '回填路径映射，格式 /host/path=>/container/path;...'),
     ]
     for key, value, desc in default_configs:
         if not AppConfig.query.filter_by(key=key).first():
@@ -1566,7 +1729,7 @@ def init_app():
     with app.app_context():
         db.create_all()
         init_defaults()
-        backup_ok, backup_msg = pre_migration_backup_if_needed(target_schema=7)
+        backup_ok, backup_msg = pre_migration_backup_if_needed(target_schema=9)
         if not backup_ok:
             app.logger.error('pre migration backup failed: %s', backup_msg)
             raise RuntimeError(f'升级前备份失败，已中止启动: {backup_msg}')
