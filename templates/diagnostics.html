@@ -1,8 +1,12 @@
 {% extends "base.html" %}
-{% block title %}系统诊断 - Hardlink Manager{% endblock %}
+{% block title %}系统诊断 - Hardlink Manager</div>
+{% endblock %}
 {% block content %}
 <div class="page-head"><h3 class="mb-0">系统诊断</h3></div>
 
+<div class="page-intro mb-3"><strong>说明：</strong>本页用于检查运行环境、回填健康、运行中任务与待判定来源事件。</div>
+
+<div class="section-stack">
 <div class="section-card mb-3">
   <div class="section-title mb-2">环境检查</div>
   <div class="table-responsive table-shell">
@@ -16,6 +20,31 @@
           <td class="wrap-any">{{ detail }}</td>
         </tr>
       {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
+<div class="section-card mb-3">
+  <div class="section-title mb-2">最近回填指标</div>
+  <div class="table-responsive table-shell">
+    <table class="table table-sm align-middle table-grid">
+      <thead><tr><th>时间</th><th>处理行数</th><th>命中/冲突/跳过</th><th>候选均值</th><th>文件列表请求/缓存命中</th></tr></thead>
+      <tbody>
+      {% if backfill_metrics_rows %}
+        {% for r in backfill_metrics_rows %}
+          <tr>
+            <td>{{ fmt_dt(r.created_at) }}</td>
+            <td>{{ r.metrics.get('rows', '-') }}</td>
+            <td>{{ r.metrics.get('matched', '-') }}/{{ r.metrics.get('conflicts', '-') }}/{{ r.metrics.get('skipped', '-') }}</td>
+            <td>{{ r.metrics.get('avg_candidates', '-') }}</td>
+            <td>{{ r.metrics.get('filelist_requested', '-') }}/{{ r.metrics.get('filelist_cache_hits', '-') }}</td>
+          </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="5" class="text-muted">暂无回填指标日志</td></tr>
+      {% endif %}
       </tbody>
     </table>
   </div>
@@ -66,5 +95,6 @@
       </tbody>
     </table>
   </div>
+</div>
 </div>
 {% endblock %}

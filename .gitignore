@@ -34,3 +34,7 @@ data/backups/*
 # Runtime logs
 data/logs/*
 !data/logs/.gitkeep
+
+# Local runtime instance (root)
+instance/*
+!instance/.gitkeep

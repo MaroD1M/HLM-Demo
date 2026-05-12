@@ -3,6 +3,7 @@
   'backfill_mapping':'映射回填',
   'clean_logs':'日志清理',
   'clean_cache':'缓存清理',
+  'clean_backfill_failures':'回填失败重置',
   'db_backup':'数据库备份'
 } %}
 <div class="section-card mb-3">
@@ -14,6 +15,8 @@
           <th class="col-wide">类型</th>
           <th class="col-mid">Cron</th>
           <th class="col-mid">解释</th>
+          <th class="col-mid">下次执行（本地）</th>
+          <th class="col-wide">最近执行</th>
           <th class="col-narrow">状态</th>
           <th class="col-actions">操作</th>
         </tr>
@@ -26,6 +29,12 @@
           <td><div><span class="badge-soft">{{ task_type_text.get(j.task_type, j.task_type) }}</span>{% if j.task_type=="clean_cache" %} <span class="badge text-bg-warning">高风险</span>{% endif %}</div><div class="small text-muted wrap-any mt-1">{{ j.description or "-" }}</div></td>
           <td><code>{{ j.cron_expression }}</code></td>
           <td><small class="text-muted">{{ cron_hints.get(j.id, '-') }}</small></td>
+          <td><small class="text-muted">{{ cron_next_runs.get(j.id, '-') }}</small></td>
+          <td>
+            {% set le = cron_last_execs.get(j.id, {}) %}
+            {% if le.get('status') == 'success' %}<span class="badge text-bg-success">成功</span>{% elif le.get('status') == 'failed' %}<span class="badge text-bg-danger">失败</span>{% else %}<span class="badge text-bg-secondary">暂无</span>{% endif %}
+            <div class="small text-muted mt-1">{{ le.get('started_at', '-') }}</div>
+          </td>
           <td>
             {% if j.enabled %}
               <span class="badge text-bg-success">启用</span>
@@ -38,6 +47,12 @@
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn btn-sm btn-outline-primary">立即执行一次</button>
             </form>
+            {% if j.task_type == 'clean_backfill_failures' %}
+            <form class="d-inline js-ajax-form" action="/cron/test/{{ j.id }}" method="POST" data-target="cronJobsPanel">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-sm btn-outline-secondary">测试</button>
+            </form>
+            {% endif %}
             <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editCronModal{{ j.id }}">修改计划</button>
             <form class="d-inline js-ajax-form" action="/cron/toggle/{{ j.id }}" method="POST" data-target="cronJobsPanel">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -51,7 +66,7 @@
         </tr>
         {% endfor %}
         {% else %}
-        <tr><td colspan="6"><div class="empty-state"><i class="fa-regular fa-calendar-xmark"></i>暂无定时任务，点击右上角“新建计划”开始配置。</div></td></tr>
+        <tr><td colspan="8"><div class="empty-state"><i class="fa-regular fa-calendar-xmark"></i>暂无定时任务，点击右上角“新建计划”开始配置。</div></td></tr>
         {% endif %}
       </tbody>
     </table>
@@ -84,6 +99,7 @@
                   <option value="backfill_mapping" {% if j.task_type=='backfill_mapping' %}selected{% endif %}>映射回填任务</option>
                   <option value="clean_logs" {% if j.task_type=='clean_logs' %}selected{% endif %}>清理日志</option>
                   <option value="clean_cache" {% if j.task_type=='clean_cache' %}selected{% endif %}>清理缓存（高风险）</option>
+                  <option value="clean_backfill_failures" {% if j.task_type=='clean_backfill_failures' %}selected{% endif %}>重置长期失败回填</option>
                   <option value="db_backup" {% if j.task_type=='db_backup' %}selected{% endif %}>数据库备份</option>
                 </select>
               </div>

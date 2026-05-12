@@ -1,5 +1,9 @@
 from pathlib import Path
 import json
+import re
+import time
+import os
+import threading
 from flask import Blueprint, render_template, request, redirect, flash, jsonify, Response
 from core.deps import RouteDeps
 
@@ -18,6 +22,8 @@ SETTINGS_SAVE_KEYS = (
     'pending_source_guard_enabled', 'pending_source_guard_seconds', 'pending_source_warn_threshold', 'pending_source_log_mode',
     'github_version_check_enabled', 'github_repo', 'github_api_base',
     'app_log_max_mb', 'app_log_backup_count', 'version_check_cache_minutes', 'critical_action_passphrase',
+    'backfill_batch_limit', 'backfill_max_candidates', 'backfill_file_fetch_workers', 'backfill_max_failures', 'backfill_path_mappings',
+    'dev_mode', 'dev_auto_pull', 'dev_git_repo', 'dev_git_branch', 'dev_auto_pip_sync', 'dev_pip_sync_timeout', 'dev_git_token', 'dev_proxy_url', 'dev_no_proxy',
 )
 
 IMPORTABLE_SETTINGS_KEYS = frozenset(SETTINGS_SAVE_KEYS)
@@ -35,6 +41,7 @@ def init_web_routes(ctx: RouteDeps):
     AppConfig = ctx.AppConfig
     CronJob = ctx.CronJob
     db = ctx.db
+    scheduler = ctx.scheduler
 
     get_config = ctx.get_config
     set_config = ctx.set_config
@@ -66,12 +73,109 @@ def init_web_routes(ctx: RouteDeps):
         flash(message, 'success' if ok else 'danger')
         return redirect(redirect_path)
 
+    def _validate_backfill_setting(key, raw):
+        text = str(raw or '').strip()
+        if key == 'backfill_path_mappings':
+            return True, text
+
+        bounds = {
+            'backfill_batch_limit': (50, 3000),
+            'backfill_max_candidates': (20, 500),
+            'backfill_file_fetch_workers': (1, 16),
+            'backfill_max_failures': (0, 10),
+        }
+        lo, hi = bounds.get(key, (None, None))
+        if lo is None:
+            return True, text
+        try:
+            val = int(text)
+        except Exception:
+            return False, f'{key} must be an integer'
+        if val < lo or val > hi:
+            return False, f'{key} must be in [{lo}, {hi}]'
+        return True, str(val)
+
+    def _validate_dev_setting(key, raw):
+        text = str(raw or '').strip()
+
+        if key in {'dev_mode', 'dev_auto_pull', 'dev_auto_pip_sync'}:
+            if text not in {'true', 'false'}:
+                return False, f'{key} must be true or false'
+            return True, text
+
+        if key == 'dev_git_repo':
+            if text and (not text.startswith('http://') and not text.startswith('https://')):
+                return False, 'dev_git_repo must start with http:// or https://'
+            if len(text) > 300:
+                return False, 'dev_git_repo is too long'
+            return True, text
+
+        if key == 'dev_git_branch':
+            if text and not re.fullmatch(r'[A-Za-z0-9._/-]{1,120}', text):
+                return False, 'dev_git_branch contains invalid characters'
+            return True, text
+
+        if key == 'dev_pip_sync_timeout':
+            try:
+                val = int(text or '120')
+            except Exception:
+                return False, 'dev_pip_sync_timeout must be an integer'
+            if val < 30 or val > 1800:
+                return False, 'dev_pip_sync_timeout must be in [30, 1800]'
+            return True, str(val)
+
+        if key == 'dev_proxy_url':
+            if text and (not text.startswith('http://') and not text.startswith('https://') and not text.startswith('socks5://')):
+                return False, 'dev_proxy_url must start with http://, https:// or socks5://'
+            if len(text) > 300:
+                return False, 'dev_proxy_url is too long'
+            return True, text
+
+        if key == 'dev_no_proxy':
+            if len(text) > 500:
+                return False, 'dev_no_proxy is too long'
+            return True, text
+
+        if key == 'dev_git_token':
+            if len(text) > 300:
+                return False, 'dev_git_token is too long'
+            return True, text
+
+        return True, text
+
     def _critical_guard():
         expected = (get_config('critical_action_passphrase', '') or '').strip()
         if not expected:
             return True
         provided = (request.form.get('critical_passphrase') or '').strip()
         return provided == expected
+
+
+    def _parse_backfill_metrics_message(message):
+        metrics = {}
+        text = str(message or '').strip()
+        if not text:
+            return metrics
+        for item in text.split(';'):
+            if '=' not in item:
+                continue
+            k, v = item.split('=', 1)
+            key = k.strip()
+            val = v.strip()
+            if key:
+                metrics[key] = val
+        return metrics
+
+
+    def _fmt_local_dt(dt_obj):
+        if not dt_obj:
+            return '-'
+        try:
+            if dt_obj.tzinfo is None:
+                dt_obj = dt_obj.replace(tzinfo=ctx.UTC)
+            return dt_obj.astimezone(ctx.APP_TZ).strftime('%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return str(dt_obj)
 
 
     def _hardlink_payload():
@@ -157,9 +261,31 @@ def init_web_routes(ctx: RouteDeps):
 
     def _cron_payload():
         jobs = CronJob.query.all()
+        cron_next_runs = {}
+        cron_last_execs = {}
+        for job in jobs:
+            next_local = '-'
+            sch_job = scheduler.get_job(f'cron_{job.id}')
+            if sch_job and getattr(sch_job, 'next_run_time', None):
+                next_local = _fmt_local_dt(sch_job.next_run_time)
+            cron_next_runs[job.id] = next_local
+
+            # Use cron job id in display query to avoid mixing records when multiple maintenance jobs share task_type/target_id(None).
+            last = JobExecutionLog.query.filter_by(source='cron', job_name=job.name, job_type=job.task_type).order_by(JobExecutionLog.started_at.desc()).first()
+            if last:
+                cron_last_execs[job.id] = {
+                    'status': last.status or '-',
+                    'started_at': _fmt_local_dt(last.started_at),
+                    'message': last.message or '-',
+                }
+            else:
+                cron_last_execs[job.id] = {'status': '-', 'started_at': '-', 'message': '-'}
+
         return {
             'jobs': jobs,
             'cron_hints': {j.id: _cron_human_text(j.cron_expression) for j in jobs},
+            'cron_next_runs': cron_next_runs,
+            'cron_last_execs': cron_last_execs,
             'hardlink_tasks': HardlinkTask.query.all(),
             'delete_tasks': DeleteMonitorTask.query.all(),
         }
@@ -963,6 +1089,7 @@ def init_web_routes(ctx: RouteDeps):
     @web_bp.route('/settings')
     def settings_page():
         settings = {c.key: c.value for c in AppConfig.query.all()}
+        settings['dev_git_token_masked'] = '******' if (settings.get('dev_git_token') or '').strip() else ''
         release = get_release_info()
         return render_template('settings.html', settings=settings, release=release)
 
@@ -970,10 +1097,90 @@ def init_web_routes(ctx: RouteDeps):
     def settings_save():
         for key in SETTINGS_SAVE_KEYS:
             val = request.form.get(key)
-            if val is not None:
-                set_config(key, val.strip() if isinstance(val, str) else val)
+            if val is None:
+                continue
+            value = val.strip() if isinstance(val, str) else val
+
+            if key == 'dev_git_token':
+                clear_token = (request.form.get('dev_git_token_clear') or '').strip() == 'true'
+                if clear_token:
+                    set_config('dev_git_token', '')
+                    continue
+                if value == '':
+                    # Keep existing token when password field is left empty.
+                    continue
+
+            if key.startswith('backfill_'):
+                ok, checked = _validate_backfill_setting(key, value)
+                if not ok:
+                    return _json_or_redirect(False, f'设置保存失败: {checked}', '/settings', status=400)
+                value = checked
+
+            if key.startswith('dev_'):
+                ok, checked = _validate_dev_setting(key, value)
+                if not ok:
+                    return _json_or_redirect(False, f'设置保存失败: {checked}', '/settings', status=400)
+                value = checked
+
+            set_config(key, value)
         return _json_or_redirect(True, '设置已保存并生效', '/settings')
 
+
+
+    @web_bp.route('/settings/dev-restart', methods=['POST'])
+    def settings_dev_restart():
+        if not _critical_guard():
+            return _json_or_redirect(False, '关键操作口令错误，已拒绝重启请求', '/settings', status=400)
+
+        now_text = __import__('datetime').datetime.now(__import__('datetime').UTC).isoformat()
+        set_config('last_dev_apply_status', 'requested')
+        set_config('last_dev_apply_message', '已提交重启请求，服务将在数秒内重启')
+        set_config('last_dev_apply_at', now_text)
+
+        marker = Path('instance') / 'dev_restart_request.flag'
+        runtime_env = Path('instance') / 'dev_runtime.env'
+        try:
+            marker.parent.mkdir(parents=True, exist_ok=True)
+
+            def _esc(v):
+                return str(v or '').replace('\\', '\\\\').replace('"', '\\"')
+
+            lines = [
+                f"APP_DEV_MODE=\"{_esc(get_config('dev_mode', os.environ.get('APP_DEV_MODE', 'false')))}\"",
+                f"APP_DEV_AUTO_PULL=\"{_esc(get_config('dev_auto_pull', os.environ.get('APP_DEV_AUTO_PULL', 'false')))}\"",
+                f"APP_DEV_GIT_REPO=\"{_esc(get_config('dev_git_repo', os.environ.get('APP_DEV_GIT_REPO', '')))}\"",
+                f"APP_DEV_GIT_BRANCH=\"{_esc(get_config('dev_git_branch', os.environ.get('APP_DEV_GIT_BRANCH', 'master')))}\"",
+                f"APP_DEV_AUTO_PIP_SYNC=\"{_esc(get_config('dev_auto_pip_sync', os.environ.get('APP_DEV_AUTO_PIP_SYNC', 'false')))}\"",
+                f"APP_DEV_PIP_SYNC_TIMEOUT=\"{_esc(get_config('dev_pip_sync_timeout', os.environ.get('APP_DEV_PIP_SYNC_TIMEOUT', '120')))}\"",
+                f"APP_DEV_GIT_TOKEN=\"{_esc(get_config('dev_git_token', os.environ.get('APP_DEV_GIT_TOKEN', '')))}\"",
+                f"APP_DEV_PROXY_URL=\"{_esc(get_config('dev_proxy_url', os.environ.get('APP_DEV_PROXY_URL', '')))}\"",
+                f"APP_DEV_NO_PROXY=\"{_esc(get_config('dev_no_proxy', os.environ.get('APP_DEV_NO_PROXY', 'localhost,127.0.0.1,::1')))}\"",
+            ]
+            runtime_env.write_text("\n".join(lines) + "\n", encoding='utf-8')
+            marker.write_text(now_text)
+        except Exception as exc:
+            return _json_or_redirect(False, f'写入重启标记失败: {exc}', '/settings', status=500)
+
+        def _delayed_exit():
+            time.sleep(0.8)
+            # Keep tests/process tooling stable; skip hard exit while running test sessions.
+            if os.environ.get('PYTEST_CURRENT_TEST'):
+                return
+            os._exit(0)
+
+        threading.Thread(target=_delayed_exit, daemon=True).start()
+        return _json_or_redirect(True, '已提交重启并应用请求，服务将短暂中断后恢复', '/settings')
+
+
+
+    @web_bp.route('/settings/dev-apply-status', methods=['GET'])
+    def settings_dev_apply_status():
+        return jsonify({
+            'ok': True,
+            'status': (get_config('last_dev_apply_status', '') or '').strip(),
+            'message': (get_config('last_dev_apply_message', '') or '').strip(),
+            'at': (get_config('last_dev_apply_at', '') or '').strip(),
+        })
 
     @web_bp.route('/settings/check-update', methods=['POST'])
     def settings_check_update():
@@ -984,7 +1191,7 @@ def init_web_routes(ctx: RouteDeps):
     @web_bp.route('/settings/export', methods=['GET'])
     def settings_export():
         data = {c.key: c.value for c in AppConfig.query.all()}
-        for k in ('critical_action_passphrase',):
+        for k in ('critical_action_passphrase', 'dev_git_token'):
             if k in data and data[k]:
                 data[k] = '***'
         return Response(json.dumps(data, ensure_ascii=False, indent=2), mimetype='application/json', headers={'Content-Disposition': 'attachment; filename=hlm-settings.json'})
@@ -1004,9 +1211,33 @@ def init_web_routes(ctx: RouteDeps):
         applied = 0
         for k,v in payload.items():
             if k in allowed and v is not None and v != '***':
-                set_config(k, str(v))
+                value = str(v)
+                if k.startswith('backfill_'):
+                    ok, checked = _validate_backfill_setting(k, value)
+                    if not ok:
+                        return _json_or_redirect(False, f'配置导入失败: {checked}', '/settings', status=400)
+                    value = checked
+                if k.startswith('dev_'):
+                    ok, checked = _validate_dev_setting(k, value)
+                    if not ok:
+                        return _json_or_redirect(False, f'配置导入失败: {checked}', '/settings', status=400)
+                    value = checked
+                set_config(k, value)
                 applied += 1
         return _json_or_redirect(True, f'配置导入完成，已更新 {applied} 项', '/settings')
+
+    @web_bp.route('/diagnostics/backfill-metrics')
+    def diagnostics_backfill_metrics():
+        rows = OperationLog.query.filter_by(operation_type='backfill_metrics').order_by(OperationLog.created_at.desc()).limit(10).all()
+        items = []
+        for row in rows:
+            items.append({
+                'created_at': row.created_at.isoformat() if row.created_at else None,
+                'metrics': _parse_backfill_metrics_message(row.message),
+                'message': row.message or '',
+            })
+        return jsonify({'ok': True, 'items': items})
+
 
     @web_bp.route('/diagnostics')
     def diagnostics_page():
@@ -1022,7 +1253,7 @@ def init_web_routes(ctx: RouteDeps):
             current_schema = str(row[0]) if row and row[0] is not None else '0'
         except Exception:
             current_schema = '0'
-        checks.append(('数据库结构版本', True, f'current={current_schema}, target=7'))
+        checks.append(('数据库结构版本', True, f'current={current_schema}, target=9'))
 
         checks.append(('代理配置', True, (get_config('proxy_url','') or '').strip() or '未设置（直连）'))
         checks.append(('应用版本', True, get_release_info().get('local_version','-')))
@@ -1038,6 +1269,15 @@ def init_web_routes(ctx: RouteDeps):
         checks.append(('待判定映射数量', pending_count < pending_warn_threshold, f'{pending_count} (threshold={pending_warn_threshold})'))
 
         pending_events = OperationLog.query.filter_by(operation_type='delete_pending_source').order_by(OperationLog.created_at.desc()).limit(5).all()
+        backfill_metrics_logs = OperationLog.query.filter_by(operation_type='backfill_metrics').order_by(OperationLog.created_at.desc()).limit(5).all()
+        backfill_metrics_rows = [
+            {
+                'created_at': row.created_at,
+                'metrics': _parse_backfill_metrics_message(row.message),
+                'message': row.message or '',
+            }
+            for row in backfill_metrics_logs
+        ]
 
         running_snaps = get_running_executions_snapshot()
         now = __import__('datetime').datetime.now(__import__('datetime').UTC)
@@ -1055,10 +1295,10 @@ def init_web_routes(ctx: RouteDeps):
                 'has_snapshot': True,
             })
 
-        return render_template('diagnostics.html', checks=checks, running_rows=running_rows, pending_events=pending_events)
+        return render_template('diagnostics.html', checks=checks, running_rows=running_rows, pending_events=pending_events, backfill_metrics_rows=backfill_metrics_rows)
 
-    @web_bp.route('/delete-monitor/preview/<int:task_id>', methods=['POST'])
-    def delete_monitor_preview(task_id):
+    @web_bp.route('/delete-monitor/test/<int:task_id>', methods=['POST'])
+    def delete_monitor_test(task_id):
         task = db.session.get(DeleteMonitorTask, task_id)
         if not task:
             return _json_or_redirect(False, '任务不存在', '/delete-monitor', status=404)
@@ -1073,7 +1313,7 @@ def init_web_routes(ctx: RouteDeps):
                 d_exists = Path(row.dest_path or '').exists()
                 if (not s_exists) or (not d_exists):
                     hits += 1
-        return _json_or_redirect(True, f'预演完成：当前可能触发联动 {hits} 条（仅预估，不执行删除）', '/delete-monitor')
+        return _json_or_redirect(True, f'测试完成：当前可能触发联动 {hits} 条（仅估算，不执行删除）', '/delete-monitor')
 
     @web_bp.route('/cron')
     def cron_list():
@@ -1090,12 +1330,12 @@ def init_web_routes(ctx: RouteDeps):
         if not validate_cron_expression(cron_expression):
             return _json_or_redirect(False, 'Cron 表达式格式错误（应为 5 段，例如 0 3 * * *）', '/cron', status=400)
 
-        allowed_types = {'batch_hardlink', 'backfill_mapping', 'clean_logs', 'clean_cache', 'db_backup'}
+        allowed_types = {'batch_hardlink', 'backfill_mapping', 'clean_logs', 'clean_cache', 'clean_backfill_failures', 'db_backup'}
         if task_type not in allowed_types:
             return _json_or_redirect(False, '不支持的任务类型', '/cron', status=400)
         if task_type == 'batch_hardlink' and (not target_id or not db.session.get(HardlinkTask, target_id)):
             return _json_or_redirect(False, '请选择有效的硬链接任务', '/cron', status=400)
-        if task_type in {'clean_logs', 'clean_cache', 'backfill_mapping', 'db_backup'}:
+        if task_type in {'clean_logs', 'clean_cache', 'clean_backfill_failures', 'backfill_mapping', 'db_backup'}:
             target_id = None
 
         c = CronJob(name=name, task_type=task_type, target_id=target_id, cron_expression=cron_expression, description=request.form.get('description'))
@@ -1124,12 +1364,12 @@ def init_web_routes(ctx: RouteDeps):
         if not validate_cron_expression(cron_expression):
             return _json_or_redirect(False, 'Cron 表达式格式错误（应为 5 段，例如 0 3 * * *）', '/cron', status=400)
 
-        allowed_types = {'batch_hardlink', 'backfill_mapping', 'clean_logs', 'clean_cache', 'db_backup'}
+        allowed_types = {'batch_hardlink', 'backfill_mapping', 'clean_logs', 'clean_cache', 'clean_backfill_failures', 'db_backup'}
         if task_type not in allowed_types:
             return _json_or_redirect(False, '不支持的任务类型', '/cron', status=400)
         if task_type == 'batch_hardlink' and (not target_id or not db.session.get(HardlinkTask, target_id)):
             return _json_or_redirect(False, '请选择有效的硬链接任务', '/cron', status=400)
-        if task_type in {'clean_logs', 'clean_cache', 'backfill_mapping', 'db_backup'}:
+        if task_type in {'clean_logs', 'clean_cache', 'clean_backfill_failures', 'backfill_mapping', 'db_backup'}:
             target_id = None
 
         c.name = name
@@ -1167,6 +1407,28 @@ def init_web_routes(ctx: RouteDeps):
             html = render_template('_cron_jobs_panel.html', **payload)
             return _json_or_redirect(ok, msg, '/cron', html=html if ok else None, target='cronJobsPanel', status=200 if ok else 400)
         return _json_or_redirect(ok, msg, '/cron')
+
+    @web_bp.route('/cron/test/<int:job_id>', methods=['POST'])
+    def cron_test(job_id):
+        c = db.session.get(CronJob, job_id)
+        if not c:
+            return _json_or_redirect(False, '定时任务不存在', '/cron', status=404)
+        if c.task_type != 'clean_backfill_failures':
+            return _json_or_redirect(False, '该任务类型暂不支持测试', '/cron', status=400)
+
+        from datetime import UTC, datetime, timedelta
+
+        days = int(get_config('backfill_failure_retention_days', '7') or '7')
+        days = max(1, min(90, days))
+        cutoff = datetime.now(UTC) - timedelta(days=days)
+        count = FileLinkMap.query.filter(
+            FileLinkMap.torrent_hash.is_(None),
+            FileLinkMap.deleted_at.is_(None),
+            db.func.coalesce(FileLinkMap.backfill_fail_count, 0) > 2,
+            FileLinkMap.backfill_last_attempt_at.is_not(None),
+            FileLinkMap.backfill_last_attempt_at < cutoff,
+        ).count()
+        return _json_or_redirect(True, f'测试完成：将重置 {count} 条（>{days}天，仅测试不写入）', '/cron')
 
     @web_bp.route('/cron/backup-now', methods=['POST'])
     def backup_now():
