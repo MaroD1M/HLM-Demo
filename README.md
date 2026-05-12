@@ -75,7 +75,7 @@ mkdir -p hlm-demo && cd hlm-demo
 
 ### 第 2 步：创建 `docker-compose.yml`
 
-> 下面这份可以直接用。你只需要改这几项：
+> 下面这份是**普通用户最简版**，开箱即用。你只需要改这几项：
 > 1) `SECRET_KEY`  2) `APP_USERNAME`  3) `APP_PASSWORD`  4) `/你的媒体目录`
 
 ```yaml
@@ -84,57 +84,32 @@ services:
     image: ghcr.io/marod1m/hlm-demo:latest
     container_name: hlm-demo
     restart: unless-stopped
-    network_mode: bridge
 
     ports:
       - "5000:5000"
 
     environment:
-      # 必改：应用密钥（建议至少32位随机字符串）
       SECRET_KEY: "请改成一个长随机字符串"
-
-      # 建议：登录凭据（两项都填写才启用登录）
       APP_USERNAME: "admin"
       APP_PASSWORD: "123456"
-
-      # 可选：时区/请求超时
       TZ: "Asia/Shanghai"
-      REQUEST_TIMEOUT_SECONDS: "10"
-
-      # 可选：日志行为
-      ACCESS_LOG_ENABLED: "true"
-      APP_LOG_MAX_MB: "10"
-      APP_LOG_BACKUP_COUNT: "5"
-
-      # 建议保留
       PYTHONUNBUFFERED: "1"
 
     volumes:
-      # 必须：数据库与运行状态（不要删）
       - ./data/instance:/app/instance
-
-      # 建议：数据库备份目录
       - ./data/backups:/app/data/backups
-
-      # 建议：应用日志目录
       - ./data/logs:/app/data/logs
-
-      # 必改：把左边改为你自己的媒体根目录
       - /你的媒体目录:/media
-
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=3)"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 ```
+
+#### 可选增强（进阶用户）
+
+如果你明确知道自己在做什么，再加这些：
+- `healthcheck`：用于平台健康状态探测。
+- `logging`：自定义日志滚动策略。
+
+> 对群晖用户：默认建议先**不加 logging 配置**，优先使用容器管理器的默认日志展示，避免出现“看不到日志”或日志行为不符合预期。
+
 
 ### 第 3 步：启动
 
