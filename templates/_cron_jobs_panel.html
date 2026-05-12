@@ -8,13 +8,13 @@
 } %}
 <div class="section-card mb-3">
   <div class="table-responsive table-shell">
-    <table class="table align-middle table-fixed table-grid">
+    <table class="table align-middle table-grid cron-table">
       <thead>
         <tr>
           <th class="col-mid">名称</th>
           <th class="col-wide">类型</th>
           <th class="col-mid">Cron</th>
-          <th class="col-mid">解释</th>
+          <th class="col-mid col-cron-hint">解释</th>
           <th class="col-mid">下次执行（本地）</th>
           <th class="col-wide">最近执行</th>
           <th class="col-narrow">状态</th>
@@ -28,7 +28,7 @@
           <td>{{ j.name }}</td>
           <td><div><span class="badge-soft">{{ task_type_text.get(j.task_type, j.task_type) }}</span>{% if j.task_type=="clean_cache" %} <span class="badge text-bg-warning">高风险</span>{% endif %}</div><div class="small text-muted wrap-any mt-1">{{ j.description or "-" }}</div></td>
           <td><code>{{ j.cron_expression }}</code></td>
-          <td><small class="text-muted">{{ cron_hints.get(j.id, '-') }}</small></td>
+          <td class="col-cron-hint"><small class="text-muted">{{ cron_hints.get(j.id, '-') }}</small></td>
           <td><small class="text-muted">{{ cron_next_runs.get(j.id, '-') }}</small></td>
           <td>
             {% set le = cron_last_execs.get(j.id, {}) %}

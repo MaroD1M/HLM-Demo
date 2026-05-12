@@ -1162,7 +1162,7 @@ def init_web_routes(ctx: RouteDeps):
             return _json_or_redirect(False, f'写入重启标记失败: {exc}', '/settings', status=500)
 
         def _delayed_exit():
-            time.sleep(0.8)
+            time.sleep(1.5)
             # Keep tests/process tooling stable; skip hard exit while running test sessions.
             if os.environ.get('PYTEST_CURRENT_TEST'):
                 return
