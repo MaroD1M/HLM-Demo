@@ -827,3 +827,30 @@ body {
     flex: 1 1 auto;
   }
 }
+
+
+/* Cron table visibility fixes */
+.cron-table {
+  min-width: 1220px;
+  table-layout: auto;
+}
+
+.cron-table .col-actions {
+  min-width: 280px;
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: #fff;
+  box-shadow: -10px 0 10px -12px rgba(12, 32, 54, 0.35);
+}
+
+.cron-table thead .col-actions {
+  z-index: 3;
+  background: #f3f8ff;
+}
+
+@media (max-width: 1200px) {
+  .cron-table .col-cron-hint {
+    display: none;
+  }
+}
