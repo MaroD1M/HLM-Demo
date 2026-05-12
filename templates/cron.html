@@ -2,7 +2,7 @@
 {% block title %}定时任务 - Hardlink Manager{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h3 class="mb-0">定时任务 <i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="用于自动执行扫描、回填、备份等任务；建议先手动验证后再定时。"></i></h3>
+  <h3 class="mb-0">定时任务 <i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="用于自动执行扫描、自动关联、备份等任务；建议先手动验证后再定时。"></i></h3>
   <div class="page-actions">
     <form class="js-ajax-form" action="/cron/backup-now" method="POST" data-target="cronJobsPanel">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -58,10 +58,10 @@
                 <label class="form-label">任务类型<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="不同类型需要的目标不同：硬链接任务需选择目标任务，系统维护类无需目标。"></i></label>
                 <select class="form-select" name="task_type" id="task_type" onchange="updateTargetField()">
                   <option value="batch_hardlink">批量创建硬链接</option>
-                  <option value="backfill_mapping">映射回填任务</option>
+                  <option value="backfill_mapping">映射自动关联任务</option>
                   <option value="clean_logs">清理日志</option>
                   <option value="clean_cache">清理缓存（高风险）</option>
-                  <option value="clean_backfill_failures">重置长期失败回填</option>
+                  <option value="clean_backfill_failures">重置长期失败自动关联</option>
                   <option value="db_backup">数据库备份</option>
                 </select>
               </div>

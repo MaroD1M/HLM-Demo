@@ -29,7 +29,7 @@
       </select>
     </div>
     <div class="col-md-2">
-      <select class="form-select" name="source_type" data-bs-toggle="tooltip" title="待判定表示来源尚在回填确认窗口，删除联动会保守处理。">
+      <select class="form-select" name="source_type" data-bs-toggle="tooltip" title="待判定表示来源尚在自动关联确认窗口，删除联动会保守处理。">
         <option value="all" {% if (source_type or 'all')=='all' %}selected{% endif %}>全部来源</option>
         <option value="manual" {% if source_type=='manual' %}selected{% endif %}>手动文件</option>
         <option value="downloader" {% if source_type=='downloader' %}selected{% endif %}>下载器文件</option>

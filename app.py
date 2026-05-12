@@ -1690,7 +1690,7 @@ def init_defaults():
         ('backfill_failure_retention_days', '7', '长期失败回填记录重置阈值（天）'),
         ('dev_mode', (os.environ.get('APP_DEV_MODE', 'false') or 'false').lower(), '开发模式开关（页面配置）'),
         ('dev_auto_pull', (os.environ.get('APP_DEV_AUTO_PULL', 'false') or 'false').lower(), '开发模式：启动自动拉取'),
-        ('dev_git_repo', os.environ.get('APP_DEV_GIT_REPO', '') or '', '开发模式：Git 仓库地址'),
+        ('dev_git_repo', os.environ.get('APP_DEV_GIT_REPO', '') or 'https://github.com/MaroD1M/HLM-Demo.git', '开发模式：Git 仓库地址'),
         ('dev_git_branch', os.environ.get('APP_DEV_GIT_BRANCH', 'master') or 'master', '开发模式：Git 分支'),
         ('dev_auto_pip_sync', (os.environ.get('APP_DEV_AUTO_PIP_SYNC', 'true') or 'true').lower(), '开发模式：依赖自动同步'),
         ('dev_pip_sync_timeout', os.environ.get('APP_DEV_PIP_SYNC_TIMEOUT', '120') or '120', '开发模式：pip 同步超时（秒）'),
