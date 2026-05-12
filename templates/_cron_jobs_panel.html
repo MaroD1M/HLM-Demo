@@ -1,9 +1,9 @@
 {% set task_type_text = {
   'batch_hardlink':'批量硬链接',
-  'backfill_mapping':'映射回填',
+  'backfill_mapping':'映射自动关联',
   'clean_logs':'日志清理',
   'clean_cache':'缓存清理',
-  'clean_backfill_failures':'回填失败重置',
+  'clean_backfill_failures':'自动关联失败重置',
   'db_backup':'数据库备份'
 } %}
 <div class="section-card mb-3">
@@ -96,10 +96,10 @@
                 <label class="form-label">任务类型</label>
                 <select class="form-select cron-edit-task-type" name="task_type" data-edit-id="{{ j.id }}">
                   <option value="batch_hardlink" {% if j.task_type=='batch_hardlink' %}selected{% endif %}>批量创建硬链接</option>
-                  <option value="backfill_mapping" {% if j.task_type=='backfill_mapping' %}selected{% endif %}>映射回填任务</option>
+                  <option value="backfill_mapping" {% if j.task_type=='backfill_mapping' %}selected{% endif %}>映射自动关联任务</option>
                   <option value="clean_logs" {% if j.task_type=='clean_logs' %}selected{% endif %}>清理日志</option>
                   <option value="clean_cache" {% if j.task_type=='clean_cache' %}selected{% endif %}>清理缓存（高风险）</option>
-                  <option value="clean_backfill_failures" {% if j.task_type=='clean_backfill_failures' %}selected{% endif %}>重置长期失败回填</option>
+                  <option value="clean_backfill_failures" {% if j.task_type=='clean_backfill_failures' %}selected{% endif %}>重置长期失败自动关联</option>
                   <option value="db_backup" {% if j.task_type=='db_backup' %}selected{% endif %}>数据库备份</option>
                 </select>
               </div>

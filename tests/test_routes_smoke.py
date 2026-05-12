@@ -455,3 +455,25 @@ def test_settings_dev_apply_status_endpoint():
     assert payload['ok'] is True
     assert 'status' in payload
 
+
+
+def test_settings_dev_restart_saves_form_values():
+    client = _client()
+    token = _get_csrf_token(client, '/settings')
+    repo = 'https://github.com/MaroD1M/HLM-Demo.git'
+    resp = client.post('/settings/dev-restart', data={
+        'csrf_token': token,
+        'dev_mode': 'true',
+        'dev_auto_pull': 'true',
+        'dev_git_repo': repo,
+        'dev_git_branch': 'master',
+        'dev_auto_pip_sync': 'false',
+        'dev_pip_sync_timeout': '120',
+        'dev_git_token': '',
+        'dev_git_token_clear': 'false',
+    }, headers={'X-Requested-With': 'XMLHttpRequest'})
+    assert resp.status_code == 200
+    with app.app_context():
+        from app import get_config
+        assert get_config('dev_git_repo') == repo
+

@@ -1,6 +1,6 @@
   <div class="col-lg-7">
     <div class="section-card h-100">
-      <div class="section-toolbar mb-2"><div class="section-title">文件映射（关联关系）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单删、批量删、全选/反选；支持查看回填失败次数并手动重置。来源=待判定 时表示映射刚重建或尚在回填窗口，删除联动会保守处理。"></i></div><div class="section-muted">支持快速/深度重试、失败计数重置与批量删除。</div></div>
+      <div class="section-toolbar mb-2"><div class="section-title">文件映射（关联关系）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单删、批量删、全选/反选；支持查看自动关联失败次数并手动重置。来源=待判定 时表示映射刚重建或尚在自动关联窗口，删除联动会保守处理。"></i></div><div class="section-muted">支持快速/深度重试、失败计数重置与批量删除。</div></div>
       <form id="mapBulkForm" action="/mapping/link/bulk-delete" method="POST" class="d-none js-ajax-form" data-target="mappingPanel">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       </form>

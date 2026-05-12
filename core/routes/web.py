@@ -27,6 +27,36 @@ SETTINGS_SAVE_KEYS = (
 )
 
 IMPORTABLE_SETTINGS_KEYS = frozenset(SETTINGS_SAVE_KEYS)
+DEV_DEFAULT_GIT_REPO = 'https://github.com/MaroD1M/HLM-Demo.git'
+OPERATION_TYPE_LABELS = {
+    'hardlink_created': '创建硬链接',
+    'hardlink_skipped': '跳过硬链接',
+    'hardlink_failed': '硬链接失败',
+    'task_run': '执行任务',
+    'task_updated': '更新任务',
+    'task_deleted': '删除任务',
+    'task_toggled': '启用/禁用任务',
+    'delete_scan': '删除联动扫描',
+    'delete_pending_source': '来源待判定事件',
+    'pending_delete_confirmed': '确认删种',
+    'pending_delete_failed': '确认删种失败',
+    'pending_delete_rejected': '驳回待确认',
+    'pending_delete_bulk': '批量处理待确认',
+    'mapping_backfill_fail_reset': '重置自动关联失败计数',
+    'mapping_deleted': '删除映射',
+    'mapping_cleared': '清空映射',
+    'cache_deleted': '删除缓存',
+    'cache_cleared': '清空缓存',
+    'cron_added': '新建定时任务',
+    'cron_updated': '更新定时任务',
+    'cron_deleted': '删除定时任务',
+    'cron_toggled': '启用/禁用定时任务',
+    'cron_executed': '定时任务执行',
+    'cron_test': '测试任务',
+    'downloader_test': '测试下载器',
+    'downloader_updated': '更新下载器',
+    'backfill_metrics': '自动关联指标',
+}
 
 def init_web_routes(ctx: RouteDeps):
     HardlinkTask = ctx.HardlinkTask
@@ -1064,6 +1094,7 @@ def init_web_routes(ctx: RouteDeps):
 
         pagination = log_q.order_by(OperationLog.created_at.desc()).paginate(page=page, per_page=50, error_out=False)
         operations = [r[0] for r in db.session.query(OperationLog.operation_type).distinct().order_by(OperationLog.operation_type.asc()).all()]
+        operation_options = [(item, OPERATION_TYPE_LABELS.get(item, item)) for item in operations]
         return render_template(
             'logs.html',
             logs=pagination.items,
@@ -1074,6 +1105,8 @@ def init_web_routes(ctx: RouteDeps):
             op=op,
             success=success,
             operations=operations,
+            operation_options=operation_options,
+            operation_type_labels=OPERATION_TYPE_LABELS,
         )
 
     @web_bp.route('/logs/clear', methods=['POST'])
@@ -1089,20 +1122,21 @@ def init_web_routes(ctx: RouteDeps):
     @web_bp.route('/settings')
     def settings_page():
         settings = {c.key: c.value for c in AppConfig.query.all()}
+        if not (settings.get('dev_git_repo') or '').strip():
+            settings['dev_git_repo'] = os.environ.get('APP_DEV_GIT_REPO', '') or DEV_DEFAULT_GIT_REPO
         settings['dev_git_token_masked'] = '******' if (settings.get('dev_git_token') or '').strip() else ''
         release = get_release_info()
         return render_template('settings.html', settings=settings, release=release)
 
-    @web_bp.route('/settings/save', methods=['POST'])
-    def settings_save():
+    def _save_settings_from_form(form):
         for key in SETTINGS_SAVE_KEYS:
-            val = request.form.get(key)
+            val = form.get(key)
             if val is None:
                 continue
             value = val.strip() if isinstance(val, str) else val
 
             if key == 'dev_git_token':
-                clear_token = (request.form.get('dev_git_token_clear') or '').strip() == 'true'
+                clear_token = (form.get('dev_git_token_clear') or '').strip() == 'true'
                 if clear_token:
                     set_config('dev_git_token', '')
                     continue
@@ -1113,16 +1147,23 @@ def init_web_routes(ctx: RouteDeps):
             if key.startswith('backfill_'):
                 ok, checked = _validate_backfill_setting(key, value)
                 if not ok:
-                    return _json_or_redirect(False, f'设置保存失败: {checked}', '/settings', status=400)
+                    return False, checked
                 value = checked
 
             if key.startswith('dev_'):
                 ok, checked = _validate_dev_setting(key, value)
                 if not ok:
-                    return _json_or_redirect(False, f'设置保存失败: {checked}', '/settings', status=400)
+                    return False, checked
                 value = checked
 
             set_config(key, value)
+        return True, ''
+
+    @web_bp.route('/settings/save', methods=['POST'])
+    def settings_save():
+        ok, msg = _save_settings_from_form(request.form)
+        if not ok:
+            return _json_or_redirect(False, f'设置保存失败: {msg}', '/settings', status=400)
         return _json_or_redirect(True, '设置已保存并生效', '/settings')
 
 
@@ -1131,6 +1172,10 @@ def init_web_routes(ctx: RouteDeps):
     def settings_dev_restart():
         if not _critical_guard():
             return _json_or_redirect(False, '关键操作口令错误，已拒绝重启请求', '/settings', status=400)
+
+        ok, msg = _save_settings_from_form(request.form)
+        if not ok:
+            return _json_or_redirect(False, f'设置保存失败: {msg}', '/settings', status=400)
 
         now_text = __import__('datetime').datetime.now(__import__('datetime').UTC).isoformat()
         set_config('last_dev_apply_status', 'requested')
@@ -1148,7 +1193,7 @@ def init_web_routes(ctx: RouteDeps):
             lines = [
                 f"APP_DEV_MODE=\"{_esc(get_config('dev_mode', os.environ.get('APP_DEV_MODE', 'false')))}\"",
                 f"APP_DEV_AUTO_PULL=\"{_esc(get_config('dev_auto_pull', os.environ.get('APP_DEV_AUTO_PULL', 'false')))}\"",
-                f"APP_DEV_GIT_REPO=\"{_esc(get_config('dev_git_repo', os.environ.get('APP_DEV_GIT_REPO', '')))}\"",
+                f"APP_DEV_GIT_REPO=\"{_esc((get_config('dev_git_repo', os.environ.get('APP_DEV_GIT_REPO', '')) or DEV_DEFAULT_GIT_REPO))}\"",
                 f"APP_DEV_GIT_BRANCH=\"{_esc(get_config('dev_git_branch', os.environ.get('APP_DEV_GIT_BRANCH', 'master')))}\"",
                 f"APP_DEV_AUTO_PIP_SYNC=\"{_esc(get_config('dev_auto_pip_sync', os.environ.get('APP_DEV_AUTO_PIP_SYNC', 'false')))}\"",
                 f"APP_DEV_PIP_SYNC_TIMEOUT=\"{_esc(get_config('dev_pip_sync_timeout', os.environ.get('APP_DEV_PIP_SYNC_TIMEOUT', '120')))}\"",

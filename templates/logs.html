@@ -19,8 +19,8 @@
     <div class="col-md-3">
       <select class="form-select" name="op">
         <option value="">全部类型</option>
-        {% for item in operations or [] %}
-          <option value="{{ item }}" {% if op==item %}selected{% endif %}>{{ item }}</option>
+        {% for item, label in operation_options or [] %}
+          <option value="{{ item }}" {% if op==item %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
     </div>
@@ -61,7 +61,7 @@
               {% for log in logs %}
               <tr>
                 <td>{{ fmt_dt(log.created_at) }}</td>
-                <td class="wrap-any">{{ log.operation_type }}</td>
+                <td class="wrap-any">{{ operation_type_labels.get(log.operation_type, log.operation_type) }}</td>
                 <td class="wrap-any">{{ log.target_name or '-' }}</td>
                 <td>
                   {% if log.success %}
