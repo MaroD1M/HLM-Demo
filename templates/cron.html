@@ -3,8 +3,8 @@
 {% block content %}
 <div class="page-head">
   <h3 class="mb-0">定时任务 <i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="用于自动执行扫描、回填、备份等任务；建议先手动验证后再定时。"></i></h3>
-  <div>
-    <form class="d-inline js-ajax-form" action="/cron/backup-now" method="POST" data-target="cronJobsPanel">
+  <div class="page-actions">
+    <form class="js-ajax-form" action="/cron/backup-now" method="POST" data-target="cronJobsPanel">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button class="btn btn-outline-primary">立即备份数据库</button>
     </form>
@@ -19,6 +19,7 @@
   <strong>Cron 快速帮助：</strong>
   <code>分 时 日 月 周</code>（24小时制）
   <span class="ms-2">例如 <code>0 3 * * *</code> = 每天 <strong>03:00</strong> 执行。</span>
+  <div class="small text-muted mt-1">当前按本地时区（TZ）解释并调度 Cron。</div>
 </div>
 
 <div id="cronJobsPanel">
@@ -27,7 +28,7 @@
 
 
 <div class="section-card mb-3">
-  <h6 class="mb-2">常用 Cron 示例（24小时制）</h6>
+  <div class="section-title mb-2">常用 Cron 示例（24小时制）</div>
   <ul class="mb-0">
     <li><code>0 3 * * *</code>：每天 03:00 执行</li>
     <li><code>30 3 * * *</code>：每天 03:30 执行</li>
@@ -60,6 +61,7 @@
                   <option value="backfill_mapping">映射回填任务</option>
                   <option value="clean_logs">清理日志</option>
                   <option value="clean_cache">清理缓存（高风险）</option>
+                  <option value="clean_backfill_failures">重置长期失败回填</option>
                   <option value="db_backup">数据库备份</option>
                 </select>
               </div>

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head">
   <h3 class="mb-0">日志与执行历史</h3>
-  <form action="/logs/clear" method="POST" onsubmit="return confirm('确认清空操作日志？')" class="d-flex gap-2 flex-wrap">
+  <form action="/logs/clear" method="POST" onsubmit="return confirm('确认清空操作日志？')" class="settings-actions">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input class="form-control form-control-sm" style="max-width:220px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
     <button class="btn btn-outline-danger">清空操作日志</button>
@@ -11,7 +11,7 @@
 </div>
 
 <div class="section-card mb-3">
-  <div class="section-title mb-2">筛选条件</div>
+  <div class="section-toolbar"><div class="section-title">筛选条件</div><div class="section-muted">支持按类型、结果与关键字组合筛选。</div></div>
   <form class="row g-2 js-ajax-filter" data-target="logsPanel" method="GET" action="/logs">
     <div class="col-md-4">
       <input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索消息 / 目标 / 类型">
@@ -79,7 +79,7 @@
           </tbody>
         </table>
       </div>
-      <div class="d-flex justify-content-between align-items-center">
+      <div class="panel-pagination">
         <small class="text-muted">第 {{ page }} / {{ total_pages }} 页</small>
         <div>
           {% if page>1 %}

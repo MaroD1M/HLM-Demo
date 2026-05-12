@@ -3,13 +3,13 @@
 {% block content %}
 <div class="page-head">
   <h3 class="mb-0">文件映射与缓存管理 <i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="映射=源与目标关系；缓存=已处理标记。清理时仅影响记录，不删除真实文件。"></i></h3>
-  <div class="d-flex gap-2 align-items-center flex-wrap">
-    <form action="/mapping/link/clear" method="POST" onsubmit="return confirm('确认清空全部映射记录吗？仅删除数据库映射，不删除真实文件。')" class="d-flex gap-2 align-items-center flex-wrap js-ajax-form" data-target="mappingPanel">
+  <div class="page-actions">
+    <form action="/mapping/link/clear" method="POST" onsubmit="return confirm('确认清空全部映射记录吗？仅删除数据库映射，不删除真实文件。')" class="js-ajax-form" data-target="mappingPanel">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input class="form-control form-control-sm" style="width:180px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
       <button class="btn btn-outline-warning" data-bs-toggle="tooltip" title="仅清理文件映射记录，不删除真实文件">清空全部映射</button>
     </form>
-    <form action="/mapping/cache/clear" method="POST" onsubmit="return confirm('确认清空全部缓存记录吗？')" class="d-flex gap-2 align-items-center flex-wrap js-ajax-form" data-target="mappingPanel">
+    <form action="/mapping/cache/clear" method="POST" onsubmit="return confirm('确认清空全部缓存记录吗？')" class="js-ajax-form" data-target="mappingPanel">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input class="form-control form-control-sm" style="width:180px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
       <button class="btn btn-outline-danger" data-bs-toggle="tooltip" title="仅清理硬链接缓存，不删除真实文件">清空全部缓存</button>

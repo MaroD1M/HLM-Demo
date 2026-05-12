@@ -730,3 +730,100 @@ body {
 .page-head .btn {
   box-shadow: none;
 }
+
+
+/* Unified page zoning */
+.section-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.page-intro {
+  border: 1px solid #d7e6f2;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f7fbff, #eef6ff);
+  padding: 10px 12px;
+  color: #2b4456;
+}
+
+.page-intro strong {
+  color: #0d4f67;
+}
+
+.settings-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.section-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.section-muted {
+  font-size: 0.86rem;
+  color: #5e7383;
+}
+
+@media (max-width: 992px) {
+  .settings-actions .btn {
+    flex: 1 1 auto;
+  }
+}
+
+
+/* Final page polish: toolbars / pagination / empty state */
+.page-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.page-actions form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.panel-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.panel-pagination .btn {
+  min-width: 76px;
+}
+
+.section-card .empty-state {
+  border: 1px dashed #d7e4ef;
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+@media (max-width: 992px) {
+  .page-actions,
+  .page-actions form {
+    width: 100%;
+  }
+
+  .page-actions .btn,
+  .page-actions .form-control {
+    flex: 1 1 auto;
+  }
+}

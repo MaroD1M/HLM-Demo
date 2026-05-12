@@ -16,6 +16,9 @@ class RouteDeps:
     AppConfig: Any
     CronJob: Any
     db: Any
+    scheduler: Any
+    APP_TZ: Any
+    UTC: Any
 
     get_config: Callable
     set_config: Callable

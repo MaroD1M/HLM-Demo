@@ -14,7 +14,7 @@
 
 </div>
 
-> 当前版本：`v0.2.5`（2026-05-08）
+> 当前版本：`v0.2.6`（2026-05-12）
 
 ---
 
@@ -138,18 +138,20 @@ docker compose up -d
 
 ---
 
-## 🧪 开发调试部署（重启自动拉代码）
+## 🧪 开发调试部署（页面配置优先）
 
-适用于你这种“经常改代码、想快速验证”的场景。
+适用于“经常改代码、需要快速验证”的场景。
 
-### 行为说明
+### 配置优先级（重要）
 
-- `APP_DEV_MODE=true` 且 `APP_DEV_AUTO_PULL=true` 时：
-  - 容器重启后自动拉取仓库最新代码
-  - 可选：`requirements.txt` 变化时自动同步依赖
-- 代理是容器内代理：**不要填 `127.0.0.1`**
+- **页面配置（系统设置 -> 开发模式）优先**
+- **Compose 环境变量仅作为启动兜底**
+- 生效顺序：**页面配置（`instance/dev_runtime.env`） > `APP_DEV_*` 兜底**
+- 点击“重启并应用”会将页面配置写入本地运行配置，再由容器重启后加载。
 
-### 开发调试 Compose 示例
+建议保留最小兜底变量，避免首次启动或页面配置异常时出现“无代理无法拉取”。
+
+### 开发模式最小兜底 Compose 示例
 
 ```yaml
 services:
@@ -169,22 +171,12 @@ services:
       TZ: "Asia/Shanghai"
       PYTHONUNBUFFERED: "1"
 
-      # ===== 开发模式 =====
+      # ===== 开发模式兜底（建议保留） =====
       APP_DEV_MODE: "true"
-      APP_DEV_AUTO_PULL: "true"
-      APP_DEV_GIT_REPO: "https://github.com/MaroD1M/HLM-Demo.git"
-      APP_DEV_GIT_BRANCH: "master"
 
-      # requirements 变更自动同步（可选）
-      APP_DEV_AUTO_PIP_SYNC: "true"
-      APP_DEV_PIP_SYNC_TIMEOUT: "120"
-
-      # 私有仓库可用（公开仓库留空）
-      APP_DEV_GIT_TOKEN: ""
-
-      # 开发代理（容器内生效）
+      # 代理兜底（容器内生效，避免首次启动拉取失败）
       # 推荐：host.docker.internal:7890 或宿主机局域网IP:7890
-      APP_DEV_PROXY_URL: ""
+      APP_DEV_PROXY_URL: "http://host.docker.internal:7890"
       APP_DEV_NO_PROXY: "localhost,127.0.0.1,::1"
 
     volumes:
@@ -194,6 +186,33 @@ services:
       - ./data/devsrc:/app-devsrc
       - /你的媒体目录:/media
 ```
+
+### 页面里配置的推荐项（系统设置 -> 开发模式）
+
+建议在页面中维护这些项（更友好，也更安全）：
+
+- `dev_auto_pull`
+- `dev_git_repo`
+- `dev_git_branch`
+- `dev_auto_pip_sync`
+- `dev_pip_sync_timeout`
+- `dev_git_token`（脱敏显示，留空保持，支持显式清空）
+- `dev_proxy_url`
+- `dev_no_proxy`
+
+### 首次开箱流程（开发模式）
+
+1. 用上面的最小兜底 Compose 启动容器。  
+2. 打开“系统设置 -> 开发模式”，填写仓库/分支/自动拉取等参数并保存。  
+3. 点击“重启并应用”后，会把页面配置写入 `instance/dev_runtime.env`，重启后优先加载该配置。
+4. 可在同分组查看“最近应用状态”（success/failed/skipped + 简要信息）。
+
+### 代理说明（避免踩坑）
+
+- 容器内不要把代理写成 `127.0.0.1`（那是容器自己）。
+- 推荐使用：
+  - `host.docker.internal:端口`，或
+  - 宿主机局域网 IP:端口
 
 ---
 
@@ -229,10 +248,12 @@ services:
 因为你没有同时设置 `APP_USERNAME` 和 `APP_PASSWORD`。
 
 ### Q2：为什么自动拉取没生效？
-检查三项：
-1. `APP_DEV_MODE=true`
-2. `APP_DEV_AUTO_PULL=true`
-3. `APP_DEV_GIT_REPO` 地址可访问
+优先检查“系统设置 -> 开发模式”里的页面配置：
+1. `dev_mode=true`
+2. `dev_auto_pull=true`
+3. `dev_git_repo` 地址可访问
+
+若页面未配置，再检查 Compose 兜底变量是否正确。
 
 ### Q3：代理已经配置，为什么还拉不到？
 你可能用了 `127.0.0.1`。容器里请改为：

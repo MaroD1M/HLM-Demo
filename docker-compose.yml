@@ -47,28 +47,30 @@ services:
       APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
 
       # =========================
-      # 开发模式（仅调试时开启）
+      # 开发模式（页面配置优先）
+      # 说明：APP_DEV_* 仅用于首次启动/兜底
+      # 日常请在“系统设置 -> 开发模式”维护，并使用“重启并应用”
       # =========================
 
       # true=开发模式；false=普通模式
       APP_DEV_MODE: ${APP_DEV_MODE:-false}
 
-      # true=容器每次重启时自动拉取最新代码
+      # 兜底：true=容器每次重启时自动拉取最新代码（页面未配置时生效）
       APP_DEV_AUTO_PULL: ${APP_DEV_AUTO_PULL:-false}
 
-      # 开发模式仓库地址（自动拉取时必填）
+      # 兜底：仓库地址（建议在页面配置）
       APP_DEV_GIT_REPO: ${APP_DEV_GIT_REPO:-}
 
-      # 开发模式拉取分支
+      # 兜底：拉取分支（建议在页面配置）
       APP_DEV_GIT_BRANCH: ${APP_DEV_GIT_BRANCH:-master}
 
-      # requirements.txt 变化时自动同步依赖
+      # 兜底：requirements.txt 变化时自动同步依赖（建议在页面配置）
       APP_DEV_AUTO_PIP_SYNC: ${APP_DEV_AUTO_PIP_SYNC:-false}
 
       # 依赖同步超时秒数（避免网络问题长时间卡住）
       APP_DEV_PIP_SYNC_TIMEOUT: ${APP_DEV_PIP_SYNC_TIMEOUT:-120}
 
-      # 私有仓库可选 Token（公开仓库留空）
+      # 兜底：私有仓库 Token（建议在页面配置，避免频繁改 compose）
       APP_DEV_GIT_TOKEN: ${APP_DEV_GIT_TOKEN:-}
 
       # 开发模式代理（容器内生效，不要写127.0.0.1）

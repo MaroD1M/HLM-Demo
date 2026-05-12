@@ -66,6 +66,9 @@ try:
 except Exception:
     APP_TZ = UTC
 
+# Keep scheduler cron trigger timezone aligned with UI/runtime timezone.
+scheduler.configure(timezone=APP_TZ)
+
 
 def init_file_logger():
     log_dir = Path(os.environ.get('APP_LOG_DIR', '/app/data/logs'))
@@ -1378,6 +1381,25 @@ def run_cron_job(job_id):
                 db.session.commit()
                 log_operation('cron_executed', 'CronJob', job.id, job.name, '清理缓存成功')
                 return True, '清理缓存成功'
+            if job.task_type == 'clean_backfill_failures':
+                days = int(get_config('backfill_failure_retention_days', '7') or '7')
+                days = max(1, min(90, days))
+                cutoff = datetime.now(UTC) - timedelta(days=days)
+                rows = FileLinkMap.query.filter(
+                    FileLinkMap.torrent_hash.is_(None),
+                    FileLinkMap.deleted_at.is_(None),
+                    db.func.coalesce(FileLinkMap.backfill_fail_count, 0) > 2,
+                    FileLinkMap.backfill_last_attempt_at.is_not(None),
+                    FileLinkMap.backfill_last_attempt_at < cutoff,
+                ).all()
+                count = 0
+                for row in rows:
+                    row.backfill_fail_count = 0
+                    row.backfill_last_attempt_at = None
+                    count += 1
+                db.session.commit()
+                log_operation('cron_executed', 'CronJob', job.id, job.name, f'重置长期失败回填记录 {count} 条（>{days}天）')
+                return True, f'重置长期失败回填记录 {count} 条（>{days}天）'
             if job.task_type == 'db_backup':
                 ok, msg = run_backup_task()
                 log_operation('cron_executed', 'CronJob', job.id, job.name, f'db_backup: {msg}', ok)
@@ -1408,7 +1430,7 @@ def update_cron_job(job_id):
     parts = job.cron_expression.split()
     if len(parts) != 5:
         return
-    scheduler.add_job(run_cron_job, 'cron', id=key, args=[job_id], minute=parts[0], hour=parts[1], day=parts[2], month=parts[3], day_of_week=parts[4])
+    scheduler.add_job(run_cron_job, 'cron', id=key, args=[job_id], minute=parts[0], hour=parts[1], day=parts[2], month=parts[3], day_of_week=parts[4], timezone=APP_TZ)
 
 
 def _ensure_schema_meta_table():
@@ -1665,6 +1687,19 @@ def init_defaults():
         ('backfill_file_fetch_workers', '4', '映射回填文件列表并发请求数'),
         ('backfill_max_failures', '2', '映射回填失败跳过阈值'),
         ('backfill_path_mappings', '', '回填路径映射，格式 /host/path=>/container/path;...'),
+        ('backfill_failure_retention_days', '7', '长期失败回填记录重置阈值（天）'),
+        ('dev_mode', (os.environ.get('APP_DEV_MODE', 'false') or 'false').lower(), '开发模式开关（页面配置）'),
+        ('dev_auto_pull', (os.environ.get('APP_DEV_AUTO_PULL', 'false') or 'false').lower(), '开发模式：启动自动拉取'),
+        ('dev_git_repo', os.environ.get('APP_DEV_GIT_REPO', '') or '', '开发模式：Git 仓库地址'),
+        ('dev_git_branch', os.environ.get('APP_DEV_GIT_BRANCH', 'master') or 'master', '开发模式：Git 分支'),
+        ('dev_auto_pip_sync', (os.environ.get('APP_DEV_AUTO_PIP_SYNC', 'true') or 'true').lower(), '开发模式：依赖自动同步'),
+        ('dev_pip_sync_timeout', os.environ.get('APP_DEV_PIP_SYNC_TIMEOUT', '120') or '120', '开发模式：pip 同步超时（秒）'),
+        ('dev_git_token', os.environ.get('APP_DEV_GIT_TOKEN', '') or '', '开发模式：Git 访问令牌（敏感）'),
+        ('dev_proxy_url', os.environ.get('APP_DEV_PROXY_URL', '') or '', '开发模式：代理地址'),
+        ('dev_no_proxy', os.environ.get('APP_DEV_NO_PROXY', 'localhost,127.0.0.1,::1') or 'localhost,127.0.0.1,::1', '开发模式：NO_PROXY'),
+        ('last_dev_apply_status', '', '开发模式最近应用状态'),
+        ('last_dev_apply_message', '', '开发模式最近应用消息'),
+        ('last_dev_apply_at', '', '开发模式最近应用时间'),
     ]
     for key, value, desc in default_configs:
         if not AppConfig.query.filter_by(key=key).first():
@@ -1698,6 +1733,10 @@ def init_system_jobs():
     if not backup_job:
         db.session.add(CronJob(name='系统数据库备份', task_type='db_backup', cron_expression='0 */6 * * *', description='【系统维护】每6小时自动备份数据库'))
 
+    backfill_cleanup_job = CronJob.query.filter_by(name='系统回填失败重置').first()
+    if not backfill_cleanup_job:
+        db.session.add(CronJob(name='系统回填失败重置', task_type='clean_backfill_failures', cron_expression='30 4 * * *', description='【系统维护】重置长期失败的回填计数，降低历史脏数据影响', enabled=False))
+
     db.session.commit()
 
 
@@ -1729,6 +1768,31 @@ def init_app():
     with app.app_context():
         db.create_all()
         init_defaults()
+        restart_flag = Path('instance') / 'dev_restart_request.flag'
+        if restart_flag.exists():
+            try:
+                set_config('last_dev_apply_status', 'success')
+                set_config('last_dev_apply_message', '服务已重启并重新启动')
+                set_config('last_dev_apply_at', (datetime.now(UTC)).isoformat())
+                restart_flag.unlink(missing_ok=True)
+            except Exception as exc:
+                app.logger.warning('consume dev restart marker failed: %s', exc)
+
+        apply_result = Path('instance') / 'dev_apply_result.json'
+        if apply_result.exists():
+            try:
+                payload = __import__('json').loads(apply_result.read_text(encoding='utf-8') or '{}')
+                st = str(payload.get('status') or '').strip().lower()
+                msg = str(payload.get('message') or '').strip()
+                ts = str(payload.get('at') or '').strip() or datetime.now(UTC).isoformat()
+                if st in {'success', 'failed', 'skipped'}:
+                    set_config('last_dev_apply_status', st)
+                    set_config('last_dev_apply_message', msg[:500] if msg else '-')
+                    set_config('last_dev_apply_at', ts)
+                apply_result.unlink(missing_ok=True)
+            except Exception as exc:
+                app.logger.warning('consume dev apply result failed: %s', exc)
+
         backup_ok, backup_msg = pre_migration_backup_if_needed(target_schema=9)
         if not backup_ok:
             app.logger.error('pre migration backup failed: %s', backup_msg)
@@ -1760,6 +1824,9 @@ def init_app():
             AppConfig=AppConfig,
             CronJob=CronJob,
             db=db,
+            scheduler=scheduler,
+            APP_TZ=APP_TZ,
+            UTC=UTC,
             get_config=get_config,
             set_config=set_config,
             log_operation=log_operation,

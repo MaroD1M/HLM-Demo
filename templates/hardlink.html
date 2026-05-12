@@ -6,11 +6,13 @@
   <button class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#addTaskModal"><i class="fa-solid fa-plus"></i> 新建任务</button>
 </div>
 
-<div class="alert alert-info py-2">
-  <strong>模板说明：</strong>系统设置里的“默认扩展名/默认排除目录”只作为新建任务默认值；每个任务仍以自己保存的配置为准。
+<div class="section-card mb-3">
+  <div class="alert alert-info py-2 mb-0">
+    <strong>模板说明：</strong>系统设置里的“默认扩展名/默认排除目录”只作为新建任务默认值；每个任务仍以自己保存的配置为准。
+  </div>
 </div>
 
-<div id="hardlinkJobsPanel">{% include "_hardlink_jobs_panel.html" %}</div>
+<div class="section-card"><div class="section-title mb-2">任务列表</div><div id="hardlinkJobsPanel">{% include "_hardlink_jobs_panel.html" %}</div></div>
 
 <div class="modal fade" id="addTaskModal" tabindex="-1">
   <div class="modal-dialog modal-lg"><div class="modal-content">

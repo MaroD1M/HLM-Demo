@@ -3,8 +3,10 @@
 {% block content %}
 <div class="page-head"><h3 class="mb-0">系统设置</h3></div>
 
+<div class="page-intro mb-3"><strong>说明：</strong>本页按“默认模板 / 联动策略 / 网络通知 / 版本更新 / 备份与回填”分区，保存时一次提交全部设置。</div>
+
 <div class="section-card" id="settingsPagePanel">
-  <form class="js-ajax-form" data-target="settingsPagePanel" action="/settings/save" method="POST">
+  <form class="js-ajax-form settings-grid" data-target="settingsPagePanel" action="/settings/save" method="POST">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
     <div class="section-card mb-3">
@@ -83,6 +85,35 @@
       </div>
     </div>
 
+    <div class="section-card mb-3">
+      <div class="section-title mb-2">回填性能与匹配<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="用于控制映射回填的批次、候选数和并发；建议先小步调参后观察日志中的 backfill_metrics。"></i></div>
+      <div class="row g-3">
+        <div class="col-md-3 section-subcard"><label class="form-label">回填批次大小</label><input class="form-control" type="number" min="50" max="3000" name="backfill_batch_limit" value="{{ settings.get('backfill_batch_limit', 500) }}"><div class="form-text">建议 200-1000；系统会在运行中自动微调。</div></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">候选上限</label><input class="form-control" type="number" min="20" max="500" name="backfill_max_candidates" value="{{ settings.get('backfill_max_candidates', 120) }}"><div class="form-text">候选越大越准但更耗资源。</div></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">文件列表并发数</label><input class="form-control" type="number" min="1" max="16" name="backfill_file_fetch_workers" value="{{ settings.get('backfill_file_fetch_workers', 4) }}"><div class="form-text">建议 2-8，避免对下载器造成突刺。</div></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">失败跳过阈值</label><input class="form-control" type="number" min="0" max="10" name="backfill_max_failures" value="{{ settings.get('backfill_max_failures', 2) }}"><div class="form-text">超过后暂不参与回填，减少无效重试。</div></div>
+        <div class="col-12 section-subcard"><label class="form-label">路径映射规则</label><input class="form-control" name="backfill_path_mappings" value="{{ settings.get('backfill_path_mappings','') }}" placeholder="/host/path=>/container/path;/a=>/b"><div class="form-text">用于宿主机/容器路径不一致场景；多条规则用分号分隔。</div></div>
+      </div>
+    </div>
+
+
+    <div class="section-card mb-3">
+      <div class="section-title mb-2">开发模式（页面配置）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="页面配置优先，环境变量作为启动兜底。建议保留 compose 中最小代理配置，避免首次启动无法拉取。"></i></div>
+      <div class="row g-3">
+        <div class="col-md-3 section-subcard"><label class="form-label">启用开发模式</label><select class="form-select" name="dev_mode"><option value="true" {% if settings.get('dev_mode','false')=='true' %}selected{% endif %}>启用</option><option value="false" {% if settings.get('dev_mode','false')=='false' %}selected{% endif %}>禁用</option></select></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">启动后自动拉取</label><select class="form-select" name="dev_auto_pull"><option value="true" {% if settings.get('dev_auto_pull','false')=='true' %}selected{% endif %}>启用</option><option value="false" {% if settings.get('dev_auto_pull','false')=='false' %}selected{% endif %}>禁用</option></select></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">依赖自动同步</label><select class="form-select" name="dev_auto_pip_sync"><option value="true" {% if settings.get('dev_auto_pip_sync','true')=='true' %}selected{% endif %}>启用</option><option value="false" {% if settings.get('dev_auto_pip_sync')=='false' %}selected{% endif %}>禁用</option></select></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">pip 超时(秒)</label><input class="form-control" type="number" min="30" max="1800" name="dev_pip_sync_timeout" value="{{ settings.get('dev_pip_sync_timeout',120) }}"></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">Git 仓库地址</label><input class="form-control" name="dev_git_repo" value="{{ settings.get('dev_git_repo','') }}" placeholder="https://github.com/owner/repo.git"></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">Git 分支</label><input class="form-control" name="dev_git_branch" value="{{ settings.get('dev_git_branch','master') }}" placeholder="master"></div>
+        <div class="col-md-8 section-subcard"><label class="form-label">开发代理 URL</label><input class="form-control" name="dev_proxy_url" value="{{ settings.get('dev_proxy_url','') }}" placeholder="http://host.docker.internal:7890"><div class="form-text">容器内请避免使用 127.0.0.1，建议 host.docker.internal 或宿主机局域网 IP。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">NO_PROXY</label><input class="form-control" name="dev_no_proxy" value="{{ settings.get('dev_no_proxy','localhost,127.0.0.1,::1') }}"></div>
+        <div class="col-md-9 section-subcard"><label class="form-label">Git Token（可选）</label><input class="form-control" type="password" name="dev_git_token" placeholder="{% if settings.get('dev_git_token_masked') %}已保存，留空保持不变{% else %}留空=不使用{% endif %}"><div class="form-text">当前状态：{{ settings.get('dev_git_token_masked') or '未设置' }}。</div></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">清空 Token</label><select class="form-select" name="dev_git_token_clear"><option value="false" selected>否</option><option value="true">是（保存时清空）</option></select></div>
+        <div class="col-12 section-subcard"><label class="form-label">最近应用状态</label>{% set dev_apply_status = (settings.get('last_dev_apply_status','') or '').strip().lower() %}<div class="d-flex align-items-center flex-wrap gap-2 mt-1"><span id="devApplyStatusBadge">{% if dev_apply_status == 'success' %}<span class="badge text-bg-success">success</span>{% elif dev_apply_status == 'failed' %}<span class="badge text-bg-danger">failed</span>{% elif dev_apply_status == 'skipped' %}<span class="badge text-bg-secondary">skipped</span>{% elif dev_apply_status == 'requested' %}<span class="badge text-bg-warning">requested</span>{% else %}<span class="badge text-bg-light text-dark">-</span>{% endif %}</span><span class="form-text mb-0" id="devApplyStatusAt">时间：{{ settings.get('last_dev_apply_at','-') or '-' }}</span></div><div class="form-text mt-1" id="devApplyStatusMessage">信息：{{ settings.get('last_dev_apply_message','-') or '-' }}</div></div>
+      </div>
+    </div>
+
     <div class="section-card mb-2">
       <div class="section-title mb-2">备份<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="目录建议映射到宿主机，防止容器重建后丢失备份。"></i></div>
       <div class="row g-3">
@@ -91,9 +122,14 @@
       </div>
     </div>
 
-    <div class="mt-3 d-flex gap-2 flex-wrap">
+    <div class="mt-3 settings-actions">
       <button class="btn btn-brand" type="submit" name="submit_action" value="save">保存全部设置</button>
       <button class="btn btn-outline-primary" type="submit" formaction="/settings/check-update" formmethod="post" name="submit_action" value="check">立即检查新版本</button>
+      <form class="js-ajax-form d-inline" data-target="settingsPagePanel" action="/settings/dev-restart" method="POST" data-confirm="确认重启并应用当前配置？服务会短暂中断。">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input class="form-control form-control-sm" style="width:180px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
+        <button class="btn btn-outline-warning" type="submit">重启并应用</button>
+      </form>
       <span class="text-muted align-self-center">保存与检查独立执行；提交后自动保存并提示，无需刷新页面。</span>
     </div>
   </form>

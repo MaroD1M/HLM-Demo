@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head">
   <h3 class="mb-0">系统仪表盘 <i class="fa-solid fa-gauge-high text-info"></i></h3>
-  <span class="badge text-bg-info">运行任务 {{ running_count }}</span>
+  <div class="page-actions"><span class="badge text-bg-info">运行任务 {{ running_count }}</span></div>
 </div>
 <div class="row g-3 mb-3">
   <div class="col-12"><div class="card p-3" style="background:linear-gradient(120deg,#0c4f66,#0b7a75);color:#fff"><div class="d-flex justify-content-between align-items-center"><div><div style="opacity:.9">今日概览</div><div class="h5 mb-0">稳定运行中，已完成 {{ success_runs }} 次任务</div></div><div><i class="fa-solid fa-bolt fa-2x"></i></div></div></div></div>

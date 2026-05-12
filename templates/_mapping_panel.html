@@ -1,6 +1,6 @@
   <div class="col-lg-7">
     <div class="section-card h-100">
-      <h5>文件映射（关联关系）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单删、批量删、全选/反选；支持查看回填失败次数并手动重置。来源=待判定 时表示映射刚重建或尚在回填窗口，删除联动会保守处理。"></i></h5>
+      <div class="section-toolbar mb-2"><div class="section-title">文件映射（关联关系）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单删、批量删、全选/反选；支持查看回填失败次数并手动重置。来源=待判定 时表示映射刚重建或尚在回填窗口，删除联动会保守处理。"></i></div><div class="section-muted">支持快速/深度重试、失败计数重置与批量删除。</div></div>
       <form id="mapBulkForm" action="/mapping/link/bulk-delete" method="POST" class="d-none js-ajax-form" data-target="mappingPanel">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       </form>
@@ -78,7 +78,7 @@
           </tbody>
         </table>
       </div>
-      <div class="d-flex justify-content-between align-items-center">
+      <div class="panel-pagination">
         <small class="text-muted">第 {{ map_page }} / {{ map_total_pages }} 页</small>
         <div>
           {% if map_page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page-1 }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}">上一页</a>{% endif %}
@@ -90,7 +90,7 @@
 
   <div class="col-lg-5">
     <div class="section-card h-100">
-      <h5>硬链接缓存（命中后跳过）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单删、批量删、全选/反选。"></i></h5>
+      <div class="section-toolbar mb-2"><div class="section-title">硬链接缓存（命中后跳过）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单删、批量删、全选/反选。"></i></div><div class="section-muted">用于管理跳过记录，删除后文件可再次参与硬链接。</div></div>
       <form id="cacheBulkForm" action="/mapping/cache/bulk-delete" method="POST" class="d-none js-ajax-form" data-target="mappingPanel">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       </form>
@@ -127,7 +127,7 @@
           </tbody>
         </table>
       </div>
-      <div class="d-flex justify-content-between align-items-center">
+      <div class="panel-pagination">
         <small class="text-muted">第 {{ cache_page }} / {{ cache_total_pages }} 页</small>
         <div>
           {% if cache_page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page }}&cache_page={{ cache_page-1 }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}">上一页</a>{% endif %}
