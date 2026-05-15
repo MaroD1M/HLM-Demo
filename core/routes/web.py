@@ -951,7 +951,7 @@ def init_web_routes(ctx: RouteDeps):
         return _json_or_redirect(True, '通知器已删除', '/notifier', html=html, target='notifierJobsPanel')
 
 
-    def _mapping_payload(page=None, cache_page=None, q=None, hash_state=None, source_type=None, panel_view=None):
+    def _mapping_payload(page=None, cache_page=None, q=None, hash_state=None, source_type=None, panel_view=None, per_page=None):
         page = max(page if page is not None else request.args.get('page', 1, type=int), 1)
         cache_page = max(cache_page if cache_page is not None else request.args.get('cache_page', 1, type=int), 1)
         q = (q if q is not None else request.args.get('q') or '').strip()
@@ -960,6 +960,10 @@ def init_web_routes(ctx: RouteDeps):
         panel_view = (panel_view if panel_view is not None else request.args.get('panel_view') or 'mapping').strip().lower()
         if panel_view not in {'mapping', 'cache'}:
             panel_view = 'mapping'
+        allowed_per_page = {10, 20, 50, 100}
+        per_page_val = per_page if per_page is not None else request.args.get('per_page', 20, type=int)
+        if per_page_val not in allowed_per_page:
+            per_page_val = 20
 
         mapping_q = FileLinkMap.query
         if q:
@@ -981,14 +985,14 @@ def init_web_routes(ctx: RouteDeps):
             mapping_q = mapping_q.filter(FileLinkMap.source_type == 'pending')
 
         mapping_q = mapping_q.order_by(FileLinkMap.created_at.desc())
-        mapping_pg = mapping_q.paginate(page=page, per_page=50, error_out=False)
+        mapping_pg = mapping_q.paginate(page=page, per_page=per_page_val, error_out=False)
 
         cache_q = HardlinkCache.query
         if q:
             like = f"%{q}%"
             cache_q = cache_q.filter((HardlinkCache.source_path.like(like)) | (HardlinkCache.dest_path.like(like)))
         cache_q = cache_q.order_by(HardlinkCache.created_at.desc())
-        cache_pg = cache_q.paginate(page=cache_page, per_page=50, error_out=False)
+        cache_pg = cache_q.paginate(page=cache_page, per_page=per_page_val, error_out=False)
 
         return {
             'mappings': mapping_pg.items,
@@ -1001,6 +1005,8 @@ def init_web_routes(ctx: RouteDeps):
             'hash_state': hash_state,
             'source_type': source_type,
             'panel_view': panel_view,
+            'per_page': per_page_val,
+            'per_page_options': [10, 20, 50, 100],
         }
 
 
@@ -1162,6 +1168,7 @@ def init_web_routes(ctx: RouteDeps):
     @web_bp.route('/logs')
     def logs_list():
         page = max(request.args.get('page', 1, type=int), 1)
+        exec_page = max(request.args.get('exec_page', 1, type=int), 1)
         q = (request.args.get('q') or '').strip()
         op = (request.args.get('op') or '').strip()
         success = (request.args.get('success') or 'all').strip()
@@ -1169,6 +1176,10 @@ def init_web_routes(ctx: RouteDeps):
         panel_view = (request.args.get('panel_view') or 'logs').strip().lower()
         if panel_view not in {'logs', 'executions'}:
             panel_view = 'logs'
+        allowed_per_page = {10, 20, 50, 100}
+        per_page = request.args.get('per_page', 20, type=int)
+        if per_page not in allowed_per_page:
+            per_page = 20
 
         log_q = OperationLog.query
         if q:
@@ -1181,20 +1192,22 @@ def init_web_routes(ctx: RouteDeps):
         elif success == 'fail':
             log_q = log_q.filter(OperationLog.success.is_(False))
 
-        pagination = log_q.order_by(OperationLog.created_at.desc()).paginate(page=page, per_page=50, error_out=False)
+        pagination = log_q.order_by(OperationLog.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
         operations = [r[0] for r in db.session.query(OperationLog.operation_type).distinct().order_by(OperationLog.operation_type.asc()).all()]
         operation_options = [(item, _op_type_label(item)) for item in operations]
 
         executions_q = JobExecutionLog.query.order_by(JobExecutionLog.started_at.desc())
         if exec_status in {'running', 'success', 'failed'}:
             executions_q = executions_q.filter(JobExecutionLog.status == exec_status)
-        executions = executions_q.limit(50).all()
+        executions_pg = executions_q.paginate(page=exec_page, per_page=per_page, error_out=False)
         return render_template(
             'logs.html',
             logs=pagination.items,
             page=page,
             total_pages=max(pagination.pages, 1),
-            executions=executions,
+            executions=executions_pg.items,
+            exec_page=exec_page,
+            exec_total_pages=max(executions_pg.pages, 1),
             q=q,
             op=op,
             success=success,
@@ -1204,6 +1217,8 @@ def init_web_routes(ctx: RouteDeps):
             operation_type_labels=OPERATION_TYPE_LABELS,
             operation_type_labeler=_op_type_label,
             panel_view=panel_view,
+            per_page=per_page,
+            per_page_options=[10, 20, 50, 100],
         )
 
     @web_bp.route('/logs/clear', methods=['POST'])
