@@ -1,14 +1,16 @@
 {% extends "base.html" %}
 {% block title %}通知器 - Hardlink Manager{% endblock %}
 {% block content %}
-<div class="section-card mb-3"><div class="alert alert-info py-2">
-  通知器用于 Telegram 通知，建议先新增后点击测试验证。
-  <i class="fa-solid fa-circle-info hint-icon ms-1" data-bs-toggle="tooltip" title="可先用小样本任务验证流程，再应用到正式目录"></i>
-</div></div>
-
 <div class="page-head">
   <h3 class="mb-0">通知器</h3>
   <button class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#addNotifierModal">新增</button>
+</div>
+
+<div class="section-card mb-3">
+  <div class="section-muted">
+    通知器用于 Telegram 通知，建议先新增后点击测试验证。
+    <i class="fa-solid fa-circle-info hint-icon ms-1" data-bs-toggle="tooltip" title="可先用小样本任务验证流程，再应用到正式目录"></i>
+  </div>
 </div>
 
 <div class="section-card"><div class="section-title mb-2">通知器列表</div><div id="notifierJobsPanel">{% include "_notifier_jobs_panel.html" %}</div></div>

@@ -2,18 +2,30 @@
 {% block title %}映射与缓存 - Hardlink Manager{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h3 class="mb-0">文件映射与缓存管理 <i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="映射=源与目标关系；缓存=已处理标记。清理时仅影响记录，不删除真实文件。"></i></h3>
-  <div class="page-actions">
-    <form action="/mapping/link/clear" method="POST" onsubmit="return confirm('确认清空全部映射记录吗？仅删除数据库映射，不删除真实文件。')" class="js-ajax-form" data-target="mappingPanel">
+  <h3 class="mb-0">文件映射与缓存管理</h3>
+  <div class="d-flex gap-2 flex-wrap">
+    <form action="/mapping/link/clear" method="POST" onsubmit="return confirm('确认清空全部映射记录吗？仅删除数据库映射，不删除真实文件。')" class="js-ajax-form d-flex gap-2" data-target="mappingPanel">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input class="form-control form-control-sm" style="width:180px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
+      <input class="form-control form-control-sm" style="width:160px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
       <button class="btn btn-outline-warning" data-bs-toggle="tooltip" title="仅清理文件映射记录，不删除真实文件">清空全部映射</button>
     </form>
-    <form action="/mapping/cache/clear" method="POST" onsubmit="return confirm('确认清空全部缓存记录吗？')" class="js-ajax-form" data-target="mappingPanel">
+    <form action="/mapping/cache/clear" method="POST" onsubmit="return confirm('确认清空全部缓存记录吗？')" class="js-ajax-form d-flex gap-2" data-target="mappingPanel">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input class="form-control form-control-sm" style="width:180px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
+      <input class="form-control form-control-sm" style="width:160px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
       <button class="btn btn-outline-danger" data-bs-toggle="tooltip" title="仅清理硬链接缓存，不删除真实文件">清空全部缓存</button>
     </form>
+  </div>
+</div>
+
+<div class="section-card mb-3">
+  <div class="section-muted">映射=源与目标关系；缓存=已处理标记。清理时仅影响记录，不删除真实文件。</div>
+</div>
+
+<div class="section-card mb-3">
+  <div class="section-title mb-2">显示视图</div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-sm {{ 'btn-brand' if panel_view=='mapping' else 'btn-outline-secondary' }}" href="/mapping?page={{ map_page }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&per_page={{ per_page or 20 }}&panel_view=mapping">文件映射</a>
+    <a class="btn btn-sm {{ 'btn-brand' if panel_view=='cache' else 'btn-outline-secondary' }}" href="/mapping?page={{ map_page }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&per_page={{ per_page or 20 }}&panel_view=cache">缓存管理</a>
   </div>
 </div>
 
@@ -21,8 +33,8 @@
   <div class="section-title mb-2">筛选条件</div>
   <form class="row g-2 js-ajax-filter" data-target="mappingPanel" method="GET" action="/mapping">
     <input type="hidden" name="panel_view" value="{{ panel_view or 'mapping' }}">
-    <div class="col-md-5"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索路径 / 文件关键字 / 哈希"></div>
-    <div class="col-md-3">
+    <div class="col-md-4"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索路径 / 文件关键字 / 哈希"></div>
+    <div class="col-md-2">
       <select class="form-select" name="hash_state">
         <option value="all" {% if hash_state=='all' %}selected{% endif %}>全部关联状态</option>
         <option value="linked" {% if hash_state=='linked' %}selected{% endif %}>已关联种子</option>
@@ -37,21 +49,19 @@
         <option value="pending" {% if source_type=='pending' %}selected{% endif %}>待判定</option>
       </select>
     </div>
-    <div class="col-md-2 d-flex gap-2"><button class="btn btn-brand w-50" type="submit">筛选</button><a class="btn btn-outline-secondary w-50" href="/mapping">重置</a></div>
+    <div class="col-md-2">
+      <select class="form-select" name="per_page" title="每页条数">
+        {% for n in per_page_options or [10,20,50,100] %}
+          <option value="{{ n }}" {% if (per_page or 20)==n %}selected{% endif %}>{{ n }}/页</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-1 d-flex gap-2"><button class="btn btn-brand w-100" type="submit">筛选</button></div>
+    <div class="col-md-1 d-flex gap-2"><a class="btn btn-outline-secondary w-100" href="/mapping?panel_view={{ panel_view or 'mapping' }}">重置</a></div>
   </form>
 </div>
 
-
-<div class="section-card mb-3">
-  <div class="section-title mb-2">显示视图</div>
-  <div class="d-flex gap-2 flex-wrap">
-        <a class="btn btn-sm {{ 'btn-brand' if panel_view=='mapping' else 'btn-outline-secondary' }}" href="/mapping?page={{ map_page }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&panel_view=mapping">文件映射</a>
-    <a class="btn btn-sm {{ 'btn-brand' if panel_view=='cache' else 'btn-outline-secondary' }}" href="/mapping?page={{ map_page }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&panel_view=cache">缓存管理</a>
-  </div>
-  
-</div>
-
-<div id="mappingPanel" class="row g-3">
+<div id="mappingPanel" class="section-card">
   {% include "_mapping_panel.html" %}
 </div>
 
@@ -88,9 +98,7 @@ window.submitBulkSelection = function(formId, checkboxClass, fieldName, confirmT
   }
   const count = checked.length;
   window.HLMNotice && window.HLMNotice(`准备处理 ${count} 项，请确认`,'info');
-  if(confirmText && !window.confirm(`${confirmText}
-
-当前选中：${count} 项`)) return;
+  if(confirmText && !window.confirm(`${confirmText}\n\n当前选中：${count} 项`)) return;
   checked.forEach((el)=>{
     const input=document.createElement('input');
     input.type='hidden';
