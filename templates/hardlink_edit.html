@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}编辑硬链接任务 - Hardlink Manager{% endblock %}
 {% block content %}
-<div class="page-head"><h3 class="mb-0">编辑硬链接任务</h3><a class="btn btn-outline-secondary" href="/hardlink">返回列表</a></div>
+<div class="page-head"><h3 class="mb-0">编辑硬链接任务</h3><a class="btn btn-outline-primary" href="/hardlink"><i class="fa-solid fa-arrow-left me-1"></i>返回任务列表</a></div>
 
 <div class="section-card mb-3">
   <div class="d-flex gap-2 flex-wrap">
@@ -54,6 +54,6 @@
     <div class="col-md-6 section-subcard"><label class="form-label">单次最大删除</label><input class="form-control" type="number" name="delete_max_deletes_per_run" value="{{ task.delete_max_deletes_per_run or 20 }}" min="1"></div>
   </div>
 
-  <div class="settings-actions mt-4"><button class="btn btn-brand" type="submit">保存修改</button><a class="btn btn-outline-secondary" href="/hardlink">取消</a></div>
+  <div class="settings-actions mt-4"><button class="btn btn-brand" type="submit">保存修改</button><a class="btn btn-outline-secondary" href="/hardlink">取消</a><a class="btn btn-outline-primary" href="/hardlink">返回任务列表</a></div>
 </form>
 {% endblock %}
