@@ -3,10 +3,11 @@
 {% block content %}
 <div class="page-head">
   <h3 class="mb-0">下载器</h3>
+  <button class="btn btn-outline-secondary" type="button" data-help-target="pageHelp" aria-expanded="false"><i class="fa-solid fa-circle-info me-1"></i><span class="help-toggle-label">页面说明</span></button>
   <button class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#addDownloaderModal">新增</button>
 </div>
 
-<div class="section-card mb-3">
+<div id="pageHelp" class="section-card mb-3 d-none">
   <div class="section-muted">
     下载器用于绑定 qBittorrent，测试按钮会验证连接与账号是否可用。
     <i class="fa-solid fa-circle-info hint-icon ms-1" data-bs-toggle="tooltip" title="可先用小样本任务验证流程，再应用到正式目录"></i>

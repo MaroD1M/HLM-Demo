@@ -90,6 +90,23 @@ window.HLMNotice=function(msg,level){
   },5000);
 };
 
+
+window.HLMHelpToggleBind=function(){
+  document.querySelectorAll('[data-help-target]').forEach((btn)=>{
+    if(btn.dataset.helpBound==='1') return;
+    btn.dataset.helpBound='1';
+    btn.addEventListener('click', ()=>{
+      const id=btn.getAttribute('data-help-target');
+      const panel=id?document.getElementById(id):null;
+      if(!panel) return;
+      const hidden=panel.classList.toggle('d-none');
+      btn.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+      const label=btn.querySelector('.help-toggle-label');
+      if(label) label.textContent = hidden ? '页面说明' : '收起说明';
+    });
+  });
+};
+
 window.HLMAjax={
   bind(){
 
@@ -135,7 +152,7 @@ window.HLMAjax={
             document.body.classList.remove('modal-open');
             document.body.style.removeProperty('padding-right');
             document.querySelectorAll('.modal form.js-ajax-form').forEach((f)=>{ if(f.hasAttribute('data-keep-values')) return; try{f.reset&&f.reset();}catch(_){}});
-            window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();if(window.initCronEditModal) window.initCronEditModal();if(window.bindMappingPanel) window.bindMappingPanel();
+            window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();if(window.initCronEditModal) window.initCronEditModal();if(window.bindMappingPanel) window.bindMappingPanel();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();
           }
         }catch(err){
           const msg=(err&&err.message&&String(err.message).startsWith('NON_JSON_'))
@@ -174,7 +191,7 @@ window.HLMAjax.bindFilters=function(){
           window.HLMAjax.bindFilters();
           if(window.bindCronPreview) window.bindCronPreview();
           if(window.initCronEditModal) window.initCronEditModal();
-          if(window.bindMappingPanel) window.bindMappingPanel();
+          if(window.bindMappingPanel) window.bindMappingPanel();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();
           window.HLMNotice && window.HLMNotice('筛选已更新','success');
         }
       }catch(_){window.HLMNotice && window.HLMNotice('筛选失败，请稍后重试','danger');}
@@ -183,7 +200,7 @@ window.HLMAjax.bindFilters=function(){
   });
 };
 
-window.addEventListener('DOMContentLoaded',()=>{window.HLMAjax.bind();window.HLMAjax.bindFilters();});
+window.addEventListener('DOMContentLoaded',()=>{window.HLMAjax.bind();window.HLMAjax.bindFilters();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();});
 window.addEventListener('DOMContentLoaded',()=>{
   const nodes=[].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
   nodes.forEach((el)=>new bootstrap.Tooltip(el));
