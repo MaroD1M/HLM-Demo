@@ -12,7 +12,7 @@
       <div class="row g-3">
         <div class="col-md-6 section-subcard"><label class="form-label">启用 GitHub 版本检查</label><select class="form-select" name="github_version_check_enabled"><option value="true" {% if settings.get('github_version_check_enabled','true')=='true' %}selected{% endif %}>启用</option><option value="false" {% if settings.get('github_version_check_enabled')=='false' %}selected{% endif %}>禁用</option></select></div>
         <div class="col-md-6 section-subcard"><label class="form-label">GitHub 仓库（owner/repo）</label><input class="form-control" name="github_repo" value="{{ settings.get('github_repo','marod1m/HLM-Demo') }}"></div>
-        <div class="col-md-6 section-subcard"><label class="form-label">GitHub API Base</label><input class="form-control" name="github_api_base" value="{{ settings.get('github_api_base','https://api.github.com') }}"></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">GitHub API 地址</label><input class="form-control" name="github_api_base" value="{{ settings.get('github_api_base','https://api.github.com') }}"></div>
         <div class="col-md-3 section-subcard"><label class="form-label">版本检查缓存(分钟)</label><input class="form-control" type="number" min="1" name="version_check_cache_minutes" value="{{ settings.get('version_check_cache_minutes',720) }}"></div>
         <div class="col-md-9 section-subcard"><label class="form-label">关键操作口令（可选）</label><input class="form-control" type="password" name="critical_action_passphrase" placeholder="留空=不启用"></div>
         <div class="col-12 section-subcard">
@@ -37,10 +37,10 @@
         <div class="col-md-3 section-subcard"><label class="form-label">pip 超时(秒)</label><input class="form-control" type="number" min="30" max="1800" name="dev_pip_sync_timeout" value="{{ settings.get('dev_pip_sync_timeout',120) }}"></div>
         <div class="col-md-6 section-subcard"><label class="form-label">Git 仓库地址</label><input class="form-control" name="dev_git_repo" value="{{ settings.get('dev_git_repo','') }}" placeholder="https://github.com/owner/repo.git"></div>
         <div class="col-md-6 section-subcard"><label class="form-label">Git 分支</label><input class="form-control" name="dev_git_branch" value="{{ settings.get('dev_git_branch','master') }}"></div>
-        <div class="col-md-8 section-subcard"><label class="form-label">开发代理 URL</label><input class="form-control" name="dev_proxy_url" value="{{ settings.get('dev_proxy_url','') }}"></div>
-        <div class="col-md-4 section-subcard"><label class="form-label">NO_PROXY</label><input class="form-control" name="dev_no_proxy" value="{{ settings.get('dev_no_proxy','localhost,127.0.0.1,::1') }}"></div>
-        <div class="col-md-9 section-subcard"><label class="form-label">Git Token（可选）</label><input class="form-control" type="password" name="dev_git_token" placeholder="{% if settings.get('dev_git_token_masked') %}已保存，留空保持不变{% else %}留空=不使用{% endif %}"><div class="form-text">当前状态：{{ settings.get('dev_git_token_masked') or '未设置' }}</div></div>
-        <div class="col-md-3 section-subcard"><label class="form-label">清空 Token</label><select class="form-select" name="dev_git_token_clear"><option value="false" selected>否</option><option value="true">是（保存时清空）</option></select></div>
+        <div class="col-md-8 section-subcard"><label class="form-label">开发代理地址</label><input class="form-control" name="dev_proxy_url" value="{{ settings.get('dev_proxy_url','') }}"></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">不走代理地址（NO_PROXY）</label><input class="form-control" name="dev_no_proxy" value="{{ settings.get('dev_no_proxy','localhost,127.0.0.1,::1') }}"></div>
+        <div class="col-md-9 section-subcard"><label class="form-label">Git 访问令牌（可选）</label><input class="form-control" type="password" name="dev_git_token" placeholder="{% if settings.get('dev_git_token_masked') %}已保存，留空保持不变{% else %}留空=不使用{% endif %}"><div class="form-text">当前状态：{{ settings.get('dev_git_token_masked') or '未设置' }}</div></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">清空令牌</label><select class="form-select" name="dev_git_token_clear"><option value="false" selected>否</option><option value="true">是（保存时清空）</option></select></div>
                 </div>
       </div>
       <div class="settings-actions mt-3">

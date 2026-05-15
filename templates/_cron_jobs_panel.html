@@ -13,7 +13,7 @@
         <tr>
           <th class="col-mid">名称</th>
           <th class="col-wide">类型</th>
-          <th class="col-mid">Cron</th>
+          <th class="col-mid">计划表达式</th>
           <th class="col-mid col-cron-hint">解释</th>
           <th class="col-mid">下次执行（本地）</th>
           <th class="col-wide">最近执行</th>
@@ -113,7 +113,7 @@
             <div class="section-title mb-2">执行计划</div>
             <div class="row g-3">
               <div class="col-12">
-                <label class="form-label">Cron 表达式</label>
+                <label class="form-label">计划表达式（Cron）</label>
                 <input class="form-control cron-input" name="custom_cron" value="{{ j.cron_expression }}" required data-preview-target="cronPreview{{ j.id }}">
                 <div class="form-text">格式：分 时 日 月 周（24小时制）</div>
               </div>
@@ -121,7 +121,7 @@
                 <label class="form-label">说明</label>
                 <textarea class="form-control" name="description">{{ j.description or '' }}</textarea>
               </div>
-              <div class="col-12 alert alert-secondary py-2 mb-0" id="cronPreview{{ j.id }}">{{ cron_hints.get(j.id, '自定义 Cron（可参考下方示例）') }}</div>
+              <div class="col-12 alert alert-secondary py-2 mb-0" id="cronPreview{{ j.id }}">{{ cron_hints.get(j.id, '自定义计划表达式（可参考下方示例）') }}</div>
             </div>
           </div>
         </div>

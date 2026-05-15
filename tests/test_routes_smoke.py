@@ -400,7 +400,7 @@ def test_cron_page_contains_timezone_hint():
     resp = client.get('/cron')
     assert resp.status_code == 200
     text = resp.get_data(as_text=True)
-    assert '按本地时区（TZ）解释并调度 Cron' in text
+    assert '按本地时区（TZ）解释并调度计划表达式' in text
 
 
 def test_cron_page_contains_next_run_and_last_exec_columns():
@@ -431,3 +431,61 @@ def test_settings_devops_page_has_no_inapp_restart_controls():
     text = resp.get_data(as_text=True)
     assert '保存并重启应用' not in text
     assert '最近应用状态' not in text
+
+
+def test_logs_panel_view_switch():
+    client = _client()
+    resp_logs = client.get('/logs?panel_view=logs')
+    assert resp_logs.status_code == 200
+    t1 = resp_logs.get_data(as_text=True)
+    assert '操作日志' in t1
+
+    resp_exec = client.get('/logs?panel_view=executions')
+    assert resp_exec.status_code == 200
+    t2 = resp_exec.get_data(as_text=True)
+    assert '任务执行历史' in t2
+
+
+def test_logs_type_label_fallback_rendered():
+    client = _client()
+    resp = client.get('/logs')
+    assert resp.status_code == 200
+    assert '未归类（' in resp.get_data(as_text=True) or '操作日志' in resp.get_data(as_text=True)
+
+
+def test_hardlink_new_edit_pages_accessible():
+    client = _client()
+    r1 = client.get('/hardlink/new')
+    assert r1.status_code == 200
+    assert '新建硬链接任务' in r1.get_data(as_text=True)
+
+    with app.app_context():
+        from app import HardlinkTask, db
+        t = HardlinkTask(name='tmp', source_dir='/tmp/src', dest_dir='/tmp/dst', extensions='.mkv', exclude_dirs='sample')
+        db.session.add(t)
+        db.session.commit()
+        tid = t.id
+
+    r2 = client.get(f'/hardlink/edit/{tid}')
+    assert r2.status_code == 200
+    assert '编辑硬链接任务' in r2.get_data(as_text=True)
+
+    with app.app_context():
+        from app import HardlinkTask, db
+        t = db.session.get(HardlinkTask, tid)
+        if t:
+            db.session.delete(t)
+            db.session.commit()
+
+
+def test_diagnostics_panel_view_switch():
+    client = _client()
+    r1 = client.get('/diagnostics?panel_view=overview')
+    assert r1.status_code == 200
+    t1 = r1.get_data(as_text=True)
+    assert '环境检查' in t1
+
+    r2 = client.get('/diagnostics?panel_view=backfill')
+    assert r2.status_code == 200
+    t2 = r2.get_data(as_text=True)
+    assert '最近自动关联指标' in t2

@@ -8,7 +8,7 @@
     <div class="col-md-3">
       <select class="form-select" name="pending_match">
         <option value="all" {% if (pending_match or 'all')=='all' %}selected{% endif %}>全部匹配方式</option>
-        <option value="mapping_hash" {% if pending_match=='mapping_hash' %}selected{% endif %}>映射 hash</option>
+        <option value="mapping_hash" {% if pending_match=='mapping_hash' %}selected{% endif %}>映射哈希</option>
         <option value="name_match" {% if pending_match=='name_match' %}selected{% endif %}>名称匹配</option>
         <option value="path_match" {% if pending_match=='path_match' %}selected{% endif %}>路径匹配</option>
         <option value="no_match" {% if pending_match=='no_match' %}selected{% endif %}>未匹配</option>
@@ -34,7 +34,7 @@
 
     <div class="table-responsive table-shell">
       <table class="table table-sm align-middle table-grid">
-        <thead><tr><th><input type="checkbox" onclick="window.togglePendingAll(this.checked)"></th><th>时间</th><th>任务 ID</th><th>匹配方式</th><th>路径</th><th>种子</th><th>原因</th><th>操作</th></tr></thead>
+        <thead><tr><th><input type="checkbox" onclick="window.togglePendingAll(this.checked)"></th><th>时间</th><th>任务编号</th><th>匹配方式</th><th>路径</th><th>种子</th><th>原因</th><th>操作</th></tr></thead>
         <tbody>
         {% for p in pending_actions %}
         <tr>
