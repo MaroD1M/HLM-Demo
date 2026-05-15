@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block title %}系统诊断 - Hardlink Manager{% endblock %}
 {% block content %}
-<div class="page-head"><h3 class="mb-0">系统诊断</h3></div>
+<div class="page-head"><h3 class="mb-0">系统诊断</h3>
+  <button class="btn btn-outline-secondary" type="button" data-help-target="pageHelp" aria-expanded="false"><i class="fa-solid fa-circle-info me-1"></i><span class="help-toggle-label">页面说明</span></button></div>
+
+<div id="pageHelp" class="section-card mb-3 d-none"><div class="section-muted">用于检查环境状态、运行中任务与自动关联指标，建议先看总览再进入自动关联诊断。</div></div>
 
 <div class="section-card mb-3">
   <div class="section-title mb-2">显示视图</div>
