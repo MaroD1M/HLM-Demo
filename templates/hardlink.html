@@ -2,84 +2,27 @@
 {% block title %}硬链接任务 - Hardlink Manager{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h3 class="mb-0">硬链接任务 <i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="建议先用测试目录验证目录结构与命名策略，再应用生产目录。"></i></h3>
-  <button class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#addTaskModal"><i class="fa-solid fa-plus"></i> 新建任务</button>
+  <h3 class="mb-0">硬链接任务</h3>
+  <a class="btn btn-brand" href="/hardlink/new"><i class="fa-solid fa-plus"></i> 新建任务</a>
 </div>
 
 <div class="section-card mb-3">
   <div class="alert alert-info py-2 mb-0">
-    <strong>模板说明：</strong>系统设置里的“默认扩展名/默认排除目录”只作为新建任务默认值；每个任务仍以自己保存的配置为准。
+    <strong>说明：</strong>本页仅展示任务清单与执行操作；新建/修改已拆分为独立页面。
   </div>
 </div>
 
-<div class="section-card"><div class="section-title mb-2">任务列表</div><div id="hardlinkJobsPanel">{% include "_hardlink_jobs_panel.html" %}</div></div>
-
-<div class="modal fade" id="addTaskModal" tabindex="-1">
-  <div class="modal-dialog modal-lg"><div class="modal-content">
-    <form class="js-ajax-form" data-target="hardlinkJobsPanel" action="/hardlink/add" method="POST">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <div class="modal-header"><h5 class="modal-title">新建硬链接任务</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body">
-        <div class="section-card mb-3">
-          <div class="section-title mb-2">基础设置</div>
-          <div class="row g-3">
-            <div class="col-md-6"><label class="form-label">任务名称</label><input class="form-control" name="name" required></div>
-            <div class="col-md-6"><label class="form-label">扩展名白名单<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="只处理这些扩展名，逗号分隔；例如 .mkv,.mp4"></i></label><input class="form-control" name="extensions" value="{{ default_extensions }}"></div>
-            <div class="col-md-6"><label class="form-label">源目录</label><input class="form-control" name="source_dir" required></div>
-            <div class="col-md-6"><label class="form-label">目标目录</label><input class="form-control" name="dest_dir" required></div>
-            <div class="col-md-6"><label class="form-label">排除目录</label><input class="form-control" name="exclude_dirs" value="{{ default_exclude_dirs }}"></div>
-            <div class="col-md-6"><label class="form-label">排除扩展名</label><input class="form-control" name="exclude_extensions" placeholder=".nfo,.jpg"></div>
-            <div class="col-md-6"><label class="form-label">最小文件年龄(秒)<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="用于避开下载中/写入中的文件；建议 120-600 秒。"></i></label><input class="form-control" type="number" name="min_file_age_seconds" value="300"></div>
-          </div>
-        </div>
-
-        <div class="section-card mb-3">
-          <div class="section-title mb-2">入库行为</div>
-          <div class="row g-3">
-            <div class="col-md-6 section-subcard">
-              <label class="field-title">创建目录<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="示例：源 /media/源目录/a.mkv -> 目标 /media/目标目录/a/a.mkv；不勾选则为 /media/目标目录/a.mkv"></i></label>
-              <div class="field-checks">
-                <div class="form-check"><input class="form-check-input" type="checkbox" name="create_folder" checked><label class="form-check-label">按源目录建同名文件夹</label></div>
-                <div class="form-check"><input class="form-check-input" type="checkbox" name="use_cache" checked><label class="form-check-label">启用缓存</label></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="section-card">
-          <div class="section-title mb-2">删除联动（内建于本任务）</div>
-          <div class="form-text mb-2">执行顺序：先删除联动扫描，再执行硬链接扫描。</div>
-          <div class="row g-3">
-            <div class="col-md-6 section-subcard">
-              <label class="field-title">删除监控范围</label>
-              <div class="field-checks">
-                <div class="form-check"><input class="form-check-input" type="checkbox" name="monitor_source_delete" checked><label class="form-check-label">监控源目录删除</label></div>
-                <div class="form-check"><input class="form-check-input" type="checkbox" name="monitor_dest_delete" checked><label class="form-check-label">监控目标目录删除</label></div>
-              </div>
-            </div>
-            <div class="col-md-6 section-subcard"><label class="field-title">关联下载器</label><label class="form-label">删除联动下载器（可选）</label><select class="form-select" name="delete_downloader_id"><option value="">不关联</option>{% for d in downloaders %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></div>
-            <div class="col-md-6 section-subcard"><label class="field-title">关联通知</label><label class="form-label">删除联动通知器（可选）</label><select class="form-select" name="delete_notifier_id"><option value="">不关联</option>{% for n in notifiers %}<option value="{{ n.id }}">{{ n.name }}</option>{% endfor %}</select></div>
-            <div class="col-md-3 section-subcard"><label class="field-title">节流控制</label><label class="form-label">删除冷却(秒)<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="同一映射在冷却时间内不会重复触发删除联动，避免抖动。"></i></label><input class="form-control" type="number" name="delete_cooldown_seconds" value="120" min="0"></div>
-            <div class="col-md-3 section-subcard"><label class="field-title">阈值控制</label><label class="form-label">单次最大删除<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="本轮最多处理条数，超过会顺延到下轮，防止一次性误操作过多。"></i></label><input class="form-control" type="number" name="delete_max_deletes_per_run" value="20" min="1"></div>
-            <div class="col-md-6 section-subcard">
-              <label class="field-title">执行与通知选项</label>
-              <div class="field-checks field-checks-3">
-                <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_dry_run"><label class="form-check-label">仅记录不执行</label></div>
-                <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_notify_on_delete" checked><label class="form-check-label">成功通知</label></div>
-                <div class="form-check"><input class="form-check-input" type="checkbox" name="delete_notify_on_risky_delete" checked><label class="form-check-label">风险通知</label></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal" type="button">取消</button><button class="btn btn-brand" type="submit">保存</button></div>
-    </form>
-  </div></div>
+<div class="section-card mb-3">
+  <div class="section-title mb-2">筛选条件</div>
+  <form class="row g-2" method="GET" action="/hardlink">
+    <div class="col-md-6"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="按任务名称搜索"></div>
+    <div class="col-md-3"><select class="form-select" name="enabled"><option value="all" {% if (enabled or 'all')=='all' %}selected{% endif %}>全部状态</option><option value="enabled" {% if enabled=='enabled' %}selected{% endif %}>仅启用</option><option value="disabled" {% if enabled=='disabled' %}selected{% endif %}>仅禁用</option></select></div>
+    <div class="col-md-3 d-flex gap-2"><button class="btn btn-brand w-50" type="submit">筛选</button><a class="btn btn-outline-secondary w-50" href="/hardlink">重置</a></div>
+  </form>
 </div>
-{% endblock %}
 
-{% block scripts %}
-<script>
-window.HLMAjax&&window.HLMAjax.bind();
-</script>
+<div class="section-card">
+  <div class="section-title mb-2">任务列表</div>
+  <div id="hardlinkJobsPanel">{% include "_hardlink_jobs_panel.html" %}</div>
+</div>
 {% endblock %}

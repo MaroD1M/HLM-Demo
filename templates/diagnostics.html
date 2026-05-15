@@ -1,100 +1,109 @@
 {% extends "base.html" %}
-{% block title %}系统诊断 - Hardlink Manager</div>
-{% endblock %}
+{% block title %}系统诊断 - Hardlink Manager{% endblock %}
 {% block content %}
 <div class="page-head"><h3 class="mb-0">系统诊断</h3></div>
 
-<div class="page-intro mb-3"><strong>说明：</strong>本页用于检查运行环境、自动关联健康、运行中任务与待判定来源事件。</div>
+<div class="section-card mb-3">
+  <div class="section-title mb-2">显示视图</div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-sm {{ 'btn-brand' if (panel_view or 'overview')=='overview' else 'btn-outline-secondary' }}" href="/diagnostics?panel_view=overview">诊断总览</a>
+    <a class="btn btn-sm {{ 'btn-brand' if panel_view=='backfill' else 'btn-outline-secondary' }}" href="/diagnostics?panel_view=backfill">自动关联诊断</a>
+  </div>
+</div>
 
+{% if (panel_view or 'overview') == 'overview' %}
 <div class="section-stack">
-<div class="section-card mb-3">
-  <div class="section-title mb-2">环境检查</div>
-  <div class="table-responsive table-shell">
-    <table class="table table-grid">
-      <thead><tr><th>检查项</th><th>状态</th><th>详情</th></tr></thead>
-      <tbody>
-      {% for name, ok, detail in checks %}
-        <tr>
-          <td>{{ name }}</td>
-          <td>{% if ok %}<span class="badge text-bg-success">正常</span>{% else %}<span class="badge text-bg-danger">异常</span>{% endif %}</td>
-          <td class="wrap-any">{{ detail }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-
-<div class="section-card mb-3">
-  <div class="section-title mb-2">最近自动关联指标</div>
-  <div class="table-responsive table-shell">
-    <table class="table table-sm align-middle table-grid">
-      <thead><tr><th>时间</th><th>处理行数</th><th>命中/冲突/跳过</th><th>候选均值</th><th>文件列表请求/缓存命中</th></tr></thead>
-      <tbody>
-      {% if backfill_metrics_rows %}
-        {% for r in backfill_metrics_rows %}
+  <div class="section-card mb-3">
+    <div class="section-title mb-2">环境检查</div>
+    <div class="table-responsive table-shell">
+      <table class="table table-grid">
+        <thead><tr><th>检查项</th><th>状态</th><th>详情</th></tr></thead>
+        <tbody>
+        {% for name, ok, detail in checks %}
           <tr>
-            <td>{{ fmt_dt(r.created_at) }}</td>
-            <td>{{ r.metrics.get('rows', '-') }}</td>
-            <td>{{ r.metrics.get('matched', '-') }}/{{ r.metrics.get('conflicts', '-') }}/{{ r.metrics.get('skipped', '-') }}</td>
-            <td>{{ r.metrics.get('avg_candidates', '-') }}</td>
-            <td>{{ r.metrics.get('filelist_requested', '-') }}/{{ r.metrics.get('filelist_cache_hits', '-') }}</td>
+            <td>{{ name }}</td>
+            <td>{% if ok %}<span class="badge text-bg-success">正常</span>{% else %}<span class="badge text-bg-danger">异常</span>{% endif %}</td>
+            <td class="wrap-any">{{ detail }}</td>
           </tr>
         {% endfor %}
-      {% else %}
-        <tr><td colspan="5" class="text-muted">暂无自动关联指标日志</td></tr>
-      {% endif %}
-      </tbody>
-    </table>
+        </tbody>
+      </table>
+    </div>
   </div>
-</div>
 
-<div class="section-card mb-3">
-  <div class="section-title mb-2">当前运行中的任务</div>
-  <div class="table-responsive table-shell">
-    <table class="table table-sm align-middle table-grid">
-      <thead><tr><th>执行ID</th><th>任务</th><th>类型</th><th>来源</th><th>已运行</th><th>操作</th></tr></thead>
-      <tbody>
-      {% if running_rows %}
-        {% for r in running_rows %}
-          <tr>
-            <td>{{ r.id }}</td>
-            <td>{{ r.job_name }}</td>
-            <td>{{ r.job_type }}</td>
-            <td>{{ r.source }}</td>
-            <td>{{ r.elapsed_seconds }} 秒</td>
-            <td><form class="d-inline" action="/executions/stop/{{ r.id }}" method="POST" onsubmit="return confirm('确认停止该任务？')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">停止</button></form></td>
-          </tr>
-        {% endfor %}
-      {% else %}
-        <tr><td colspan="6" class="text-muted">当前无运行中的任务</td></tr>
-      {% endif %}
-      </tbody>
-    </table>
+  <div class="section-card mb-3">
+    <div class="section-title mb-2">当前运行中的任务</div>
+    <div class="table-responsive table-shell">
+      <table class="table table-sm align-middle table-grid">
+        <thead><tr><th>执行ID</th><th>任务</th><th>类型</th><th>来源</th><th>已运行</th><th>操作</th></tr></thead>
+        <tbody>
+        {% if running_rows %}
+          {% for r in running_rows %}
+            <tr>
+              <td>{{ r.id }}</td><td>{{ r.job_name }}</td><td>{{ r.job_type }}</td><td>{{ r.source }}</td><td>{{ r.elapsed_seconds }} 秒</td>
+              <td><form class="d-inline" action="/executions/stop/{{ r.id }}" method="POST" onsubmit="return confirm('确认停止该任务？')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">停止</button></form></td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="6" class="text-muted">当前无运行中的任务</td></tr>
+        {% endif %}
+        </tbody>
+      </table>
+    </div>
   </div>
-</div>
 
-<div class="section-card">
-  <div class="section-title mb-2">最近待判定来源事件</div>
-  <div class="table-responsive table-shell">
-    <table class="table table-sm align-middle table-grid">
-      <thead><tr><th>时间</th><th>目标</th><th>详情</th></tr></thead>
-      <tbody>
-      {% if pending_events %}
-        {% for e in pending_events %}
-          <tr>
-            <td>{{ fmt_dt(e.created_at) }}</td>
-            <td>{{ e.target_type or '-' }}#{{ e.target_id or '-' }}</td>
-            <td class="wrap-any"><small>{{ e.message or '-' }}</small></td>
-          </tr>
-        {% endfor %}
-      {% else %}
-        <tr><td colspan="3" class="text-muted">暂无待判定来源事件</td></tr>
-      {% endif %}
-      </tbody>
-    </table>
+  <div class="section-card">
+    <div class="section-title mb-2">最近待判定来源事件</div>
+    <div class="table-responsive table-shell">
+      <table class="table table-sm align-middle table-grid">
+        <thead><tr><th>时间</th><th>目标</th><th>详情</th></tr></thead>
+        <tbody>
+        {% if pending_events %}
+          {% for e in pending_events %}
+            <tr><td>{{ fmt_dt(e.created_at) }}</td><td>{{ e.target_type or '-' }}#{{ e.target_id or '-' }}</td><td class="wrap-any"><small>{{ e.message or '-' }}</small></td></tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="3" class="text-muted">暂无待判定来源事件</td></tr>
+        {% endif %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
+{% endif %}
+
+{% if panel_view == 'backfill' %}
+<div class="section-stack">
+  <div class="section-card mb-3">
+    <div class="section-title mb-2">最近自动关联指标</div>
+    <div class="table-responsive table-shell">
+      <table class="table table-sm align-middle table-grid">
+        <thead><tr><th>时间</th><th>处理行数</th><th>命中/冲突/跳过</th><th>候选均值</th><th>文件列表请求/缓存命中</th></tr></thead>
+        <tbody>
+        {% if backfill_metrics_rows %}
+          {% for r in backfill_metrics_rows %}
+            <tr>
+              <td>{{ fmt_dt(r.created_at) }}</td>
+              <td>{{ r.metrics.get('rows', '-') }}</td>
+              <td>{{ r.metrics.get('matched', '-') }}/{{ r.metrics.get('conflicts', '-') }}/{{ r.metrics.get('skipped', '-') }}</td>
+              <td>{{ r.metrics.get('avg_candidates', '-') }}</td>
+              <td>{{ r.metrics.get('filelist_requested', '-') }}/{{ r.metrics.get('filelist_cache_hits', '-') }}</td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="5" class="text-muted">暂无自动关联指标日志</td></tr>
+        {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <div class="settings-actions">
+      <a class="btn btn-outline-secondary" href="/logs?panel_view=logs&op=backfill_metrics">查看自动关联日志</a>
+      <a class="btn btn-outline-secondary" href="/mapping?panel_view=mapping&source_type=pending">查看待判定映射</a>
+    </div>
+  </div>
 </div>
+{% endif %}
 {% endblock %}
