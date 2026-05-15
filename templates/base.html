@@ -48,7 +48,8 @@
       <a class="nav-link {% if request.path.startswith('/notifier') %}active{% endif %}" href="/notifier"><i class="fa-regular fa-bell"></i><span>通知器</span></a>
       <a class="nav-link {% if request.path.startswith('/logs') %}active{% endif %}" href="/logs"><i class="fa-solid fa-list-check"></i><span>日志与执行</span></a>
       <a class="nav-link {% if request.path.startswith('/mapping') %}active{% endif %}" href="/mapping"><i class="fa-solid fa-diagram-project"></i><span>映射与缓存</span></a>
-      <a class="nav-link {% if request.path.startswith('/settings') %}active{% endif %}" href="/settings"><i class="fa-solid fa-gear"></i><span>系统设置</span></a>
+      <a class="nav-link {% if request.path=='/settings' %}active{% endif %}" href="/settings"><i class="fa-solid fa-gear"></i><span>系统设置</span></a>
+      <a class="nav-link {% if request.path.startswith('/settings/devops') %}active{% endif %}" href="/settings/devops"><i class="fa-solid fa-code-branch"></i><span>开发与更新</span></a>
       <a class="nav-link {% if request.path.startswith('/diagnostics') %}active{% endif %}" href="/diagnostics"><i class="fa-solid fa-stethoscope"></i><span>系统诊断</span></a>
     </nav>
     {% if auth_enabled and is_logged_in %}

@@ -411,69 +411,23 @@ def test_cron_page_contains_next_run_and_last_exec_columns():
     assert '下次执行（本地）' in text
     assert '最近执行' in text
 
-
-def test_settings_dev_restart_endpoint():
+def test_settings_dev_restart_disabled():
     client = _client()
-    token = _get_csrf_token(client, '/settings')
+    token = _get_csrf_token(client, '/settings/devops')
     resp = client.post('/settings/dev-restart', data={
         'csrf_token': token,
-        'critical_passphrase': '',
-    }, headers={'X-Requested-With': 'XMLHttpRequest'})
-    assert resp.status_code == 200
-    payload = resp.get_json()
-    assert payload['ok'] is True
-    assert '重启并应用' in payload['message']
-    assert __import__('pathlib').Path('instance/dev_runtime.env').exists()
-
-
-
-def test_settings_dev_restart_rejects_wrong_passphrase_when_enabled():
-    client = _client()
-    with app.app_context():
-        from app import set_config
-        set_config('critical_action_passphrase', 'abc123')
-    token = _get_csrf_token(client, '/settings')
-    resp = client.post('/settings/dev-restart', data={
-        'csrf_token': token,
-        'critical_passphrase': 'wrong',
     }, headers={'X-Requested-With': 'XMLHttpRequest'})
     assert resp.status_code == 400
     payload = resp.get_json()
     assert payload['ok'] is False
-    assert '关键操作口令错误' in payload['message']
-    with app.app_context():
-        from app import set_config
-        set_config('critical_action_passphrase', '')
+    assert '已禁用应用内自动重启' in payload['message']
 
 
 
-def test_settings_dev_apply_status_endpoint():
+def test_settings_devops_page_has_no_inapp_restart_controls():
     client = _client()
-    resp = client.get('/settings/dev-apply-status')
+    resp = client.get('/settings/devops')
     assert resp.status_code == 200
-    payload = resp.get_json()
-    assert payload['ok'] is True
-    assert 'status' in payload
-
-
-
-def test_settings_dev_restart_saves_form_values():
-    client = _client()
-    token = _get_csrf_token(client, '/settings')
-    repo = 'https://github.com/MaroD1M/HLM-Demo.git'
-    resp = client.post('/settings/dev-restart', data={
-        'csrf_token': token,
-        'dev_mode': 'true',
-        'dev_auto_pull': 'true',
-        'dev_git_repo': repo,
-        'dev_git_branch': 'master',
-        'dev_auto_pip_sync': 'false',
-        'dev_pip_sync_timeout': '120',
-        'dev_git_token': '',
-        'dev_git_token_clear': 'false',
-    }, headers={'X-Requested-With': 'XMLHttpRequest'})
-    assert resp.status_code == 200
-    with app.app_context():
-        from app import get_config
-        assert get_config('dev_git_repo') == repo
-
+    text = resp.get_data(as_text=True)
+    assert '保存并重启应用' not in text
+    assert '最近应用状态' not in text

@@ -854,3 +854,10 @@ body {
     display: none;
   }
 }
+
+
+.log-msg { word-break: break-word; }
+
+@media (max-width: 992px) {
+  .logs-op-table, .logs-op-table thead th, .logs-op-table td { font-size: 13px; }
+}
