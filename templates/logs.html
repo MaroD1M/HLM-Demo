@@ -6,11 +6,12 @@
   <form action="/logs/clear" method="POST" onsubmit="return confirm('确认清空操作日志？')" class="d-flex gap-2 align-items-center flex-wrap">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input class="form-control form-control-sm" style="width:180px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
+    <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#logsPageHelp" aria-expanded="false" aria-controls="logsPageHelp"><i class="fa-solid fa-circle-info me-1"></i>页面说明</button>
     <button class="btn btn-outline-danger">清空操作日志</button>
   </form>
 </div>
 
-<div class="section-card mb-3">
+<div id="logsPageHelp" class="collapse section-card mb-3">
   <div class="section-muted">支持按类型、结果与关键字筛选，可切换“操作日志/任务执行历史”。</div>
 </div>
 

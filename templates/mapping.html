@@ -4,6 +4,7 @@
 <div class="page-head">
   <h3 class="mb-0">文件映射与缓存管理</h3>
   <div class="d-flex gap-2 flex-wrap">
+    <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#mappingPageHelp" aria-expanded="false" aria-controls="mappingPageHelp"><i class="fa-solid fa-circle-info me-1"></i>页面说明</button>
     <form action="/mapping/link/clear" method="POST" onsubmit="return confirm('确认清空全部映射记录吗？仅删除数据库映射，不删除真实文件。')" class="js-ajax-form d-flex gap-2" data-target="mappingPanel">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input class="form-control form-control-sm" style="width:160px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
@@ -17,7 +18,7 @@
   </div>
 </div>
 
-<div class="section-card mb-3">
+<div id="mappingPageHelp" class="collapse section-card mb-3">
   <div class="section-muted">映射=源与目标关系；缓存=已处理标记。清理时仅影响记录，不删除真实文件。</div>
 </div>
 

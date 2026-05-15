@@ -395,12 +395,12 @@ def test_scheduler_timezone_matches_app_tz():
     assert sch_tz == app_tz
 
 
-def test_cron_page_contains_timezone_hint():
+def test_cron_page_contains_help_toggle():
     client = _client()
     resp = client.get('/cron')
     assert resp.status_code == 200
     text = resp.get_data(as_text=True)
-    assert '按本地时区（TZ）解释并调度计划表达式' in text
+    assert '页面说明' in text
 
 
 def test_cron_page_contains_next_run_and_last_exec_columns():
