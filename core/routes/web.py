@@ -37,6 +37,9 @@ OPERATION_TYPE_LABELS = {
     'task_deleted': '删除任务',
     'task_toggled': '启用/禁用任务',
     'delete_scan': '删除联动扫描',
+    'linked_file_deleted': '删除联动-已删除对侧文件',
+    'linked_file_delete_skip': '删除联动-跳过对侧文件',
+    'delete_guard_truncated': '删除联动-按阈值截断执行',
     'delete_pending_source': '来源待判定事件',
     'pending_delete_confirmed': '确认删种',
     'pending_delete_failed': '确认删种失败',
@@ -52,10 +55,27 @@ OPERATION_TYPE_LABELS = {
     'cron_deleted': '删除定时任务',
     'cron_toggled': '启用/禁用定时任务',
     'cron_executed': '定时任务执行',
+    'cron_skipped': '定时任务跳过',
+    'cron_skipped_already_running': '定时任务跳过（已在运行）',
     'cron_test': '测试任务',
     'downloader_test': '测试下载器',
     'downloader_updated': '更新下载器',
     'backfill_metrics': '自动关联指标',
+    'job_execute_failed': '任务执行异常',
+    'db_backup': '数据库备份',
+}
+
+
+SETTINGS_SAVE_SCOPES = {
+    'general_template': {'default_extensions', 'default_exclude_dirs'},
+    'log_cleanup': {'log_retention_days', 'auto_clean_logs', 'app_log_max_mb', 'app_log_backup_count'},
+    'delete_notify': {'delete_files_with_torrent', 'notify_on_delete', 'notify_on_risky_delete', 'delete_match_strict_mode', 'pending_source_guard_enabled', 'pending_source_guard_seconds', 'pending_source_warn_threshold', 'pending_source_log_mode'},
+    'source_policy': {'manual_dest_delete_delete_source', 'manual_source_delete_delete_dest', 'downloader_dest_delete_delete_source', 'downloader_source_delete_delete_dest', 'downloader_dest_delete_delete_torrent', 'downloader_source_delete_delete_torrent'},
+    'network_notify': {'allowed_roots', 'proxy_url', 'tg_api_base'},
+    'backfill': {'backfill_batch_limit', 'backfill_max_candidates', 'backfill_file_fetch_workers', 'backfill_max_failures', 'backfill_path_mappings'},
+    'backup': {'backup_dir', 'backup_keep_last'},
+    'dev': {'dev_mode', 'dev_auto_pull', 'dev_git_repo', 'dev_git_branch', 'dev_auto_pip_sync', 'dev_pip_sync_timeout', 'dev_git_token', 'dev_proxy_url', 'dev_no_proxy'},
+    'update': {'github_version_check_enabled', 'github_repo', 'github_api_base', 'version_check_cache_minutes', 'critical_action_passphrase'},
 }
 
 def init_web_routes(ctx: RouteDeps):
@@ -870,12 +890,15 @@ def init_web_routes(ctx: RouteDeps):
         return _json_or_redirect(True, '通知器已删除', '/notifier', html=html, target='notifierJobsPanel')
 
 
-    def _mapping_payload(page=None, cache_page=None, q=None, hash_state=None, source_type=None):
+    def _mapping_payload(page=None, cache_page=None, q=None, hash_state=None, source_type=None, panel_view=None):
         page = max(page if page is not None else request.args.get('page', 1, type=int), 1)
         cache_page = max(cache_page if cache_page is not None else request.args.get('cache_page', 1, type=int), 1)
         q = (q if q is not None else request.args.get('q') or '').strip()
         hash_state = (hash_state if hash_state is not None else request.args.get('hash_state') or 'all').strip()
         source_type = (source_type if source_type is not None else request.args.get('source_type') or 'all').strip()
+        panel_view = (panel_view if panel_view is not None else request.args.get('panel_view') or 'all').strip().lower()
+        if panel_view not in {'all', 'mapping', 'cache'}:
+            panel_view = 'all'
 
         mapping_q = FileLinkMap.query
         if q:
@@ -916,6 +939,7 @@ def init_web_routes(ctx: RouteDeps):
             'q': q,
             'hash_state': hash_state,
             'source_type': source_type,
+            'panel_view': panel_view,
         }
 
 
@@ -1080,6 +1104,7 @@ def init_web_routes(ctx: RouteDeps):
         q = (request.args.get('q') or '').strip()
         op = (request.args.get('op') or '').strip()
         success = (request.args.get('success') or 'all').strip()
+        exec_status = (request.args.get('exec_status') or 'all').strip()
 
         log_q = OperationLog.query
         if q:
@@ -1095,16 +1120,22 @@ def init_web_routes(ctx: RouteDeps):
         pagination = log_q.order_by(OperationLog.created_at.desc()).paginate(page=page, per_page=50, error_out=False)
         operations = [r[0] for r in db.session.query(OperationLog.operation_type).distinct().order_by(OperationLog.operation_type.asc()).all()]
         operation_options = [(item, OPERATION_TYPE_LABELS.get(item, item)) for item in operations]
+
+        executions_q = JobExecutionLog.query.order_by(JobExecutionLog.started_at.desc())
+        if exec_status in {'running', 'success', 'failed'}:
+            executions_q = executions_q.filter(JobExecutionLog.status == exec_status)
+        executions = executions_q.limit(50).all()
         return render_template(
             'logs.html',
             logs=pagination.items,
             page=page,
             total_pages=max(pagination.pages, 1),
-            executions=JobExecutionLog.query.order_by(JobExecutionLog.started_at.desc()).limit(50).all(),
+            executions=executions,
             q=q,
             op=op,
             success=success,
             operations=operations,
+            exec_status=exec_status,
             operation_options=operation_options,
             operation_type_labels=OPERATION_TYPE_LABELS,
         )
@@ -1119,17 +1150,28 @@ def init_web_routes(ctx: RouteDeps):
         flash('操作日志已清空', 'success')
         return redirect('/logs')
 
-    @web_bp.route('/settings')
-    def settings_page():
+    def _settings_page_payload():
         settings = {c.key: c.value for c in AppConfig.query.all()}
         if not (settings.get('dev_git_repo') or '').strip():
             settings['dev_git_repo'] = os.environ.get('APP_DEV_GIT_REPO', '') or DEV_DEFAULT_GIT_REPO
         settings['dev_git_token_masked'] = '******' if (settings.get('dev_git_token') or '').strip() else ''
         release = get_release_info()
+        return settings, release
+
+    @web_bp.route('/settings')
+    def settings_page():
+        settings, release = _settings_page_payload()
         return render_template('settings.html', settings=settings, release=release)
 
-    def _save_settings_from_form(form):
+    @web_bp.route('/settings/devops')
+    def settings_devops_page():
+        settings, release = _settings_page_payload()
+        return render_template('settings_devops.html', settings=settings, release=release)
+
+    def _save_settings_from_form(form, allowed_keys=None):
         for key in SETTINGS_SAVE_KEYS:
+            if allowed_keys is not None and key not in allowed_keys:
+                continue
             val = form.get(key)
             if val is None:
                 continue
@@ -1161,76 +1203,25 @@ def init_web_routes(ctx: RouteDeps):
 
     @web_bp.route('/settings/save', methods=['POST'])
     def settings_save():
-        ok, msg = _save_settings_from_form(request.form)
+        save_scope = (request.form.get('save_scope') or '').strip()
+        allowed_keys = SETTINGS_SAVE_SCOPES.get(save_scope)
+        ok, msg = _save_settings_from_form(request.form, allowed_keys=allowed_keys)
+        redirect_to = '/settings/devops' if save_scope in {'dev', 'update'} else '/settings'
         if not ok:
-            return _json_or_redirect(False, f'设置保存失败: {msg}', '/settings', status=400)
-        return _json_or_redirect(True, '设置已保存并生效', '/settings')
+            return _json_or_redirect(False, f'设置保存失败: {msg}', redirect_to, status=400)
+        return _json_or_redirect(True, '设置已保存并生效', redirect_to)
 
 
 
     @web_bp.route('/settings/dev-restart', methods=['POST'])
     def settings_dev_restart():
-        if not _critical_guard():
-            return _json_or_redirect(False, '关键操作口令错误，已拒绝重启请求', '/settings', status=400)
+        return _json_or_redirect(False, '已禁用应用内自动重启，请保存后手动重启容器以应用开发模式配置', '/settings/devops', status=400)
 
-        ok, msg = _save_settings_from_form(request.form)
-        if not ok:
-            return _json_or_redirect(False, f'设置保存失败: {msg}', '/settings', status=400)
-
-        now_text = __import__('datetime').datetime.now(__import__('datetime').UTC).isoformat()
-        set_config('last_dev_apply_status', 'requested')
-        set_config('last_dev_apply_message', '已提交重启请求，服务将在数秒内重启')
-        set_config('last_dev_apply_at', now_text)
-
-        marker = Path('instance') / 'dev_restart_request.flag'
-        runtime_env = Path('instance') / 'dev_runtime.env'
-        try:
-            marker.parent.mkdir(parents=True, exist_ok=True)
-
-            def _esc(v):
-                return str(v or '').replace('\\', '\\\\').replace('"', '\\"')
-
-            lines = [
-                f"APP_DEV_MODE=\"{_esc(get_config('dev_mode', os.environ.get('APP_DEV_MODE', 'false')))}\"",
-                f"APP_DEV_AUTO_PULL=\"{_esc(get_config('dev_auto_pull', os.environ.get('APP_DEV_AUTO_PULL', 'false')))}\"",
-                f"APP_DEV_GIT_REPO=\"{_esc((get_config('dev_git_repo', os.environ.get('APP_DEV_GIT_REPO', '')) or DEV_DEFAULT_GIT_REPO))}\"",
-                f"APP_DEV_GIT_BRANCH=\"{_esc(get_config('dev_git_branch', os.environ.get('APP_DEV_GIT_BRANCH', 'master')))}\"",
-                f"APP_DEV_AUTO_PIP_SYNC=\"{_esc(get_config('dev_auto_pip_sync', os.environ.get('APP_DEV_AUTO_PIP_SYNC', 'false')))}\"",
-                f"APP_DEV_PIP_SYNC_TIMEOUT=\"{_esc(get_config('dev_pip_sync_timeout', os.environ.get('APP_DEV_PIP_SYNC_TIMEOUT', '120')))}\"",
-                f"APP_DEV_GIT_TOKEN=\"{_esc(get_config('dev_git_token', os.environ.get('APP_DEV_GIT_TOKEN', '')))}\"",
-                f"APP_DEV_PROXY_URL=\"{_esc(get_config('dev_proxy_url', os.environ.get('APP_DEV_PROXY_URL', '')))}\"",
-                f"APP_DEV_NO_PROXY=\"{_esc(get_config('dev_no_proxy', os.environ.get('APP_DEV_NO_PROXY', 'localhost,127.0.0.1,::1')))}\"",
-            ]
-            runtime_env.write_text("\n".join(lines) + "\n", encoding='utf-8')
-            marker.write_text(now_text)
-        except Exception as exc:
-            return _json_or_redirect(False, f'写入重启标记失败: {exc}', '/settings', status=500)
-
-        def _delayed_exit():
-            time.sleep(1.5)
-            # Keep tests/process tooling stable; skip hard exit while running test sessions.
-            if os.environ.get('PYTEST_CURRENT_TEST'):
-                return
-            os._exit(0)
-
-        threading.Thread(target=_delayed_exit, daemon=True).start()
-        return _json_or_redirect(True, '已提交重启并应用请求，服务将短暂中断后恢复', '/settings')
-
-
-
-    @web_bp.route('/settings/dev-apply-status', methods=['GET'])
-    def settings_dev_apply_status():
-        return jsonify({
-            'ok': True,
-            'status': (get_config('last_dev_apply_status', '') or '').strip(),
-            'message': (get_config('last_dev_apply_message', '') or '').strip(),
-            'at': (get_config('last_dev_apply_at', '') or '').strip(),
-        })
-
+    
     @web_bp.route('/settings/check-update', methods=['POST'])
     def settings_check_update():
         info = get_release_info(force_refresh=True)
-        return _json_or_redirect(True, f"版本检查完成：本地 {info.get('local_version','-')}，远端 {info.get('remote_version','-')}（{info.get('message','-')}）", '/settings')
+        return _json_or_redirect(True, f"版本检查完成：本地 {info.get('local_version','-')}，远端 {info.get('remote_version','-')}（{info.get('message','-')}）", '/settings/devops')
 
 
     @web_bp.route('/settings/export', methods=['GET'])

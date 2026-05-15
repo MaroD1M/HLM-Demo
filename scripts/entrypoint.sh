@@ -27,6 +27,24 @@ load_runtime_env() {
   fi
 }
 
+
+log_dev_effective_config() {
+  local mode="${APP_DEV_MODE:-false}"
+  local auto_pull="${APP_DEV_AUTO_PULL:-false}"
+  local repo="${APP_DEV_GIT_REPO:-}"
+  local branch="${APP_DEV_GIT_BRANCH:-master}"
+  local pip_sync="${APP_DEV_AUTO_PIP_SYNC:-false}"
+  local timeout_s="${APP_DEV_PIP_SYNC_TIMEOUT:-120}"
+  local proxy="${APP_DEV_PROXY_URL:-}"
+  if [[ -z "$repo" ]]; then
+    repo='(empty)'
+  fi
+  if [[ -z "$proxy" ]]; then
+    proxy='(none)'
+  fi
+  log "开发模式生效配置: mode=${mode}, auto_pull=${auto_pull}, repo=${repo}, branch=${branch}, auto_pip_sync=${pip_sync}, pip_timeout=${timeout_s}, proxy=${proxy}"
+}
+
 write_result() {
   local st="$1"
   local msg="$2"
@@ -122,6 +140,9 @@ maybe_sync_requirements() {
     PIP_SYNC_NOTE="pip sync failed or timeout"
   fi
 }
+
+load_runtime_env
+log_dev_effective_config
 
 if bool_true "${APP_DEV_MODE:-false}"; then
   log "开发模式已启用。"

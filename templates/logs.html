@@ -13,10 +13,10 @@
 <div class="section-card mb-3">
   <div class="section-toolbar"><div class="section-title">筛选条件</div><div class="section-muted">支持按类型、结果与关键字组合筛选。</div></div>
   <form class="row g-2 js-ajax-filter" data-target="logsPanel" method="GET" action="/logs">
-    <div class="col-md-4">
+    <div class="col-md-3">
       <input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索消息 / 目标 / 类型">
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
       <select class="form-select" name="op">
         <option value="">全部类型</option>
         {% for item, label in operation_options or [] %}
@@ -24,19 +24,34 @@
         {% endfor %}
       </select>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
       <select class="form-select" name="success">
         <option value="all" {% if success=='all' %}selected{% endif %}>全部结果</option>
         <option value="ok" {% if success=='ok' %}selected{% endif %}>仅成功</option>
         <option value="fail" {% if success=='fail' %}selected{% endif %}>仅失败</option>
       </select>
     </div>
-    <div class="col-md-2 d-flex gap-2">
-      <button class="btn btn-brand w-50" type="submit">筛选</button>
-      <a class="btn btn-outline-secondary w-50" href="/logs">重置</a>
+    <div class="col-md-1 d-flex gap-2">
+      <button class="btn btn-brand w-100" type="submit">筛选</button>
+    </div>
+    <div class="col-md-1 d-flex gap-2">
+      <a class="btn btn-outline-secondary w-100" href="/logs">重置</a>
+    </div>
+    <div class="col-md-3">
+      <select class="form-select" name="exec_status">
+        <option value="all" {% if (exec_status or 'all')=='all' %}selected{% endif %}>执行历史：全部状态</option>
+        <option value="running" {% if exec_status=='running' %}selected{% endif %}>执行历史：仅运行中</option>
+        <option value="failed" {% if exec_status=='failed' %}selected{% endif %}>执行历史：仅失败</option>
+        <option value="success" {% if exec_status=='success' %}selected{% endif %}>执行历史：仅成功</option>
+      </select>
+    </div>
+    <div class="col-md-1 d-flex gap-2">
+      <button class="btn btn-brand w-100" type="submit">应用</button>
     </div>
     <div class="col-12 d-flex gap-2 flex-wrap">
-      <a class="btn btn-sm btn-outline-warning" href="/logs?op=delete_pending_source&success=fail">待判定来源事件</a>
+      <a class="btn btn-sm btn-outline-warning" href="/logs?op=delete_pending_source">待判定来源事件</a>
+      <a class="btn btn-sm btn-outline-danger" href="/logs?success=fail">仅失败日志</a>
+      <a class="btn btn-sm btn-outline-secondary" href="/logs?exec_status=running">仅运行中任务</a>
     </div>
   </form>
 </div>
@@ -60,8 +75,8 @@
             {% if logs %}
               {% for log in logs %}
               <tr>
-                <td>{{ fmt_dt(log.created_at) }}</td>
-                <td class="wrap-any">{{ operation_type_labels.get(log.operation_type, log.operation_type) }}</td>
+                <td><span title="{{ log.created_at }}">{{ fmt_dt(log.created_at) }}</span></td>
+                <td class="wrap-any"><span title="{{ log.operation_type }}">{{ operation_type_labels.get(log.operation_type, log.operation_type) }}</span></td>
                 <td class="wrap-any">{{ log.target_name or '-' }}</td>
                 <td>
                   {% if log.success %}
@@ -70,7 +85,15 @@
                     <span class="badge text-bg-danger">失败</span>
                   {% endif %}
                 </td>
-                <td class="wrap-any"><small>{{ log.message or '-' }}</small></td>
+                <td class="wrap-any">
+                  {% set log_msg = (log.message or '-') %}
+                  {% if log_msg|length > 120 %}
+                    <small class="log-msg" data-msg-id="logmsg-{{ log.id }}">{{ log_msg[:120] }}...</small>
+                    <button class="btn btn-sm btn-link p-0 ms-1" type="button" onclick="toggleLogMsg('logmsg-{{ log.id }}', this, {{ log_msg|tojson }}, {{ log_msg[:120]|tojson }})">展开</button>
+                  {% else %}
+                    <small>{{ log_msg }}</small>
+                  {% endif %}
+                </td>
               </tr>
               {% endfor %}
             {% else %}
@@ -83,10 +106,10 @@
         <small class="text-muted">第 {{ page }} / {{ total_pages }} 页</small>
         <div>
           {% if page>1 %}
-            <a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page-1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}">上一页</a>
+            <a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page-1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}">上一页</a>
           {% endif %}
           {% if page<total_pages %}
-            <a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page+1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}">下一页</a>
+            <a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page+1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}">下一页</a>
           {% endif %}
         </div>
       </div>
@@ -112,9 +135,9 @@
             {% if executions %}
               {% for e in executions %}
               <tr>
-                <td>{{ fmt_dt(e.started_at) }}</td>
+                <td><span title="{{ e.started_at }}">{{ fmt_dt(e.started_at) }}</span></td>
                 <td class="wrap-any">{{ e.job_name }}</td>
-                <td>{{ e.source }}</td>
+                <td>{{ "手动" if e.source=="manual" else ("定时任务" if e.source=="cron" else e.source) }}</td>
                 <td>
                   {% if e.status=='success' %}
                     <span class="badge text-bg-success">成功</span>
@@ -124,8 +147,25 @@
                     <span class="badge text-bg-secondary">运行中</span>
                   {% endif %}
                 </td>
-                <td>{{ e.duration_ms or 0 }}ms</td>
-                <td class="wrap-any"><small>{{ e.message or '-' }}</small></td>
+                <td>
+                  {% set d = e.duration_ms or 0 %}
+                  {% if d >= 1000 %}
+                    {{ '%.1fs'|format(d / 1000) }}
+                  {% elif d > 0 %}
+                    {{ d }}ms
+                  {% else %}
+                    <span class="text-muted">-</span>
+                  {% endif %}
+                </td>
+                <td class="wrap-any">
+                  {% set exec_msg = (e.message or '-') %}
+                  {% if exec_msg|length > 120 %}
+                    <small class="log-msg" data-msg-id="execmsg-{{ e.id }}">{{ exec_msg[:120] }}...</small>
+                    <button class="btn btn-sm btn-link p-0 ms-1" type="button" onclick="toggleLogMsg('execmsg-{{ e.id }}', this, {{ exec_msg|tojson }}, {{ exec_msg[:120]|tojson }})">展开</button>
+                  {% else %}
+                    <small>{{ exec_msg }}</small>
+                  {% endif %}
+                </td>
               </tr>
               {% endfor %}
             {% else %}
@@ -137,4 +177,24 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+function toggleLogMsg(targetId, btn, fullText, shortText){
+  const el = document.querySelector('[data-msg-id="' + targetId + '"]');
+  if(!el || !btn) return;
+  const expanded = btn.dataset.expanded === '1';
+  if(expanded){
+    el.textContent = shortText + '...';
+    btn.textContent = '展开';
+    btn.dataset.expanded = '0';
+  }else{
+    el.textContent = fullText;
+    btn.textContent = '收起';
+    btn.dataset.expanded = '1';
+  }
+}
+</script>
 {% endblock %}
