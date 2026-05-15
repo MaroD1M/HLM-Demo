@@ -11,8 +11,17 @@
 </div>
 
 <div class="section-card mb-3">
+  <div class="section-title mb-2">显示视图</div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-sm {{ 'btn-brand' if (panel_view or 'logs')=='logs' else 'btn-outline-secondary' }}" href="/logs?q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&panel_view=logs">操作日志</a>
+    <a class="btn btn-sm {{ 'btn-brand' if panel_view=='executions' else 'btn-outline-secondary' }}" href="/logs?q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&panel_view=executions">任务执行历史</a>
+  </div>
+</div>
+
+<div class="section-card mb-3">
   <div class="section-toolbar"><div class="section-title">筛选条件</div><div class="section-muted">支持按类型、结果与关键字组合筛选。</div></div>
   <form class="row g-2 js-ajax-filter" data-target="logsPanel" method="GET" action="/logs">
+    <input type="hidden" name="panel_view" value="{{ panel_view or 'logs' }}">
     <div class="col-md-3">
       <input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索消息 / 目标 / 类型">
     </div>
@@ -35,7 +44,7 @@
       <button class="btn btn-brand w-100" type="submit">筛选</button>
     </div>
     <div class="col-md-1 d-flex gap-2">
-      <a class="btn btn-outline-secondary w-100" href="/logs">重置</a>
+      <a class="btn btn-outline-secondary w-100" href="/logs?panel_view=logs">重置</a>
     </div>
     <div class="col-md-3">
       <select class="form-select" name="exec_status">
@@ -49,42 +58,31 @@
       <button class="btn btn-brand w-100" type="submit">应用</button>
     </div>
     <div class="col-12 d-flex gap-2 flex-wrap">
-      <a class="btn btn-sm btn-outline-warning" href="/logs?op=delete_pending_source">待判定来源事件</a>
-      <a class="btn btn-sm btn-outline-danger" href="/logs?success=fail">仅失败日志</a>
-      <a class="btn btn-sm btn-outline-secondary" href="/logs?exec_status=running">仅运行中任务</a>
+      <a class="btn btn-sm btn-outline-warning" href="/logs?panel_view=logs&op=delete_pending_source">待判定来源事件</a>
+      <a class="btn btn-sm btn-outline-danger" href="/logs?panel_view=logs&success=fail">仅失败日志</a>
+      <a class="btn btn-sm btn-outline-secondary" href="/logs?panel_view=executions&exec_status=running">仅运行中任务</a>
     </div>
   </form>
 </div>
 
 <div id="logsPanel" class="row g-3">
-  <div class="col-lg-6">
+  {% if (panel_view or 'logs') == 'logs' %}
+  <div class="col-12">
     <div class="section-card h-100">
       <div class="section-title mb-2">操作日志<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="失败不一定代表系统异常，可能是保护策略触发（如待判定来源暂不删种）。"></i></div>
       <div class="table-responsive table-shell">
         <table class="table align-middle table-grid logs-op-table">
           <thead>
-            <tr>
-              <th class="col-time">时间</th>
-              <th class="col-type">类型</th>
-              <th class="col-target">目标</th>
-              <th class="col-result">结果</th>
-              <th class="col-message">消息</th>
-            </tr>
+            <tr><th class="col-time">时间</th><th class="col-type">类型</th><th class="col-target">目标</th><th class="col-result">结果</th><th class="col-message">消息</th></tr>
           </thead>
           <tbody>
             {% if logs %}
               {% for log in logs %}
               <tr>
                 <td><span title="{{ log.created_at }}">{{ fmt_dt(log.created_at) }}</span></td>
-                <td class="wrap-any"><span title="{{ log.operation_type }}">{{ operation_type_labels.get(log.operation_type, log.operation_type) }}</span></td>
+                <td class="wrap-any"><span title="{{ log.operation_type }}">{{ operation_type_labeler(log.operation_type) }}</span></td>
                 <td class="wrap-any">{{ log.target_name or '-' }}</td>
-                <td>
-                  {% if log.success %}
-                    <span class="badge text-bg-success">成功</span>
-                  {% else %}
-                    <span class="badge text-bg-danger">失败</span>
-                  {% endif %}
-                </td>
+                <td>{% if log.success %}<span class="badge text-bg-success">成功</span>{% else %}<span class="badge text-bg-danger">失败</span>{% endif %}</td>
                 <td class="wrap-any">
                   {% set log_msg = (log.message or '-') %}
                   {% if log_msg|length > 120 %}
@@ -105,31 +103,22 @@
       <div class="panel-pagination">
         <small class="text-muted">第 {{ page }} / {{ total_pages }} 页</small>
         <div>
-          {% if page>1 %}
-            <a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page-1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}">上一页</a>
-          {% endif %}
-          {% if page<total_pages %}
-            <a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page+1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}">下一页</a>
-          {% endif %}
+          {% if page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page-1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&panel_view={{ panel_view or 'logs' }}">上一页</a>{% endif %}
+          {% if page<total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page+1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&panel_view={{ panel_view or 'logs' }}">下一页</a>{% endif %}
         </div>
       </div>
     </div>
   </div>
+  {% endif %}
 
-  <div class="col-lg-6">
+  {% if (panel_view or 'logs') == 'executions' %}
+  <div class="col-12">
     <div class="section-card h-100">
       <div class="section-title mb-2">任务执行历史<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="记录每次任务执行结果与耗时，便于判断是否需要调整定时频率或任务阈值。"></i></div>
       <div class="table-responsive table-shell">
         <table class="table align-middle table-grid">
           <thead>
-            <tr>
-              <th>开始时间</th>
-              <th>任务</th>
-              <th>来源</th>
-              <th>状态</th>
-              <th>耗时</th>
-              <th>消息</th>
-            </tr>
+            <tr><th>开始时间</th><th>任务</th><th>来源</th><th>状态</th><th>耗时</th><th>消息</th></tr>
           </thead>
           <tbody>
             {% if executions %}
@@ -138,25 +127,8 @@
                 <td><span title="{{ e.started_at }}">{{ fmt_dt(e.started_at) }}</span></td>
                 <td class="wrap-any">{{ e.job_name }}</td>
                 <td>{{ "手动" if e.source=="manual" else ("定时任务" if e.source=="cron" else e.source) }}</td>
-                <td>
-                  {% if e.status=='success' %}
-                    <span class="badge text-bg-success">成功</span>
-                  {% elif e.status=='failed' %}
-                    <span class="badge text-bg-danger">失败</span>
-                  {% else %}
-                    <span class="badge text-bg-secondary">运行中</span>
-                  {% endif %}
-                </td>
-                <td>
-                  {% set d = e.duration_ms or 0 %}
-                  {% if d >= 1000 %}
-                    {{ '%.1fs'|format(d / 1000) }}
-                  {% elif d > 0 %}
-                    {{ d }}ms
-                  {% else %}
-                    <span class="text-muted">-</span>
-                  {% endif %}
-                </td>
+                <td>{% if e.status=='success' %}<span class="badge text-bg-success">成功</span>{% elif e.status=='failed' %}<span class="badge text-bg-danger">失败</span>{% else %}<span class="badge text-bg-secondary">运行中</span>{% endif %}</td>
+                <td>{% set d = e.duration_ms or 0 %}{% if d >= 1000 %}{{ '%.1fs'|format(d / 1000) }}{% elif d > 0 %}{{ d }}ms{% else %}<span class="text-muted">-</span>{% endif %}</td>
                 <td class="wrap-any">
                   {% set exec_msg = (e.message or '-') %}
                   {% if exec_msg|length > 120 %}
@@ -176,6 +148,7 @@
       </div>
     </div>
   </div>
+  {% endif %}
 </div>
 {% endblock %}
 

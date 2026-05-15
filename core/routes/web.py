@@ -32,22 +32,44 @@ OPERATION_TYPE_LABELS = {
     'hardlink_created': '创建硬链接',
     'hardlink_skipped': '跳过硬链接',
     'hardlink_failed': '硬链接失败',
+    'hardlink_scan': '硬链接扫描',
+    'hardlink_scan_stopped': '硬链接扫描中止',
+    'hardlink_task_created': '新建硬链接任务',
+    'hardlink_task_updated': '更新硬链接任务',
+    'hardlink_task_toggled': '启用/禁用硬链接任务',
+    'hardlink_task_deleted': '删除硬链接任务',
     'task_run': '执行任务',
     'task_updated': '更新任务',
     'task_deleted': '删除任务',
     'task_toggled': '启用/禁用任务',
     'delete_scan': '删除联动扫描',
+    'delete_scan_stopped': '删除联动扫描中止',
+    'delete_detected_manual': '删除联动-检测到手动来源删除',
+    'delete_detected_no_downloader': '删除联动-未关联下载器',
     'linked_file_deleted': '删除联动-已删除对侧文件',
     'linked_file_delete_skip': '删除联动-跳过对侧文件',
     'delete_guard_truncated': '删除联动-按阈值截断执行',
     'delete_pending_source': '来源待判定事件',
+    'torrent_match_miss': '删除联动-未匹配到种子',
+    'torrent_delete_pending': '删除联动-加入待确认',
+    'torrent_delete_dry_run': '删除联动-测试删除',
+    'torrent_deleted': '删除联动-已删除种子',
+    'torrent_delete_failed': '删除联动-删种失败',
+    'torrent_delete_disabled': '删除联动-策略禁用删种',
     'pending_delete_confirmed': '确认删种',
     'pending_delete_failed': '确认删种失败',
     'pending_delete_rejected': '驳回待确认',
     'pending_delete_bulk': '批量处理待确认',
+    'mapping_record_deleted': '删除映射记录',
     'mapping_backfill_fail_reset': '重置自动关联失败计数',
+    'mapping_retry_linked': '映射重试关联成功',
+    'backfill_matched': '自动关联匹配成功',
+    'backfill_conflict': '自动关联匹配冲突',
+    'backfill_skipped': '自动关联跳过',
+    'backfill_stopped': '自动关联中止',
     'mapping_deleted': '删除映射',
     'mapping_cleared': '清空映射',
+    'cache_record_deleted': '删除缓存记录',
     'cache_deleted': '删除缓存',
     'cache_cleared': '清空缓存',
     'cron_added': '新建定时任务',
@@ -60,6 +82,7 @@ OPERATION_TYPE_LABELS = {
     'cron_test': '测试任务',
     'downloader_test': '测试下载器',
     'downloader_updated': '更新下载器',
+    'notifier_updated': '更新通知器',
     'backfill_metrics': '自动关联指标',
     'job_execute_failed': '任务执行异常',
     'db_backup': '数据库备份',
@@ -77,6 +100,16 @@ SETTINGS_SAVE_SCOPES = {
     'dev': {'dev_mode', 'dev_auto_pull', 'dev_git_repo', 'dev_git_branch', 'dev_auto_pip_sync', 'dev_pip_sync_timeout', 'dev_git_token', 'dev_proxy_url', 'dev_no_proxy'},
     'update': {'github_version_check_enabled', 'github_repo', 'github_api_base', 'version_check_cache_minutes', 'critical_action_passphrase'},
 }
+
+
+
+def _op_type_label(op_type):
+    key = str(op_type or '').strip()
+    if not key:
+        return '未归类'
+    if key in OPERATION_TYPE_LABELS:
+        return OPERATION_TYPE_LABELS[key]
+    return f'未归类（{key}）'
 
 def init_web_routes(ctx: RouteDeps):
     HardlinkTask = ctx.HardlinkTask
@@ -414,7 +447,35 @@ def init_web_routes(ctx: RouteDeps):
 
     @web_bp.route('/hardlink')
     def hardlink_list():
-        return render_template('hardlink.html', **_hardlink_payload())
+        payload = _hardlink_payload()
+        q = (request.args.get('q') or '').strip()
+        enabled = (request.args.get('enabled') or 'all').strip().lower()
+        tasks = payload.get('tasks', [])
+        if q:
+            key = q.lower()
+            tasks = [t for t in tasks if key in (t.name or '').lower()]
+        if enabled == 'enabled':
+            tasks = [t for t in tasks if bool(t.enabled)]
+        elif enabled == 'disabled':
+            tasks = [t for t in tasks if not bool(t.enabled)]
+        payload['tasks'] = tasks
+        payload['q'] = q
+        payload['enabled'] = enabled
+        return render_template('hardlink.html', **payload)
+
+    @web_bp.route('/hardlink/new')
+    def hardlink_new_page():
+        return render_template('hardlink_new.html', **_hardlink_payload())
+
+    @web_bp.route('/hardlink/edit/<int:task_id>')
+    def hardlink_edit_page(task_id):
+        task = db.session.get(HardlinkTask, task_id)
+        if not task:
+            flash('任务不存在', 'danger')
+            return redirect('/hardlink')
+        payload = _hardlink_payload()
+        payload['task'] = task
+        return render_template('hardlink_edit.html', **payload)
 
     @web_bp.route('/hardlink/add', methods=['POST'])
     def hardlink_add():
@@ -896,9 +957,9 @@ def init_web_routes(ctx: RouteDeps):
         q = (q if q is not None else request.args.get('q') or '').strip()
         hash_state = (hash_state if hash_state is not None else request.args.get('hash_state') or 'all').strip()
         source_type = (source_type if source_type is not None else request.args.get('source_type') or 'all').strip()
-        panel_view = (panel_view if panel_view is not None else request.args.get('panel_view') or 'all').strip().lower()
-        if panel_view not in {'all', 'mapping', 'cache'}:
-            panel_view = 'all'
+        panel_view = (panel_view if panel_view is not None else request.args.get('panel_view') or 'mapping').strip().lower()
+        if panel_view not in {'mapping', 'cache'}:
+            panel_view = 'mapping'
 
         mapping_q = FileLinkMap.query
         if q:
@@ -1105,6 +1166,9 @@ def init_web_routes(ctx: RouteDeps):
         op = (request.args.get('op') or '').strip()
         success = (request.args.get('success') or 'all').strip()
         exec_status = (request.args.get('exec_status') or 'all').strip()
+        panel_view = (request.args.get('panel_view') or 'logs').strip().lower()
+        if panel_view not in {'logs', 'executions'}:
+            panel_view = 'logs'
 
         log_q = OperationLog.query
         if q:
@@ -1119,7 +1183,7 @@ def init_web_routes(ctx: RouteDeps):
 
         pagination = log_q.order_by(OperationLog.created_at.desc()).paginate(page=page, per_page=50, error_out=False)
         operations = [r[0] for r in db.session.query(OperationLog.operation_type).distinct().order_by(OperationLog.operation_type.asc()).all()]
-        operation_options = [(item, OPERATION_TYPE_LABELS.get(item, item)) for item in operations]
+        operation_options = [(item, _op_type_label(item)) for item in operations]
 
         executions_q = JobExecutionLog.query.order_by(JobExecutionLog.started_at.desc())
         if exec_status in {'running', 'success', 'failed'}:
@@ -1138,6 +1202,8 @@ def init_web_routes(ctx: RouteDeps):
             exec_status=exec_status,
             operation_options=operation_options,
             operation_type_labels=OPERATION_TYPE_LABELS,
+            operation_type_labeler=_op_type_label,
+            panel_view=panel_view,
         )
 
     @web_bp.route('/logs/clear', methods=['POST'])
@@ -1277,6 +1343,9 @@ def init_web_routes(ctx: RouteDeps):
 
     @web_bp.route('/diagnostics')
     def diagnostics_page():
+        panel_view = (request.args.get('panel_view') or 'overview').strip().lower()
+        if panel_view not in {'overview', 'backfill'}:
+            panel_view = 'overview'
         checks = []
         try:
             db.session.execute(db.text('SELECT 1')).fetchone()
@@ -1331,7 +1400,7 @@ def init_web_routes(ctx: RouteDeps):
                 'has_snapshot': True,
             })
 
-        return render_template('diagnostics.html', checks=checks, running_rows=running_rows, pending_events=pending_events, backfill_metrics_rows=backfill_metrics_rows)
+        return render_template('diagnostics.html', checks=checks, running_rows=running_rows, pending_events=pending_events, backfill_metrics_rows=backfill_metrics_rows, panel_view=panel_view)
 
     @web_bp.route('/delete-monitor/test/<int:task_id>', methods=['POST'])
     def delete_monitor_test(task_id):

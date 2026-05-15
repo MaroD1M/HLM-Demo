@@ -2,7 +2,7 @@
   <div class="table-responsive table-shell">
     <table class="table table-grid">
     <thead>
-      <tr><th>名称</th><th>类型</th><th>聊天 ID</th><th>代理</th><th>状态</th><th>操作</th></tr>
+      <tr><th>名称</th><th>类型</th><th>聊天编号</th><th>代理</th><th>状态</th><th>操作</th></tr>
     </thead>
     <tbody>
     {% for n in notifiers %}
@@ -43,8 +43,8 @@
           <div class="section-card">
             <div class="section-title mb-2">连接配置</div>
             <div class="row g-3">
-              <div class="col-12"><label class="form-label">Bot Token</label><input class="form-control" name="api_key" value="{{ n.api_key }}" required></div>
-              <div class="col-md-6"><label class="form-label">聊天 ID</label><input class="form-control" name="chat_id" value="{{ n.chat_id or '' }}"></div>
+              <div class="col-12"><label class="form-label">机器人令牌</label><input class="form-control" name="api_key" value="{{ n.api_key }}" required></div>
+              <div class="col-md-6"><label class="form-label">聊天编号</label><input class="form-control" name="chat_id" value="{{ n.chat_id or '' }}"></div>
               <div class="col-md-6"><label class="form-label">任务代理(可选)</label><input class="form-control" name="proxy_url" value="{{ n.proxy_url or '' }}" placeholder="留空=使用系统设置中的统一代理"></div>
             </div>
           </div>

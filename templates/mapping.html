@@ -20,8 +20,8 @@
 <div class="section-card mb-3">
   <div class="section-title mb-2">筛选条件</div>
   <form class="row g-2 js-ajax-filter" data-target="mappingPanel" method="GET" action="/mapping">
-    <input type="hidden" name="panel_view" value="{{ panel_view or 'all' }}">
-    <div class="col-md-5"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索路径 / 文件关键字 / hash"></div>
+    <input type="hidden" name="panel_view" value="{{ panel_view or 'mapping' }}">
+    <div class="col-md-5"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索路径 / 文件关键字 / 哈希"></div>
     <div class="col-md-3">
       <select class="form-select" name="hash_state">
         <option value="all" {% if hash_state=='all' %}selected{% endif %}>全部关联状态</option>
@@ -45,11 +45,10 @@
 <div class="section-card mb-3">
   <div class="section-title mb-2">显示视图</div>
   <div class="d-flex gap-2 flex-wrap">
-    <a class="btn btn-sm {{ 'btn-brand' if (panel_view or 'all')=='all' else 'btn-outline-secondary' }}" href="/mapping?page={{ map_page }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&panel_view=all">全部</a>
-    <a class="btn btn-sm {{ 'btn-brand' if panel_view=='mapping' else 'btn-outline-secondary' }}" href="/mapping?page={{ map_page }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&panel_view=mapping">仅文件映射</a>
-    <a class="btn btn-sm {{ 'btn-brand' if panel_view=='cache' else 'btn-outline-secondary' }}" href="/mapping?page={{ map_page }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&panel_view=cache">仅缓存管理</a>
+        <a class="btn btn-sm {{ 'btn-brand' if panel_view=='mapping' else 'btn-outline-secondary' }}" href="/mapping?page={{ map_page }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&panel_view=mapping">文件映射</a>
+    <a class="btn btn-sm {{ 'btn-brand' if panel_view=='cache' else 'btn-outline-secondary' }}" href="/mapping?page={{ map_page }}&cache_page={{ cache_page }}&q={{ q or '' }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&panel_view=cache">缓存管理</a>
   </div>
-  <div class="form-text mt-2">小屏建议切换到单视图，避免表格拥挤。</div>
+  
 </div>
 
 <div id="mappingPanel" class="row g-3">
