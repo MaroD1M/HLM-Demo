@@ -3,7 +3,13 @@
 {% block content %}
 <div class="page-head">
   <h3 class="mb-0">系统仪表盘 <i class="fa-solid fa-gauge-high text-info"></i></h3>
-  <div class="page-actions"><span class="badge text-bg-info">运行任务 {{ running_count }}</span></div>
+  <div class="page-actions">
+    <button class="btn btn-outline-secondary" type="button" data-help-target="pageHelp" aria-expanded="false"><i class="fa-solid fa-circle-info me-1"></i><span class="help-toggle-label">页面说明</span></button>
+    <span class="badge text-bg-info">运行任务 {{ running_count }}</span>
+  </div>
+</div>
+<div id="pageHelp" class="section-card mb-3 d-none">
+  <div class="section-muted">本页用于总览任务健康、近期执行与关键异常入口；建议先看“待判定来源健康”再进入日志排查。</div>
 </div>
 <div class="row g-3 mb-3">
   <div class="col-12"><div class="card p-3" style="background:linear-gradient(120deg,#0c4f66,#0b7a75);color:#fff"><div class="d-flex justify-content-between align-items-center"><div><div style="opacity:.9">今日概览</div><div class="h5 mb-0">稳定运行中，已完成 {{ success_runs }} 次任务</div></div><div><i class="fa-solid fa-bolt fa-2x"></i></div></div></div></div>

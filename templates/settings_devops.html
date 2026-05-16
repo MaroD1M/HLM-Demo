@@ -1,7 +1,12 @@
 {% extends "base.html" %}
 {% block title %}开发与更新 - Hardlink Manager{% endblock %}
 {% block content %}
-<div class="page-head"><h3 class="mb-0">开发与更新</h3><button class="btn btn-outline-secondary" type="button" data-help-target="pageHelp" aria-expanded="false"><i class="fa-solid fa-circle-info me-1"></i><span class="help-toggle-label">页面说明</span></button></div>
+<div class="page-head">
+  <h3 class="mb-0">开发与更新</h3>
+  <div class="page-actions">
+    <button class="btn btn-outline-secondary" type="button" data-help-target="pageHelp" aria-expanded="false"><i class="fa-solid fa-circle-info me-1"></i><span class="help-toggle-label">页面说明</span></button>
+  </div>
+</div>
 
 <div id="pageHelp" class="section-card mb-3 d-none"><div class="section-muted">用于管理版本检查与开发模式配置；保存后开发模式需手动重启容器生效。</div></div>
 

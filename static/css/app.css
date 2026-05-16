@@ -66,6 +66,38 @@ h5 { font-size: var(--fs-20); }
   font-weight: 700;
 }
 
+.page-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.page-actions > form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.page-actions .form-control.form-control-sm {
+  min-width: 140px;
+}
+
+@media (max-width: 768px) {
+  .page-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .page-actions .form-control.form-control-sm {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
 .side .nav-link i {
   width: 18px;
   text-align: center;
