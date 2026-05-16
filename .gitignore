@@ -38,3 +38,6 @@ data/logs/*
 # Local runtime instance (root)
 instance/*
 !instance/.gitkeep
+
+# Local planning docs (do not track)
+docs/
