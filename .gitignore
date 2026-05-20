@@ -21,9 +21,16 @@ env/
 Thumbs.db
 .vscode/
 .idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
 # Local env
 .env
+*.env.local
+*.local
 
 # Runtime data (keep structure only)
 data/instance/*
@@ -39,5 +46,21 @@ data/logs/*
 instance/*
 !instance/.gitkeep
 
-# Local planning docs (do not track)
+# Local planning/agent docs and state
 docs/
+.taskmaster/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+
+# Temporary artifacts
+*.tmp
+*.bak
+
+# Dependency directories
+node_modules/
