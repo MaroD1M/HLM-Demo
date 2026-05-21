@@ -8,21 +8,50 @@
     <span class="badge text-bg-info">运行任务 {{ running_count }}</span>
   </div>
 </div>
+<style>
+  .kpi-card { min-height: 132px; }
+  .kpi-title { font-size: .92rem; color: #6c757d; }
+  .kpi-value { font-size: 1.65rem; line-height: 1.1; margin-bottom: .25rem; }
+  .kpi-sub { font-size: .82rem; color: #6c757d; }
+  .fail-top-list a { text-decoration: none; }
+  .fail-top-list .row-item { padding: .2rem 0; border-bottom: 1px dashed rgba(0,0,0,.06); }
+  .fail-top-list .row-item:last-child { border-bottom: 0; }
+</style>
 <div id="pageHelp" class="section-card mb-3 d-none">
-  <div class="section-muted">本页用于总览任务健康、近期执行与关键异常入口；建议先看“待判定来源健康”再进入日志排查。</div>
+  <div class="section-muted">本页用于查看任务健康、近期执行和异常入口；建议先看“待判定来源健康”，再进入日志排查。</div>
 </div>
 <div class="row g-3 mb-3">
   <div class="col-12"><div class="card p-3" style="background:linear-gradient(120deg,#0c4f66,#0b7a75);color:#fff"><div class="d-flex justify-content-between align-items-center"><div><div style="opacity:.9">今日概览</div><div class="h5 mb-0">稳定运行中，已完成 {{ success_runs }} 次任务</div></div><div><i class="fa-solid fa-bolt fa-2x"></i></div></div></div></div>
-  <div class="col-md-3"><div class="card p-3"><div class="muted">任务总数</div><div class="h4 mb-0">{{ total_tasks }}</div></div></div>
-  <div class="col-md-3"><div class="card p-3"><div class="muted">成功执行</div><div class="h4 mb-0 text-success">{{ success_runs }}</div></div></div>
-  <div class="col-md-3"><div class="card p-3"><div class="muted">失败执行</div><div class="h4 mb-0 text-danger">{{ failed_runs }}</div></div></div>
-  <div class="col-md-3"><div class="card p-3"><div class="muted">定时任务</div><div class="h4 mb-0">{{ cron_jobs|length }}</div></div></div>
-  <div class="col-12"><div class="card p-3 border-{{ 'warning' if pending_is_warn else 'success' }}"><div class="d-flex justify-content-between align-items-center flex-wrap gap-2"><div><div class="muted">待判定来源健康</div><div class="h5 mb-0">{{ pending_count }} / 阈值 {{ pending_warn_threshold }} {% if pending_is_warn %}<span class="badge text-bg-warning">超阈值</span>{% else %}<span class="badge text-bg-success">正常</span>{% endif %}</div><div class="small text-muted">最近事件：{% if latest_pending_event %}{{ fmt_dt(latest_pending_event.created_at) }}{% else %}暂无{% endif %}</div><div class="small text-muted">数量来自映射状态；事件来自操作日志，两者口径不同。</div></div><div class="d-flex gap-2 flex-wrap"><a class="btn btn-sm btn-outline-primary" href="/mapping?source_type=pending">查看待判定映射</a><a class="btn btn-sm btn-outline-warning" href="/logs?op=delete_pending_source">查看待判定事件日志</a><a class="btn btn-sm btn-outline-secondary" href="/diagnostics">系统诊断</a></div></div></div></div>
+  <div class="col-md-3"><div class="card p-3 kpi-card"><div class="kpi-title">任务总数</div><div class="kpi-value">{{ total_tasks }}</div></div></div>
+  <div class="col-md-3"><div class="card p-3 kpi-card"><div class="kpi-title">成功执行</div><div class="kpi-value text-success">{{ success_runs }}</div></div></div>
+  <div class="col-md-3"><div class="card p-3 kpi-card"><div class="kpi-title">失败执行</div><div class="kpi-value text-danger">{{ failed_runs }}</div></div></div>
+  <div class="col-md-3"><div class="card p-3 kpi-card"><div class="kpi-title">定时任务</div><div class="kpi-value">{{ cron_jobs|length }}</div></div></div>
+  <div class="col-md-4"><div class="card p-3 kpi-card"><div class="kpi-title">最近20次成功率</div><div class="kpi-value">{{ success_rate_20 }}%</div><div class="kpi-sub">成功 {{ success_20 }} / 失败 {{ fail_20 }}</div></div></div>
+  <div class="col-md-4"><div class="card p-3 kpi-card"><div class="kpi-title">最近20次平均耗时</div><div class="kpi-value">{{ avg_duration_ms_20 }}ms</div><div class="kpi-sub">95%任务耗时不超过 {{ p95_duration_ms_20 }}ms</div></div></div>
+  <div class="col-md-4">
+    <div class="card p-3 kpi-card">
+      <div class="kpi-title">最近200条失败类型</div>
+      {% if fail_type_top %}
+      <div class="fail-top-list small">
+        {% for item in fail_type_top %}
+        <div class="d-flex justify-content-between align-items-start row-item gap-2">
+          <a href="/logs?panel_view=logs&success=fail&op={{ item.key }}">{{ item.label }}</a>
+          <span class="text-muted">{{ item.count }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="kpi-sub mt-1">点击可查看对应失败日志</div>
+      {% else %}
+      <div class="kpi-sub">暂无失败日志</div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="col-12"><div class="card p-3 border-{{ 'warning' if pending_is_warn else 'success' }}"><div class="d-flex justify-content-between align-items-center flex-wrap gap-2"><div><div class="muted">待判定来源健康</div><div class="h5 mb-0">{{ pending_count }} / 阈值 {{ pending_warn_threshold }} {% if pending_is_warn %}<span class="badge text-bg-warning">超出阈值</span>{% else %}<span class="badge text-bg-success">正常</span>{% endif %}</div><div class="small text-muted">最近事件：{% if latest_pending_event %}{{ fmt_dt(latest_pending_event.created_at) }}{% else %}暂无{% endif %}</div><div class="small text-muted">上方数量来自映射记录，下方事件来自操作日志，统计口径不同。</div></div><div class="d-flex gap-2 flex-wrap"><a class="btn btn-sm btn-outline-primary" href="/mapping?source_type=pending">查看待判定映射</a><a class="btn btn-sm btn-outline-warning" href="/logs?op=delete_pending_source">查看待判定事件日志</a><a class="btn btn-sm btn-outline-secondary" href="/diagnostics">系统诊断</a></div></div></div></div>
 </div>
 <div class="row g-3">
   <div class="col-lg-6">
     <div class="section-card">
-      <div class="section-title mb-2">最近执行<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="可在这里重试失败任务或停止运行中任务；状态失效表示进程已结束但历史状态未刷新。"></i></div>
+      <div class="section-title mb-2">最近执行<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="可在这里重试失败任务或停止运行中任务；“状态待刷新”表示进程已结束，但页面状态还未更新。"></i></div>
       <div class="table-responsive table-shell">
         <table class="table table-grid">
           <thead><tr><th>时间</th><th>任务</th><th>来源</th><th>状态</th><th>耗时</th><th>操作</th></tr></thead>
@@ -30,7 +59,7 @@
           {% for e in recent_executions %}
             <tr>
               <td>{{ fmt_dt(e.started_at) }}</td><td>{{ e.job_name }}</td><td>{{ e.source }}</td>
-              <td>{% if e.id in stale_running_ids %}<span class="badge text-bg-warning">状态失效</span>{% elif e.status=='success' %}<span class="badge text-bg-success">成功</span>{% elif e.status=='failed' %}<span class="badge text-bg-danger">失败</span>{% else %}<span class="badge text-bg-secondary">运行中</span>{% endif %}</td>
+              <td>{% if e.id in stale_running_ids %}<span class="badge text-bg-warning">状态待刷新</span>{% elif e.status=='success' %}<span class="badge text-bg-success">成功</span>{% elif e.status=='failed' %}<span class="badge text-bg-danger">失败</span>{% else %}<span class="badge text-bg-secondary">运行中</span>{% endif %}</td>
               <td>{{ e.duration_ms or 0 }}ms</td>
               <td>{% if e.id in stale_running_ids %}<span class="text-muted">需刷新状态</span>{% elif e.status=='running' %}<form class="d-inline" action="/executions/stop/{{ e.id }}" method="POST" onsubmit="return confirm('确认停止该任务？')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">停止</button></form>{% else %}<form class="d-inline" action="/executions/retry/{{ e.id }}" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">重试</button></form>{% endif %}</td>
             </tr>

@@ -18,6 +18,8 @@ from core.deps import RouteDeps
 from core.services.hardlink_service import create_hardlink_for_file as svc_create_hardlink_for_file
 from core.services.delete_service import scan_delete_rows
 from core.services.backup_service import run_sqlite_backup
+from core.services.execution_service import ExecutionManager
+from core.services.migration_service import MigrationService
 from core.extensions import db, bcrypt, scheduler
 from core.models import HardlinkTask, DeleteMonitorTask, Downloader, Notifier, HardlinkCache, FileLinkMap, OperationLog, JobExecutionLog, DeletePendingAction, AppConfig, CronJob
 
@@ -160,8 +162,9 @@ def get_release_info(force_refresh=False):
             msg = '检查成功（Release模式）'
 
         has_update = bool(remote not in {'-', local_version})
-        set_config('version_check_cached_remote', remote)
-        set_config('version_check_cached_at', checked_at)
+        set_config('version_check_cached_remote', remote, commit=False)
+        set_config('version_check_cached_at', checked_at, commit=False)
+        db.session.commit()
         return {
             'local_version': local_version,
             'remote_version': remote,
@@ -186,10 +189,6 @@ def get_release_info(force_refresh=False):
 db.init_app(app)
 bcrypt.init_app(app)
 
-RUN_LOCK = Lock()
-RUNNING_META = {}
-STOP_REQUESTED_KEYS = set()
-RUNNING_KEYS = set()
 AUTH_LOCK = Lock()
 AUTH_FAIL_WINDOW_SECONDS = 60
 AUTH_FAIL_MAX_TIMES = 3
@@ -199,6 +198,15 @@ APP_BOOTSTRAPPED = False
 QB_SESSION_LOCK = Lock()
 QB_SESSION_CACHE = {}
 QB_SESSION_TTL_SECONDS = max(60, int(os.environ.get('QB_SESSION_TTL_SECONDS', '900') or '900'))
+EXEC_MGR = ExecutionManager(db, JobExecutionLog, lambda: datetime.now(UTC))
+MIGRATION_SVC = MigrationService(
+    db=db,
+    logger=app.logger,
+    instance_path_getter=lambda: app.instance_path,
+    app_version_getter=lambda: app.config.get('APP_VERSION', 'dev'),
+    get_config=lambda key, default=None: get_config(key, default),
+    run_sqlite_backup=run_sqlite_backup,
+)
 
 
 
@@ -355,7 +363,7 @@ def get_config(key, default=None):
     return config.value if config else default
 
 
-def set_config(key, value, description=None):
+def set_config(key, value, description=None, commit=True):
     config = AppConfig.query.filter_by(key=key).first()
     if config:
         config.value = value
@@ -363,26 +371,32 @@ def set_config(key, value, description=None):
             config.description = description
     else:
         db.session.add(AppConfig(key=key, value=value, description=description))
-    db.session.commit()
+    if commit:
+        db.session.commit()
 
 
-def log_operation(operation_type, target_type=None, target_id=None, target_name=None, message=None, success=True):
+def log_operation(operation_type, target_type=None, target_id=None, target_name=None, message=None, success=True, commit=True, execution_id=None):
+    if execution_id is None:
+        execution_id = EXEC_MGR.current_execution()
     db.session.add(OperationLog(
         operation_type=operation_type,
         target_type=target_type,
         target_id=target_id,
+        execution_id=execution_id,
         target_name=target_name,
         message=message,
         success=success,
     ))
-    db.session.commit()
+    if commit:
+        db.session.commit()
 
     level = logging.INFO if success else logging.WARNING
     app.logger.log(
         level,
-        'op=%s success=%s target=%s:%s name=%s msg=%s',
+        'op=%s success=%s exec=%s target=%s:%s name=%s msg=%s',
         operation_type,
         success,
+        execution_id if execution_id is not None else '-',
         target_type or '-',
         target_id if target_id is not None else '-',
         target_name or '-',
@@ -1049,12 +1063,19 @@ def scan_delete_task(task_id, should_stop=None):
         return False, '任务不存在或已禁用'
 
     monitor_root = str(Path(task.directory).resolve(strict=False))
-    rows = FileLinkMap.query.filter(FileLinkMap.deleted_at.is_(None)).all()
-    rows = [
-        row for row in rows
-        if _is_path_within_root(Path(row.source_path or ''), Path(monitor_root))
-        or _is_path_within_root(Path(row.dest_path or ''), Path(monitor_root))
-    ]
+    root_like = f'{monitor_root}/%'
+    rows = FileLinkMap.query.filter(
+        FileLinkMap.deleted_at.is_(None),
+        (
+            FileLinkMap.source_path == monitor_root
+        ) | (
+            FileLinkMap.source_path.like(root_like)
+        ) | (
+            FileLinkMap.dest_path == monitor_root
+        ) | (
+            FileLinkMap.dest_path.like(root_like)
+        )
+    ).all()
 
     ok, deleted_torrents, hit_count, pending_count = scan_delete_rows(
         task,
@@ -1082,7 +1103,7 @@ def scan_backfill_task(downloader_id=None, limit=500, should_stop=None):
     query = FileLinkMap.query.filter(FileLinkMap.torrent_hash.is_(None), FileLinkMap.deleted_at.is_(None), db.func.coalesce(FileLinkMap.backfill_fail_count, 0) <= max_failures)
     if downloader_id:
         query = query.filter(FileLinkMap.downloader_id == downloader_id)
-    rows = query.limit(limit).all()
+    rows = query.order_by(FileLinkMap.created_at.asc()).limit(limit).all()
 
     def resolve_downloader(did):
         if did:
@@ -1119,104 +1140,35 @@ def scan_backfill_task(downloader_id=None, limit=500, should_stop=None):
 
     return True, f'回填成功 {matched}，冲突 {conflicts}，跳过 {skipped}（耗时 {duration_ms}ms，批次 {limit}，下次批次 {next_limit}）'
 def is_stop_requested(run_key):
-    with RUN_LOCK:
-        return run_key in STOP_REQUESTED_KEYS
+    return EXEC_MGR.is_stop_requested(run_key)
 
 
 def request_stop_by_execution(execution_id):
-    with RUN_LOCK:
-        for key, meta in RUNNING_META.items():
-            if meta.get('execution_id') == execution_id:
-                STOP_REQUESTED_KEYS.add(key)
-                return True, meta
-    return False, None
+    return EXEC_MGR.request_stop_by_execution(execution_id)
 
 
 def get_running_executions_snapshot():
-    with RUN_LOCK:
-        return [dict(v) for _, v in RUNNING_META.items()]
+    return EXEC_MGR.get_running_executions_snapshot()
 
 
 def is_run_key_active(run_key):
-    with RUN_LOCK:
-        return run_key in RUNNING_KEYS
+    return EXEC_MGR.is_run_key_active(run_key)
 
 
 def get_run_meta(run_key):
-    with RUN_LOCK:
-        meta = RUNNING_META.get(run_key)
-        return dict(meta) if meta else None
-
-
-def _start_execution(job_name, job_type, source='manual', target_id=None):
-    started_at = datetime.now(UTC)
-    record = JobExecutionLog(
-        job_name=job_name,
-        job_type=job_type,
-        source=source,
-        target_id=target_id,
-        status='running',
-        started_at=started_at,
-    )
-    db.session.add(record)
-    db.session.commit()
-    return record, started_at
-
-
-def _finish_execution(record, started_at, ok, message):
-    finished_at = datetime.now(UTC)
-    record.status = 'success' if ok else 'failed'
-    record.message = message
-    record.finished_at = finished_at
-    record.duration_ms = int((finished_at - started_at).total_seconds() * 1000)
-    db.session.commit()
+    return EXEC_MGR.get_run_meta(run_key)
 
 
 def execute_with_guard(run_key, job_name, job_type, runner, source='manual', target_id=None):
-    with RUN_LOCK:
-        if run_key in RUNNING_KEYS:
-            meta = RUNNING_META.get(run_key, {})
-            started = meta.get('started_at')
-            if started:
-                elapsed = int((datetime.now(UTC) - started).total_seconds())
-                return False, f'任务正在执行中（已运行 {elapsed} 秒），请稍后重试'
-            return False, '任务正在执行中，请稍后重试'
-        RUNNING_KEYS.add(run_key)
-        STOP_REQUESTED_KEYS.discard(run_key)
-
-    record = None
-    started_at = None
-    try:
-        record, started_at = _start_execution(job_name, job_type, source=source, target_id=target_id)
-        with RUN_LOCK:
-            RUNNING_META[run_key] = {
-                'run_key': run_key,
-                'execution_id': record.id,
-                'job_name': job_name,
-                'job_type': job_type,
-                'source': source,
-                'target_id': target_id,
-                'started_at': started_at,
-            }
-
-        ok, message = runner(lambda: is_stop_requested(run_key))
-        _finish_execution(record, started_at, ok, message)
-        return ok, message
-    except Exception as exc:
-        db.session.rollback()
-        err = f'执行异常: {exc}'
-        if record and started_at:
-            try:
-                _finish_execution(record, started_at, False, err)
-            except Exception:
-                db.session.rollback()
-        log_operation('job_execute_failed', 'Job', target_id, job_name, err, False)
-        return False, err
-    finally:
-        with RUN_LOCK:
-            RUNNING_KEYS.discard(run_key)
-            RUNNING_META.pop(run_key, None)
-            STOP_REQUESTED_KEYS.discard(run_key)
+    return EXEC_MGR.execute_with_guard(
+        run_key,
+        job_name,
+        job_type,
+        runner,
+        log_operation=log_operation,
+        source=source,
+        target_id=target_id,
+    )
 
 
 def run_backup_task():
@@ -1434,24 +1386,19 @@ def update_cron_job(job_id):
 
 
 def _ensure_schema_meta_table():
-    db.session.execute(db.text("CREATE TABLE IF NOT EXISTS schema_meta (key VARCHAR(100) PRIMARY KEY, value VARCHAR(200))"))
+    MIGRATION_SVC._ensure_schema_meta_table()
 
 
 def _get_schema_meta_value(key, default=''):
-    _ensure_schema_meta_table()
-    row = db.session.execute(db.text("SELECT value FROM schema_meta WHERE key=:k"), {'k': key}).fetchone()
-    return str(row[0]) if row and row[0] is not None else default
+    return MIGRATION_SVC.get_schema_meta_value(key, default)
 
 
 def _set_schema_meta_value(key, value):
-    _ensure_schema_meta_table()
-    db.session.execute(db.text("DELETE FROM schema_meta WHERE key=:k"), {'k': key})
-    db.session.execute(db.text("INSERT INTO schema_meta(key, value) VALUES (:k, :v)"), {'k': key, 'v': str(value)})
+    MIGRATION_SVC.set_schema_meta_value(key, value)
 
 
 def _delete_schema_meta_key(key):
-    _ensure_schema_meta_table()
-    db.session.execute(db.text("DELETE FROM schema_meta WHERE key=:k"), {'k': key})
+    MIGRATION_SVC.delete_schema_meta_key(key)
 
 
 def _get_schema_version():
@@ -1465,189 +1412,8 @@ def _set_schema_version(version):
     _set_schema_meta_value('db_schema_version', str(version))
 
 
-def _migration_v1():
-    needed = {
-        'hardlink_task': {
-            'exclude_extensions': "ALTER TABLE hardlink_task ADD COLUMN exclude_extensions VARCHAR(500) DEFAULT ''",
-            'min_file_age_seconds': 'ALTER TABLE hardlink_task ADD COLUMN min_file_age_seconds INTEGER DEFAULT 300',
-        },
-        'delete_monitor_task': {
-            'cooldown_seconds': 'ALTER TABLE delete_monitor_task ADD COLUMN cooldown_seconds INTEGER DEFAULT 120',
-            'max_deletes_per_run': 'ALTER TABLE delete_monitor_task ADD COLUMN max_deletes_per_run INTEGER DEFAULT 20',
-            'dry_run': 'ALTER TABLE delete_monitor_task ADD COLUMN dry_run BOOLEAN DEFAULT 0',
-        },
-    }
-    for table, fields in needed.items():
-        existing = {row[1] for row in db.session.execute(db.text(f'PRAGMA table_info({table})')).fetchall()}
-        for col, sql in fields.items():
-            if col not in existing:
-                db.session.execute(db.text(sql))
-
-
-def _migration_v2():
-    db.session.execute(db.text("CREATE TABLE IF NOT EXISTS delete_pending_action (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id INTEGER NOT NULL, file_map_id INTEGER NOT NULL, deleted_path VARCHAR(1000) NOT NULL, torrent_hash VARCHAR(64), match_by VARCHAR(50) DEFAULT 'no_match', status VARCHAR(20) DEFAULT 'pending', reason VARCHAR(500), created_at DATETIME, confirmed_at DATETIME)"))
-
-
-def _migration_v3():
-    needed = {
-        'downloader': {
-            'proxy_url': 'ALTER TABLE downloader ADD COLUMN proxy_url VARCHAR(300)',
-        },
-        'notifier': {
-            'proxy_url': 'ALTER TABLE notifier ADD COLUMN proxy_url VARCHAR(300)',
-        },
-        'file_link_map': {
-            'source_type': "ALTER TABLE file_link_map ADD COLUMN source_type VARCHAR(20) DEFAULT 'manual'",
-        },
-    }
-    for table, fields in needed.items():
-        existing = {row[1] for row in db.session.execute(db.text(f'PRAGMA table_info({table})')).fetchall()}
-        for col, sql in fields.items():
-            if col not in existing:
-                db.session.execute(db.text(sql))
-
-    db.session.execute(db.text("UPDATE file_link_map SET source_type = CASE WHEN torrent_hash IS NOT NULL AND TRIM(torrent_hash) <> '' THEN 'downloader' ELSE 'manual' END WHERE source_type IS NULL OR TRIM(source_type) = ''"))
-
-
-
-
-def _migration_v4():
-    needed = {
-        'delete_monitor_task': {
-            'notify_on_delete': 'ALTER TABLE delete_monitor_task ADD COLUMN notify_on_delete BOOLEAN DEFAULT 1',
-            'notify_on_risky_delete': 'ALTER TABLE delete_monitor_task ADD COLUMN notify_on_risky_delete BOOLEAN DEFAULT 1',
-        },
-    }
-    for table, fields in needed.items():
-        existing = {row[1] for row in db.session.execute(db.text(f'PRAGMA table_info({table})')).fetchall()}
-        for col, sql in fields.items():
-            if col not in existing:
-                db.session.execute(db.text(sql))
-
-def _migration_v5():
-    # Add commonly used indexes to speed up logs/mapping pages on larger datasets.
-    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_operation_log_created_at ON operation_log(created_at)'))
-    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_operation_log_type ON operation_log(operation_type)'))
-    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_operation_log_success_created ON operation_log(success, created_at)'))
-    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_file_link_map_created_at ON file_link_map(created_at)'))
-    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_hardlink_cache_created_at ON hardlink_cache(created_at)'))
-    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_delete_pending_status_created ON delete_pending_action(status, created_at)'))
-    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_job_execution_started_at ON job_execution_log(started_at)'))
-
-
-def _migration_v6():
-    needed = {
-        'file_link_map': {
-            'backfill_fail_count': 'ALTER TABLE file_link_map ADD COLUMN backfill_fail_count INTEGER DEFAULT 0',
-            'backfill_last_attempt_at': 'ALTER TABLE file_link_map ADD COLUMN backfill_last_attempt_at DATETIME',
-        },
-    }
-    for table, fields in needed.items():
-        existing = {row[1] for row in db.session.execute(db.text(f'PRAGMA table_info({table})')).fetchall()}
-        for col, sql in fields.items():
-            if col not in existing:
-                db.session.execute(db.text(sql))
-    db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_file_link_map_backfill_fail_count ON file_link_map(backfill_fail_count)"))
-
-
-def pre_migration_backup_if_needed(target_schema):
-    # Create one-off backup on first run of a new app version before schema migration.
-    current_version = app.config.get('APP_VERSION', 'dev')
-    last_version = _get_schema_meta_value('last_app_version', '')
-    current_schema = _get_schema_version()
-
-    if current_schema >= target_schema:
-        return True, '当前数据库结构已是目标版本，无需升级前备份'
-    if last_version == current_version:
-        return True, '当前版本已执行过启动流程，无需重复升级前备份'
-
-    backup_done_for = _get_schema_meta_value('pre_migration_backup_for_version', '')
-    backup_path_done = _get_schema_meta_value('pre_migration_backup_path', '')
-    if backup_done_for == current_version and backup_path_done:
-        return True, f'已存在本版本升级前备份: {backup_path_done}'
-
-    db_file = Path(app.instance_path) / 'hardlink_manager.db'
-    if not db_file.exists():
-        return True, '数据库文件尚不存在，跳过升级前备份'
-
-    backup_base = (get_config('backup_dir', '/app/data/backups') or '/app/data/backups').strip()
-    backup_dir = str(Path(backup_base) / 'migration-pre')
-
-    keep_last = int(get_config('backup_keep_last', '7') or '7')
-    ok, msg, backup_path = run_sqlite_backup(str(db_file), backup_dir, keep_last=max(1, keep_last))
-    if not ok:
-        _set_schema_meta_value('last_migration_status', 'backup_failed')
-        _set_schema_meta_value('last_migration_error', msg)
-        db.session.commit()
-        return False, msg
-
-    stamped = datetime.now(UTC).isoformat()
-    _set_schema_meta_value('pre_migration_backup_for_version', current_version)
-    _set_schema_meta_value('pre_migration_backup_path', backup_path or '-')
-    _set_schema_meta_value('pre_migration_backup_at', stamped)
-    _set_schema_meta_value('last_migration_status', 'backup_ok')
-    _delete_schema_meta_key('last_migration_error')
-    db.session.commit()
-    app.logger.info('pre migration backup created for %s: %s', current_version, backup_path)
-    return True, f'升级前备份完成: {backup_path}'
-
-
-def _migration_v7():
-    needed = {
-        'hardlink_task': {
-            'monitor_source_delete': 'ALTER TABLE hardlink_task ADD COLUMN monitor_source_delete BOOLEAN DEFAULT 1',
-            'monitor_dest_delete': 'ALTER TABLE hardlink_task ADD COLUMN monitor_dest_delete BOOLEAN DEFAULT 1',
-            'delete_downloader_id': 'ALTER TABLE hardlink_task ADD COLUMN delete_downloader_id INTEGER',
-            'delete_notifier_id': 'ALTER TABLE hardlink_task ADD COLUMN delete_notifier_id INTEGER',
-            'delete_cooldown_seconds': 'ALTER TABLE hardlink_task ADD COLUMN delete_cooldown_seconds INTEGER DEFAULT 120',
-            'delete_max_deletes_per_run': 'ALTER TABLE hardlink_task ADD COLUMN delete_max_deletes_per_run INTEGER DEFAULT 20',
-            'delete_dry_run': 'ALTER TABLE hardlink_task ADD COLUMN delete_dry_run BOOLEAN DEFAULT 0',
-            'delete_notify_on_delete': 'ALTER TABLE hardlink_task ADD COLUMN delete_notify_on_delete BOOLEAN DEFAULT 1',
-            'delete_notify_on_risky_delete': 'ALTER TABLE hardlink_task ADD COLUMN delete_notify_on_risky_delete BOOLEAN DEFAULT 1',
-        },
-    }
-    for table, fields in needed.items():
-        existing = {row[1] for row in db.session.execute(db.text(f'PRAGMA table_info({table})')).fetchall()}
-        for col, sql in fields.items():
-            if col not in existing:
-                db.session.execute(db.text(sql))
-
-
-def _migration_v8():
-    # Backfill-heavy query acceleration on large datasets.
-    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_file_link_map_backfill_lookup ON file_link_map(torrent_hash, deleted_at, backfill_fail_count, downloader_id)'))
-    db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_file_link_map_source_state ON file_link_map(source_type, deleted_at, last_seen_at)'))
-
-
-def _migration_v9():
-    needed = {
-        'downloader': {
-            'session_ttl_seconds': 'ALTER TABLE downloader ADD COLUMN session_ttl_seconds INTEGER',
-        },
-    }
-    for table, fields in needed.items():
-        existing = {row[1] for row in db.session.execute(db.text(f'PRAGMA table_info({table})')).fetchall()}
-        for col, sql in fields.items():
-            if col not in existing:
-                db.session.execute(db.text(sql))
-
-
 def ensure_compat_columns():
-    # Versioned, idempotent migrations. Supports forward upgrades safely.
-    # For downgrades, restore DB from backup before running older code.
-    target = 9
-    current = _get_schema_version()
-    if current > target:
-        app.logger.warning('db schema version %s is newer than app target %s; running in compatibility mode', current, target)
-        return
-
-    migrations = {1: _migration_v1, 2: _migration_v2, 3: _migration_v3, 4: _migration_v4, 5: _migration_v5, 6: _migration_v6, 7: _migration_v7, 8: _migration_v8, 9: _migration_v9}
-    for version in range(current + 1, target + 1):
-        migrations[version]()
-        _set_schema_version(version)
-        app.logger.info('db migration applied: v%s', version)
-
-    db.session.commit()
+    MIGRATION_SVC.ensure_compat_columns()
 
 
 def init_defaults():
@@ -1701,9 +1467,13 @@ def init_defaults():
         ('last_dev_apply_message', '', '开发模式最近应用消息'),
         ('last_dev_apply_at', '', '开发模式最近应用时间'),
     ]
+    changed = False
     for key, value, desc in default_configs:
         if not AppConfig.query.filter_by(key=key).first():
-            set_config(key, value, desc)
+            set_config(key, value, desc, commit=False)
+            changed = True
+    if changed:
+        db.session.commit()
 
 
 def init_system_jobs():
@@ -1793,7 +1563,7 @@ def init_app():
             except Exception as exc:
                 app.logger.warning('consume dev apply result failed: %s', exc)
 
-        backup_ok, backup_msg = pre_migration_backup_if_needed(target_schema=9)
+        backup_ok, backup_msg = MIGRATION_SVC.pre_migration_backup_if_needed(target_schema=11)
         if not backup_ok:
             app.logger.error('pre migration backup failed: %s', backup_msg)
             raise RuntimeError(f'升级前备份失败，已中止启动: {backup_msg}')

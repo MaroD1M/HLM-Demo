@@ -161,6 +161,7 @@ class OperationLog(db.Model):
     operation_type = db.Column(db.String(50), nullable=False)
     target_type = db.Column(db.String(50))
     target_id = db.Column(db.Integer)
+    execution_id = db.Column(db.Integer, index=True)
     target_name = db.Column(db.String(200))
     message = db.Column(db.String(1000))
     success = db.Column(db.Boolean, default=True)

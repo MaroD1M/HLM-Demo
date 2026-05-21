@@ -19,7 +19,7 @@
 </div>
 
 <div id="pageHelp" class="section-card mb-3 d-none">
-  <div class="section-muted">映射=源与目标关系；缓存=已处理标记。清理时仅影响记录，不删除真实文件。</div>
+  <div class="section-muted">映射是源文件与目标文件的对应关系；缓存是“已处理”标记。清理只影响记录，不会删除真实文件。</div>
 </div>
 
 <div class="section-card mb-3">
@@ -43,7 +43,7 @@
       </select>
     </div>
     <div class="col-md-2">
-      <select class="form-select" name="source_type" data-bs-toggle="tooltip" title="待判定表示来源尚在自动关联确认窗口，删除联动会保守处理。">
+      <select class="form-select" name="source_type" data-bs-toggle="tooltip" title="“待判定”表示来源仍在自动关联确认窗口内，删除联动会先保护，不会立即执行高风险操作。">
         <option value="all" {% if (source_type or 'all')=='all' %}selected{% endif %}>全部来源</option>
         <option value="manual" {% if source_type=='manual' %}selected{% endif %}>手动文件</option>
         <option value="downloader" {% if source_type=='downloader' %}selected{% endif %}>下载器文件</option>
