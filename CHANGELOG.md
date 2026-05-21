@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [v0.2.11] - 2026-05-21
+
+### 新增
+- 任务执行链路增加 `execution_id`，并写入 `operation_log`，用于一次执行的日志串联追踪。
+- 日志页新增按 `execution_id` 筛选能力，支持在快捷筛选与分页中保留参数。
+- 仪表盘新增运行质量指标：近20次成功率、平均耗时、P95 耗时、失败类型 Top 聚合。
+
+### 优化
+- 执行管理逻辑抽离到 `core/services/execution_service.py`，统一并发互斥、停止请求与执行上下文。
+- 迁移逻辑抽离到 `core/services/migration_service.py`，并清理 `app.py` 中重复迁移实现。
+- 启动前迁移备份目标版本与当前 schema 目标对齐（升级到 v11 流程）。
+- 删除联动与回填查询路径优化，新增索引以提升映射扫描与过滤效率。
+- `Makefile` 默认 `test` 更新为 `pytest -q tests` 全量测试。
+
+### 测试
+- 新增回归测试：日志页 execution_id 过滤、仪表盘新增 KPI 区块渲染检查。
+
+
 ## [v0.2.10] - 2026-05-16
 
 ### 优化

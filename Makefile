@@ -10,7 +10,7 @@ lint-compile:
 	$(PY) -m py_compile app.py core/deps.py core/extensions.py core/models.py core/routes/*.py core/services/*.py
 
 test:
-	$(PY) -m pytest -q tests/test_routes_smoke.py
+	$(PY) -m pytest -q tests
 
 smoke:
 	$(PY) -c "from app import app, init_app; [init_app() for _ in [0] if app.app_context().push() is None]; c=app.test_client(); paths=['/api/health','/','/hardlink','/delete-monitor','/cron','/downloader','/notifier','/logs','/settings']; [(__import__('builtins').print(p, c.get(p).status_code), (_ for _ in ()).throw(AssertionError(f'{p} failed')) if c.get(p).status_code!=200 else None) for p in paths]; print('Smoke check passed.')"

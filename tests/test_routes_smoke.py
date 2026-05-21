@@ -489,3 +489,35 @@ def test_diagnostics_panel_view_switch():
     assert r2.status_code == 200
     t2 = r2.get_data(as_text=True)
     assert '最近自动关联指标' in t2
+
+
+def test_logs_execution_id_filter_works():
+    client = _client()
+    with app.app_context():
+        from app import db, OperationLog
+        row = OperationLog(
+            operation_type='test_exec_filter',
+            target_type='Test',
+            target_id=1,
+            execution_id=987654321,
+            target_name='smoke',
+            message='exec-filter-smoke',
+            success=True,
+        )
+        db.session.add(row)
+        db.session.commit()
+
+    resp = client.get('/logs?execution_id=987654321')
+    assert resp.status_code == 200
+    text = resp.get_data(as_text=True)
+    assert 'exec-filter-smoke' in text
+
+
+def test_dashboard_contains_new_kpi_blocks():
+    client = _client()
+    resp = client.get('/')
+    assert resp.status_code == 200
+    text = resp.get_data(as_text=True)
+    assert '最近20次成功率' in text
+    assert '最近20次平均耗时' in text
+    assert '最近200条失败类型' in text

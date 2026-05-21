@@ -380,6 +380,31 @@ def init_web_routes(ctx: RouteDeps):
         executions = JobExecutionLog.query.order_by(JobExecutionLog.started_at.desc()).limit(10).all()
         success_runs = JobExecutionLog.query.filter_by(status='success').count()
         failed_runs = JobExecutionLog.query.filter_by(status='failed').count()
+        recent_20 = JobExecutionLog.query.order_by(JobExecutionLog.started_at.desc()).limit(20).all()
+        finished_20 = [e for e in recent_20 if e.status in {'success', 'failed'}]
+        success_20 = len([e for e in finished_20 if e.status == 'success'])
+        fail_20 = len([e for e in finished_20 if e.status == 'failed'])
+        success_rate_20 = int((success_20 * 100) / len(finished_20)) if finished_20 else 100
+        durations = [int(e.duration_ms or 0) for e in finished_20 if int(e.duration_ms or 0) > 0]
+        avg_duration_ms_20 = int(sum(durations) / len(durations)) if durations else 0
+        p95_duration_ms_20 = 0
+        if durations:
+            sorted_d = sorted(durations)
+            idx = max(0, min(len(sorted_d) - 1, int(len(sorted_d) * 0.95) - 1))
+            p95_duration_ms_20 = sorted_d[idx]
+
+        fail_logs = OperationLog.query.filter_by(success=False).order_by(OperationLog.created_at.desc()).limit(200).all()
+        fail_type_counter = {}
+        for row in fail_logs:
+            key = str(row.operation_type or 'unknown').strip() or 'unknown'
+            fail_type_counter[key] = fail_type_counter.get(key, 0) + 1
+        fail_type_top = []
+        for op_key, cnt in sorted(fail_type_counter.items(), key=lambda x: x[1], reverse=True)[:5]:
+            fail_type_top.append({
+                'key': op_key,
+                'label': _op_type_label(op_key),
+                'count': cnt,
+            })
 
         running_snaps = get_running_executions_snapshot()
         running_ids = set([x.get('execution_id') for x in running_snaps if x.get('execution_id')])
@@ -413,6 +438,12 @@ def init_web_routes(ctx: RouteDeps):
             failed_runs=failed_runs,
             running_executions=running_snaps,
             stale_running_ids=stale_running_ids,
+            success_rate_20=success_rate_20,
+            success_20=success_20,
+            fail_20=fail_20,
+            avg_duration_ms_20=avg_duration_ms_20,
+            p95_duration_ms_20=p95_duration_ms_20,
+            fail_type_top=fail_type_top,
             pending_count=pending_count,
             pending_warn_threshold=pending_warn_threshold,
             pending_is_warn=pending_is_warn,
@@ -973,6 +1004,8 @@ def init_web_routes(ctx: RouteDeps):
                 (FileLinkMap.dest_path.like(like)) |
                 (FileLinkMap.torrent_hash.like(like))
             )
+        if hash_state in {'linked', 'unlinked'}:
+            mapping_q = mapping_q.filter(FileLinkMap.deleted_at.is_(None))
         if hash_state == 'linked':
             mapping_q = mapping_q.filter(FileLinkMap.torrent_hash.isnot(None))
         elif hash_state == 'unlinked':
@@ -1171,6 +1204,7 @@ def init_web_routes(ctx: RouteDeps):
         exec_page = max(request.args.get('exec_page', 1, type=int), 1)
         q = (request.args.get('q') or '').strip()
         op = (request.args.get('op') or '').strip()
+        exec_id = (request.args.get('execution_id') or '').strip()
         success = (request.args.get('success') or 'all').strip()
         exec_status = (request.args.get('exec_status') or 'all').strip()
         panel_view = (request.args.get('panel_view') or 'logs').strip().lower()
@@ -1191,6 +1225,11 @@ def init_web_routes(ctx: RouteDeps):
             log_q = log_q.filter(OperationLog.success.is_(True))
         elif success == 'fail':
             log_q = log_q.filter(OperationLog.success.is_(False))
+        if exec_id:
+            try:
+                log_q = log_q.filter(OperationLog.execution_id == int(exec_id))
+            except Exception:
+                pass
 
         pagination = log_q.order_by(OperationLog.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
         operations = [r[0] for r in db.session.query(OperationLog.operation_type).distinct().order_by(OperationLog.operation_type.asc()).all()]
@@ -1210,6 +1249,7 @@ def init_web_routes(ctx: RouteDeps):
             exec_total_pages=max(executions_pg.pages, 1),
             q=q,
             op=op,
+            execution_id=exec_id,
             success=success,
             operations=operations,
             exec_status=exec_status,
@@ -1250,6 +1290,7 @@ def init_web_routes(ctx: RouteDeps):
         return render_template('settings_devops.html', settings=settings, release=release)
 
     def _save_settings_from_form(form, allowed_keys=None):
+        changed = False
         for key in SETTINGS_SAVE_KEYS:
             if allowed_keys is not None and key not in allowed_keys:
                 continue
@@ -1261,7 +1302,8 @@ def init_web_routes(ctx: RouteDeps):
             if key == 'dev_git_token':
                 clear_token = (form.get('dev_git_token_clear') or '').strip() == 'true'
                 if clear_token:
-                    set_config('dev_git_token', '')
+                    set_config('dev_git_token', '', commit=False)
+                    changed = True
                     continue
                 if value == '':
                     # Keep existing token when password field is left empty.
@@ -1279,7 +1321,10 @@ def init_web_routes(ctx: RouteDeps):
                     return False, checked
                 value = checked
 
-            set_config(key, value)
+            set_config(key, value, commit=False)
+            changed = True
+        if changed:
+            db.session.commit()
         return True, ''
 
     @web_bp.route('/settings/save', methods=['POST'])
@@ -1326,6 +1371,7 @@ def init_web_routes(ctx: RouteDeps):
             return redirect('/settings')
         allowed = IMPORTABLE_SETTINGS_KEYS
         applied = 0
+        changed = False
         for k,v in payload.items():
             if k in allowed and v is not None and v != '***':
                 value = str(v)
@@ -1339,8 +1385,11 @@ def init_web_routes(ctx: RouteDeps):
                     if not ok:
                         return _json_or_redirect(False, f'配置导入失败: {checked}', '/settings', status=400)
                     value = checked
-                set_config(k, value)
+                set_config(k, value, commit=False)
+                changed = True
                 applied += 1
+        if changed:
+            db.session.commit()
         return _json_or_redirect(True, f'配置导入完成，已更新 {applied} 项', '/settings')
 
     @web_bp.route('/diagnostics/backfill-metrics')

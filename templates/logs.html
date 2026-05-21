@@ -29,7 +29,8 @@
   <div class="section-title mb-2">筛选条件</div>
   <form class="row g-2 js-ajax-filter" data-target="logsPanel" method="GET" action="/logs">
     <input type="hidden" name="panel_view" value="{{ panel_view or 'logs' }}">
-    <div class="col-md-3"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索消息 / 目标 / 类型"></div>
+    <div class="col-md-2"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索消息 / 目标 / 类型"></div>
+    <div class="col-md-2"><input class="form-control" name="execution_id" value="{{ execution_id or '' }}" placeholder="执行ID"></div>
     <div class="col-md-2">
       <select class="form-select" name="op">
         <option value="">全部类型</option>
@@ -63,16 +64,16 @@
     <div class="col-md-1 d-flex gap-2"><button class="btn btn-brand w-100" type="submit">筛选</button></div>
     <div class="col-md-1 d-flex gap-2"><a class="btn btn-outline-secondary w-100" href="/logs?panel_view={{ panel_view or 'logs' }}">重置</a></div>
     <div class="col-12 d-flex gap-2 flex-wrap">
-      <a class="btn btn-sm btn-outline-warning" href="/logs?panel_view=logs&op=delete_pending_source&per_page={{ per_page or 20 }}">待判定来源事件</a>
-      <a class="btn btn-sm btn-outline-danger" href="/logs?panel_view=logs&success=fail&per_page={{ per_page or 20 }}">仅失败日志</a>
-      <a class="btn btn-sm btn-outline-secondary" href="/logs?panel_view=executions&exec_status=running&per_page={{ per_page or 20 }}">仅运行中任务</a>
+      <a class="btn btn-sm btn-outline-warning" href="/logs?panel_view=logs&op=delete_pending_source&per_page={{ per_page or 20 }}&execution_id={{ execution_id or '' }}">待判定来源事件</a>
+      <a class="btn btn-sm btn-outline-danger" href="/logs?panel_view=logs&success=fail&per_page={{ per_page or 20 }}&execution_id={{ execution_id or '' }}">仅失败日志</a>
+      <a class="btn btn-sm btn-outline-secondary" href="/logs?panel_view=executions&exec_status=running&per_page={{ per_page or 20 }}&execution_id={{ execution_id or '' }}">仅运行中任务</a>
     </div>
   </form>
 </div>
 
 <div id="logsPanel" class="section-card">
   {% if (panel_view or 'logs') == 'logs' %}
-  <div class="section-title mb-2">操作日志<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="失败不一定代表系统异常，可能是保护策略触发（如待判定来源暂不删种）。"></i></div>
+  <div class="section-title mb-2">操作日志<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="失败不一定是系统异常，也可能是保护策略生效（例如待判定来源阶段暂不删种）。"></i></div>
   <div class="table-responsive table-shell">
     <table class="table align-middle table-grid logs-op-table">
       <thead>
@@ -112,14 +113,14 @@
   <div class="panel-pagination">
     <small class="text-muted">第 {{ page }} / {{ total_pages }} 页</small>
     <div>
-      {% if page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page-1 }}&exec_page={{ exec_page or 1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&per_page={{ per_page or 20 }}&panel_view={{ panel_view or 'logs' }}">上一页</a>{% endif %}
-      {% if page<total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page+1 }}&exec_page={{ exec_page or 1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&per_page={{ per_page or 20 }}&panel_view={{ panel_view or 'logs' }}">下一页</a>{% endif %}
+      {% if page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page-1 }}&exec_page={{ exec_page or 1 }}&q={{ q or '' }}&op={{ op or '' }}&execution_id={{ execution_id or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&per_page={{ per_page or 20 }}&panel_view={{ panel_view or 'logs' }}">上一页</a>{% endif %}
+      {% if page<total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page+1 }}&exec_page={{ exec_page or 1 }}&q={{ q or '' }}&op={{ op or '' }}&execution_id={{ execution_id or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&per_page={{ per_page or 20 }}&panel_view={{ panel_view or 'logs' }}">下一页</a>{% endif %}
     </div>
   </div>
   {% endif %}
 
   {% if (panel_view or 'logs') == 'executions' %}
-  <div class="section-title mb-2">任务执行历史<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="记录每次任务执行结果与耗时，便于判断是否需要调整定时频率或任务阈值。"></i></div>
+  <div class="section-title mb-2">任务执行历史<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="记录每次任务的执行结果和耗时，便于判断是否需要调整任务频率或阈值。"></i></div>
   <div class="table-responsive table-shell">
     <table class="table align-middle table-grid">
       <thead>
@@ -160,8 +161,8 @@
   <div class="panel-pagination">
     <small class="text-muted">第 {{ exec_page or 1 }} / {{ exec_total_pages or 1 }} 页</small>
     <div>
-      {% if (exec_page or 1)>1 %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page or 1 }}&exec_page={{ (exec_page or 1)-1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&per_page={{ per_page or 20 }}&panel_view=executions">上一页</a>{% endif %}
-      {% if (exec_page or 1)<(exec_total_pages or 1) %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page or 1 }}&exec_page={{ (exec_page or 1)+1 }}&q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&per_page={{ per_page or 20 }}&panel_view=executions">下一页</a>{% endif %}
+      {% if (exec_page or 1)>1 %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page or 1 }}&exec_page={{ (exec_page or 1)-1 }}&q={{ q or '' }}&op={{ op or '' }}&execution_id={{ execution_id or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&per_page={{ per_page or 20 }}&panel_view=executions">上一页</a>{% endif %}
+      {% if (exec_page or 1)<(exec_total_pages or 1) %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page or 1 }}&exec_page={{ (exec_page or 1)+1 }}&q={{ q or '' }}&op={{ op or '' }}&execution_id={{ execution_id or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&per_page={{ per_page or 20 }}&panel_view=executions">下一页</a>{% endif %}
     </div>
   </div>
   {% endif %}

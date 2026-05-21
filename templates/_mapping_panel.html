@@ -1,5 +1,5 @@
 {% if (panel_view or 'mapping') == 'mapping' %}
-    <div class="section-title mb-2">文件映射（关联关系）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单删、批量删、全选/反选；支持查看自动关联失败次数并手动重置。来源=待判定 时表示映射刚重建或尚在自动关联窗口，删除联动会保守处理。"></i></div>
+    <div class="section-title mb-2">文件映射（关联关系）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单条删除、批量删除、全选/反选；也可查看自动关联失败次数并手动重置。来源为“待判定”时，删除联动会先保护处理。"></i></div>
     <div class="section-muted mb-2">支持快速/深度重试、失败计数重置与批量删除。</div>
             <form id="mapBulkForm" action="/mapping/link/bulk-delete" method="POST" class="d-none js-ajax-form" data-target="mappingPanel">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -88,7 +88,7 @@
     {% endif %}
 
 {% if (panel_view or 'mapping') == 'cache' %}
-    <div class="section-title mb-2">硬链接缓存（命中后跳过）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单删、批量删、全选/反选。"></i></div>
+    <div class="section-title mb-2">硬链接缓存（命中后跳过）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单条删除、批量删除、全选/反选。"></i></div>
     <div class="section-muted mb-2">用于管理跳过记录，删除后文件可再次参与硬链接。</div>
             <form id="cacheBulkForm" action="/mapping/cache/bulk-delete" method="POST" class="d-none js-ajax-form" data-target="mappingPanel">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
