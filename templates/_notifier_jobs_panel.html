@@ -1,24 +1,46 @@
 <div class="section-card">
   <div class="table-responsive table-shell">
-    <table class="table table-grid">
+    <table class="table align-middle table-grid list-card-table">
     <thead>
-      <tr><th>名称</th><th>类型</th><th>聊天编号</th><th>代理</th><th>状态</th><th>操作</th></tr>
+      <tr><th class="col-name">名称</th><th class="col-type">类型</th><th class="col-chat">聊天编号</th><th class="col-proxy">代理</th><th class="col-status">状态</th><th class="col-actions">操作</th></tr>
     </thead>
     <tbody>
     {% for n in notifiers %}
       <tr>
-        <td>{{ n.name }}</td>
-        <td>{{ n.type }}</td>
-        <td>{{ n.chat_id or '-' }}</td>
-        <td><small>{{ n.proxy_url or '全局' }}</small></td>
-        <td>{% if n.enabled %}<span class="badge text-bg-success">启用</span>{% else %}<span class="badge text-bg-secondary">禁用</span>{% endif %}</td>
-        <td>
-          <form class="d-inline js-ajax-form" action="/notifier/test/{{ n.id }}" method="POST" data-target="notifierJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">测试</button></form>
-          <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editNotifierModal{{ n.id }}">修改</button>
-          <form class="d-inline js-ajax-form" action="/notifier/toggle/{{ n.id }}" method="POST" data-target="notifierJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">{{ '禁用' if n.enabled else '启用' }}</button></form>
-          <form class="d-inline js-ajax-form" action="/notifier/delete/{{ n.id }}" method="POST" data-target="notifierJobsPanel" data-confirm="确认删除该通知器？"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>
+        <td class="wrap-any" data-label="名称">{{ n.name }}</td>
+        <td class="wrap-any" data-label="类型">{{ n.type }}</td>
+        <td class="wrap-any" data-label="聊天编号">
+          <div class="inline-copy">
+            <span>{{ n.chat_id or '-' }}</span>
+            {% if n.chat_id %}
+            <button class="btn btn-xs btn-outline-secondary js-copy-btn" type="button" data-copy-text="{{ n.chat_id }}" title="复制聊天编号">
+              <i class="fa-regular fa-copy"></i>
+            </button>
+            {% endif %}
+          </div>
+        </td>
+        <td class="wrap-any" data-label="代理">
+          <div class="inline-copy">
+            <small>{{ n.proxy_url or '全局' }}</small>
+            {% if n.proxy_url %}
+            <button class="btn btn-xs btn-outline-secondary js-copy-btn" type="button" data-copy-text="{{ n.proxy_url }}" title="复制代理地址">
+              <i class="fa-regular fa-copy"></i>
+            </button>
+            {% endif %}
+          </div>
+        </td>
+        <td class="text-center" data-label="状态">{% if n.enabled %}<span class="badge text-bg-success">启用</span>{% else %}<span class="badge text-bg-secondary">禁用</span>{% endif %}</td>
+        <td class="col-actions">
+          <div class="list-actions">
+            <form class="d-inline js-ajax-form" action="/notifier/test/{{ n.id }}" method="POST" data-target="notifierJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">测试</button></form>
+            <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editNotifierModal{{ n.id }}">修改</button>
+            <form class="d-inline js-ajax-form" action="/notifier/toggle/{{ n.id }}" method="POST" data-target="notifierJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">{{ '禁用' if n.enabled else '启用' }}</button></form>
+            <form class="d-inline js-ajax-form" action="/notifier/delete/{{ n.id }}" method="POST" data-target="notifierJobsPanel" data-confirm="确认删除该通知器？"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>
+          </div>
         </td>
       </tr>
+    {% else %}
+      <tr><td colspan="6"><div class="empty-state"><i class="fa-regular fa-folder-open"></i>暂无通知器，请先新增并测试发送。</div></td></tr>
     {% endfor %}
     </tbody>
     </table>

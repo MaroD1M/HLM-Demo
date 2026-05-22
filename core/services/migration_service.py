@@ -3,6 +3,8 @@ from pathlib import Path
 
 
 class MigrationService:
+    TARGET_SCHEMA_VERSION = 11
+
     def __init__(self, db, logger, instance_path_getter, app_version_getter, get_config, run_sqlite_backup):
         self.db = db
         self.logger = logger
@@ -36,6 +38,10 @@ class MigrationService:
 
     def _set_schema_version(self, version):
         self.set_schema_meta_value('db_schema_version', str(version))
+
+    @classmethod
+    def get_target_schema_version(cls):
+        return int(cls.TARGET_SCHEMA_VERSION)
 
     def _migration_v1(self):
         needed = {
@@ -155,7 +161,7 @@ class MigrationService:
         self.db.session.execute(self.db.text('CREATE INDEX IF NOT EXISTS idx_file_link_map_backfill_scan ON file_link_map(torrent_hash, deleted_at, downloader_id, created_at)'))
 
     def ensure_compat_columns(self):
-        target = 11
+        target = self.get_target_schema_version()
         current = self._get_schema_version()
         if current > target:
             self.logger.warning('db schema version %s is newer than app target %s; running in compatibility mode', current, target)

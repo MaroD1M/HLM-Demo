@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-LABEL org.opencontainers.image.version="v0.2.10"
+LABEL org.opencontainers.image.version="v0.3.0"
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

@@ -17,7 +17,13 @@
 <body>
 <div class="shell">
   <aside class="side">
-    <div class="brand"><i class="fa-solid fa-link"></i> Hardlink Manager</div>
+    <div class="brand" aria-label="Hardlink Manager">
+      <span class="brand-mark" aria-hidden="true"><i class="fa-solid fa-link"></i></span>
+      <span class="brand-text">
+        <strong>Hardlink Manager</strong>
+        <small>Media Link Orchestrator</small>
+      </span>
+    </div>
     <nav class="nav flex-column">
       <a class="nav-link {% if request.path=='/' %}active{% endif %}" href="/"><i class="fa-solid fa-gauge"></i><span>仪表盘</span></a>
       <a class="nav-link {% if request.path.startswith('/hardlink') %}active{% endif %}" href="/hardlink"><i class="fa-solid fa-link"></i><span>硬链接任务</span></a>
@@ -86,6 +92,35 @@ window.HLMHelpToggleBind=function(){
   });
 };
 
+window.HLMCopyBind=function(){
+  document.querySelectorAll('.js-copy-btn').forEach((btn)=>{
+    if(btn.dataset.copyBound==='1') return;
+    btn.dataset.copyBound='1';
+    btn.addEventListener('click', async ()=>{
+      const text=btn.getAttribute('data-copy-text') || '';
+      if(!text) return;
+      try{
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          await navigator.clipboard.writeText(text);
+        }else{
+          const ta=document.createElement('textarea');
+          ta.value=text;
+          ta.setAttribute('readonly','readonly');
+          ta.style.position='fixed';
+          ta.style.left='-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+        }
+        window.HLMNotice && window.HLMNotice('已复制到剪贴板','success');
+      }catch(_){
+        window.HLMNotice && window.HLMNotice('复制失败，请手动复制','warning');
+      }
+    });
+  });
+};
+
 window.HLMAjax={
   bind(){
 
@@ -131,7 +166,7 @@ window.HLMAjax={
             document.body.classList.remove('modal-open');
             document.body.style.removeProperty('padding-right');
             document.querySelectorAll('.modal form.js-ajax-form').forEach((f)=>{ if(f.hasAttribute('data-keep-values')) return; try{f.reset&&f.reset();}catch(_){}});
-            window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();if(window.initCronEditModal) window.initCronEditModal();if(window.bindMappingPanel) window.bindMappingPanel();if(window.bindLogMsgToggles) window.bindLogMsgToggles();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();
+            window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();if(window.initCronEditModal) window.initCronEditModal();if(window.bindMappingPanel) window.bindMappingPanel();if(window.bindLogMsgToggles) window.bindLogMsgToggles();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();if(window.HLMCopyBind) window.HLMCopyBind();
           }
         }catch(err){
           const msg=(err&&err.message&&String(err.message).startsWith('NON_JSON_'))
@@ -170,7 +205,7 @@ window.HLMAjax.bindFilters=function(){
           window.HLMAjax.bindFilters();
           if(window.bindCronPreview) window.bindCronPreview();
           if(window.initCronEditModal) window.initCronEditModal();
-          if(window.bindMappingPanel) window.bindMappingPanel();if(window.bindLogMsgToggles) window.bindLogMsgToggles();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();
+          if(window.bindMappingPanel) window.bindMappingPanel();if(window.bindLogMsgToggles) window.bindLogMsgToggles();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();if(window.HLMCopyBind) window.HLMCopyBind();
           window.HLMNotice && window.HLMNotice('筛选已更新','success');
         }
       }catch(_){window.HLMNotice && window.HLMNotice('筛选失败，请稍后重试','danger');}
@@ -179,7 +214,7 @@ window.HLMAjax.bindFilters=function(){
   });
 };
 
-window.addEventListener('DOMContentLoaded',()=>{window.HLMAjax.bind();window.HLMAjax.bindFilters();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();});
+window.addEventListener('DOMContentLoaded',()=>{window.HLMAjax.bind();window.HLMAjax.bindFilters();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();if(window.HLMCopyBind) window.HLMCopyBind();});
 window.addEventListener('DOMContentLoaded',()=>{
   const nodes=[].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
   nodes.forEach((el)=>new bootstrap.Tooltip(el));

@@ -32,12 +32,69 @@ body {
 
 .brand {
   font-weight: 800;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.2px;
   margin-bottom: 16px;
-  padding: 10px 12px;
+  padding: 12px 12px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.11);
-  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: linear-gradient(130deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06));
+  box-shadow: 0 8px 24px rgba(7, 29, 53, 0.16);
+  backdrop-filter: blur(3px);
+}
+
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  background: radial-gradient(120% 120% at 20% 20%, #45c3b4 0%, #1c7ab2 58%, #1a4f87 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 8px 16px rgba(8, 36, 62, 0.2);
+  animation: brandPulse 3.2s ease-in-out infinite;
+}
+
+.brand-mark i {
+  font-size: 0.95rem;
+}
+
+@keyframes brandPulse {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 8px 16px rgba(8, 36, 62, 0.2);
+  }
+  50% {
+    transform: translateY(-1px) scale(1.03);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 12px 22px rgba(8, 36, 62, 0.28);
+  }
+}
+
+.brand-text {
+  min-width: 0;
+  display: grid;
+  line-height: 1.15;
+  gap: 2px;
+}
+
+.brand-text strong {
+  color: #ffffff;
+  font-size: 0.99rem;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.brand-text small {
+  color: #c8dfef;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
 }
 
 .nav-link {
@@ -181,5 +238,21 @@ body {
 
   .main {
     padding: 16px;
+  }
+
+  .brand {
+    padding: 10px 11px;
+  }
+
+  .brand-mark {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-mark {
+    animation: none;
   }
 }

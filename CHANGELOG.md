@@ -2,12 +2,16 @@
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-05-22
+
 ### 优化
 - 开发模式自动拉取行为收敛：重启后固定执行远端强制对齐（`git reset --hard` + `git clean -fd`），避免“部分文件未覆盖”。
 - 开发模式配置链路完善：保存“开发模式”分区后同步写入 `instance/dev_runtime.env`，确保下次重启按页面配置生效。
 - 设置页移除“清理未跟踪文件”开关，降低配置歧义并与实际默认行为保持一致。
 - 全站样式进一步模块化：页面特化样式从 `static/css/app.css` 归档到 `static/css/page_features.css`，降低全局覆盖冲突。
 - 新增本地静态资源体积守门：`scripts/check_asset_sizes.sh`，并集成到 `make check`。
+- 诊断页数据库结构版本展示改为动态读取迁移目标版本，避免 `current` 与 `target` 显示不一致。
+- 诊断页补充数据库文件大小与日志目录占用统计，并将数据库结构信息拆分为“结构状态 + 内部版本”，提升普通用户可读性。
 
 ### 新增
 - 新增离线字体说明与许可证文件：`static/vendor/fonts/README.txt`、`static/vendor/fonts/LICENSE-OFL.txt`。
