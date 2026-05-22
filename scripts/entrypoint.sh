@@ -84,6 +84,8 @@ ensure_repo() {
   fi
   git -C "$DEV_ROOT" checkout -q "$branch"
   git -C "$DEV_ROOT" reset --hard "origin/$branch"
+  # Keep devsrc identical to remote branch to avoid stale untracked files surviving restarts.
+  git -C "$DEV_ROOT" clean -fd
   return 0
 }
 

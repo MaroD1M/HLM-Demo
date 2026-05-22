@@ -6,34 +6,13 @@
   <title>{% block title %}Hardlink Manager{% endblock %}</title>
   <link href="/static/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
   <link href="/static/vendor/fontawesome/css/all.min.css" rel="stylesheet">
+  <link href="/static/css/tokens.css" rel="stylesheet">
+  <link href="/static/css/fonts.css" rel="stylesheet">
+  <link href="/static/css/shell.css" rel="stylesheet">
   <link href="/static/css/app.css" rel="stylesheet">
+  <link href="/static/css/page_features.css" rel="stylesheet">
   <link rel="icon" href="/static/favicon.ico" sizes="any">
-  <style>
-    :root { --ink:#102027; --muted:#5e7383; --paper:#f5f8ff; --panel:#fff; --line:#d8e1ea; --brand:#10a37f; --brand2:#0d5f7a; --accent:#ff8a3d; }
-    *{font-family:var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif)}
-    body{color:var(--ink);background:radial-gradient(900px 380px at -8% -10%,#d9f7f1 0%,transparent 60%),radial-gradient(700px 360px at 108% 0%,#d7edf7 0%,transparent 58%),var(--paper);min-height:100vh}
-    .shell{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
-    .side{background:linear-gradient(180deg,var(--brand2),#163249);color:#daf4f3;padding:20px 14px;position:sticky;top:0;height:100vh}
-    .brand{font-weight:800;letter-spacing:.4px;margin-bottom:18px}
-    .nav-link{color:#cce6ea;border-radius:12px;margin:4px 0;display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .nav-link:hover,.nav-link.active{background:rgba(255,255,255,.13);color:#fff}
-    .main{padding:24px;animation:fadeIn .25s ease-out}
-    .card{border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 26px rgba(12,32,54,.06);background:var(--panel);transition:transform .18s ease,box-shadow .18s ease}.card:hover{transform:translateY(-2px);box-shadow:0 16px 30px rgba(12,32,54,.1)}
-    .table thead th{position:sticky;top:0;background:#f3f8ff;z-index:1}
-    .table tbody tr:nth-child(odd){background:#fcfdff}
-    .badge-soft{display:inline-block;padding:.2rem .5rem;border-radius:999px;background:#eef7fb;color:#0d5f7a;font-size:.75rem}
-    .muted{color:var(--muted)}
-    .btn-brand{background:linear-gradient(120deg,var(--brand2),var(--brand));border-color:var(--brand2);color:#fff}
-    .btn-brand:hover{filter:brightness(1.03);color:#fff}
-    .wrap-any{white-space:normal!important;word-break:break-word;overflow-wrap:anywhere}
-    .section-card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,#ffffff,#f9fcff);padding:14px}
-    .section-title{font-weight:700;color:#0c4f66}
-    .hint-icon{color:#0c4f66;cursor:help;margin-left:4px}
-    #liveFeedback{position:fixed;right:16px;bottom:16px;z-index:2000;display:flex;flex-direction:column;gap:10px;max-width:min(92vw,420px);pointer-events:none}
-    #liveFeedback .alert{box-shadow:0 8px 24px rgba(12,32,54,.18);pointer-events:auto;margin:0}
-    @keyframes fadeIn{from{opacity:.0;transform:translateY(4px)}to{opacity:1;transform:none}}
-    @media (max-width:960px){.shell{grid-template-columns:1fr}.side{height:auto;position:relative}.main{padding:16px}}
-  </style>
+  
 </head>
 <body>
 <div class="shell">

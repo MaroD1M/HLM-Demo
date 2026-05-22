@@ -1,0 +1,371 @@
+/*
+  Page-specific feature styles extracted from app.css.
+  Keeps global app.css focused on base components and avoids cross-page override drift.
+*/
+
+/* Hardlink task list */
+.hardlink-table {
+  min-width: 1180px;
+}
+
+.hardlink-table .col-actions {
+  min-width: 350px;
+}
+
+/* Mapping/caches table: keep operation visible and avoid giant horizontal drag */
+.mapping-table {
+  min-width: 1280px;
+  table-layout: auto;
+}
+
+.mapping-table th,
+.mapping-table td {
+  vertical-align: middle;
+}
+
+.mapping-table .col-actions {
+  min-width: 280px;
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: #fff;
+  box-shadow: -10px 0 10px -12px rgba(12, 32, 54, 0.35);
+}
+
+.mapping-table thead .col-actions {
+  z-index: 3;
+  background: #f3f8ff;
+}
+
+.cache-table {
+  min-width: 760px;
+  table-layout: auto;
+}
+
+/* Modal form layout consistency */
+.field-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  align-items: start;
+}
+
+.field-checks .form-check {
+  margin: 0;
+  min-height: 1.75rem;
+}
+
+/* Hardlink task operation column: stable two-column action layout */
+.hardlink-table .actions-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(118px, 1fr));
+  gap: 6px;
+}
+
+.hardlink-table .actions-row form,
+.hardlink-table .actions-row .btn {
+  width: 100%;
+}
+
+.hardlink-table .actions-row .btn {
+  text-align: center;
+}
+
+/* Mapping table: keep key operations visible with less horizontal drag */
+.mapping-table .col-wide {
+  width: 23%;
+}
+
+.mapping-table .col-mid {
+  width: 10%;
+}
+
+.mapping-table .col-narrow {
+  width: 7%;
+}
+
+.mapping-table .wrap-any {
+  max-width: 240px;
+}
+
+.mapping-table .actions-row {
+  justify-content: flex-start;
+}
+
+.cache-table td:last-child,
+.cache-table th:last-child {
+  min-width: 130px;
+}
+
+/* Hardlink table compact layout */
+.hardlink-table {
+  min-width: 980px;
+  table-layout: auto;
+}
+
+.hardlink-table .col-name {
+  width: 11%;
+  min-width: 120px;
+}
+
+.hardlink-table .col-path {
+  width: 28%;
+}
+
+.hardlink-table .col-delete {
+  width: 13%;
+  min-width: 140px;
+}
+
+.hardlink-table .col-state {
+  width: 8%;
+  min-width: 88px;
+}
+
+.hardlink-table .col-actions {
+  width: 22%;
+  min-width: 280px;
+}
+
+.hardlink-table td,
+.hardlink-table th {
+  padding: 0.52rem 0.5rem;
+}
+
+.field-checks.field-checks-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Mapping hash width */
+.mapping-table .col-hash {
+  width: 16%;
+  min-width: 220px;
+}
+
+.mapping-table code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+/* Visual section subtitle consistency */
+.field-title {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.62rem;
+  border: 1px solid #c7ddeb;
+  border-radius: 999px;
+  background: #edf6fd;
+  color: #0d4f67;
+  font-size: 0.84rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.field-checks .form-check-label {
+  line-height: 1.35;
+  white-space: normal;
+}
+
+/* logs table readability */
+.logs-op-table .col-time { min-width: 148px; }
+.logs-op-table .col-type { min-width: 140px; }
+.logs-op-table .col-target { min-width: 150px; }
+.logs-op-table .col-result { min-width: 72px; }
+.logs-op-table .col-message { min-width: 260px; }
+
+/* mapping/caches stronger column boundaries */
+.mapping-table td,
+.mapping-table th,
+.cache-table td,
+.cache-table th {
+  border-right: 1px solid #edf2f7;
+}
+
+.mapping-table td:last-child,
+.mapping-table th:last-child,
+.cache-table td:last-child,
+.cache-table th:last-child {
+  border-right: none;
+}
+
+/* Unified mini section card inside modal/form groups */
+.section-subcard {
+  border: 1px solid #dbe7f1;
+  border-radius: 10px;
+  background: #f9fcff;
+  padding: 10px 12px;
+}
+
+.field-checks-wide {
+  grid-column: 1 / -1;
+}
+
+.field-note {
+  margin-top: 2px;
+  white-space: normal;
+}
+
+/* Logs/mapping/cache clearer boundaries */
+.table-grid {
+  margin-bottom: 0;
+}
+
+.table-grid thead th {
+  background: #f3f8ff;
+  border-bottom: 1px solid #d2dfeb;
+  white-space: nowrap;
+}
+
+.table-grid tbody td {
+  border-bottom: 1px solid #e6eef5;
+  border-right: 1px solid #edf2f7;
+}
+
+.table-grid tbody td:last-child,
+.table-grid thead th:last-child {
+  border-right: none;
+}
+
+.table-grid tbody tr:hover td {
+  background: #f9fcff;
+}
+
+.table-grid .btn,
+.table-grid .btn-sm,
+.table-grid .badge {
+  white-space: nowrap;
+}
+
+/* Settings transfer stack */
+.settings-transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-transfer .transfer-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.settings-transfer form {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.settings-transfer input[type="file"] {
+  flex: 1 1 320px;
+  min-width: 260px;
+}
+
+/* Hardlink section harmonization */
+.section-card > .row > .section-subcard,
+.modal .section-subcard {
+  min-height: 96px;
+}
+
+.section-subcard .form-label {
+  margin-bottom: 4px;
+}
+
+.section-subcard .field-title {
+  margin-bottom: 6px;
+}
+
+/* Unified list/table framing */
+.table-shell {
+  border: 1px solid #dbe7f1;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 10px 26px rgba(12, 32, 54, 0.05);
+}
+
+.table-shell .table {
+  margin-bottom: 0;
+}
+
+.table-shell .table > :not(caption) > * > * {
+  border-bottom-width: 1px;
+}
+
+/* Modal form section rhythm */
+.modal .section-card + .section-card {
+  margin-top: 0;
+}
+
+.modal .section-subcard {
+  min-height: auto;
+}
+
+.modal .section-card .row.g-3 > [class*="col-"] {
+  min-width: 0;
+}
+
+/* Cron table visibility fixes */
+.cron-table {
+  min-width: 1220px;
+  table-layout: auto;
+}
+
+.cron-table .col-actions {
+  min-width: 280px;
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: #fff;
+  box-shadow: -10px 0 10px -12px rgba(12, 32, 54, 0.35);
+}
+
+.cron-table thead .col-actions {
+  z-index: 3;
+  background: #f3f8ff;
+}
+
+.log-msg {
+  word-break: break-word;
+}
+
+@media (max-width: 1200px) {
+  .hardlink-table .actions-row {
+    grid-template-columns: 1fr;
+  }
+
+  .hardlink-table .col-actions {
+    min-width: 280px;
+  }
+
+  .cron-table .col-cron-hint {
+    display: none;
+  }
+}
+
+@media (max-width: 992px) {
+  .field-checks {
+    grid-template-columns: 1fr;
+  }
+
+  .field-checks.field-checks-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .section-card > .row > .section-subcard,
+  .modal .section-subcard {
+    min-height: auto;
+  }
+
+  .table-grid thead th {
+    white-space: normal;
+  }
+
+  .logs-op-table,
+  .logs-op-table thead th,
+  .logs-op-table td {
+    font-size: 13px;
+  }
+}

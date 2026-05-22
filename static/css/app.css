@@ -1,5 +1,4 @@
 :root {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --fs-12: 12px;
   --fs-14: 14px;
   --fs-16: 16px;
@@ -37,42 +36,17 @@ h5 { font-size: var(--fs-20); }
 
 .form-control,
 .form-select,
-.btn {
-  font-size: var(--fs-14);
-}
 
 .table {
   font-size: var(--fs-14);
+  border-color: var(--line-soft);
 }
 
-.alert {
-  font-size: var(--fs-14);
-}
 
 
 /* Layout consistency */
-.page-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
 
-.page-head h3 {
-  margin: 0;
-  font-size: var(--fs-24);
-  font-weight: 700;
-}
 
-.page-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-}
 
 .page-actions > form {
   display: flex;
@@ -98,25 +72,17 @@ h5 { font-size: var(--fs-20); }
   }
 }
 
-.side .nav-link i {
-  width: 18px;
-  text-align: center;
-  flex: 0 0 18px;
-}
 
-.side .nav-link span {
+
+
+.card {
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--line-soft);
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.table > :not(caption) > * > * {
-  vertical-align: middle;
-}
 
-.btn-sm {
-  font-size: var(--fs-12);
-  padding: 0.3rem 0.55rem;
-}
 
 .modal .modal-header {
   padding: 14px 18px;
@@ -147,12 +113,6 @@ h5 { font-size: var(--fs-20); }
 }
 
 
-.actions-row {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  align-items: center;
-}
 
 .col-actions {
   min-width: 260px;
@@ -190,13 +150,61 @@ h5 { font-size: var(--fs-20); }
   margin-bottom: 8px;
   display: block;
 }
+
+.btn {
+  border-radius: var(--radius-control);
+  font-weight: 600;
+  transition: transform .16s ease, box-shadow .16s ease, background-color .16s ease, border-color .16s ease;
+  padding: 0.5rem 0.8rem;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-primary,
+.btn-brand {
+  box-shadow: 0 8px 18px rgba(29, 78, 137, 0.24);
+}
+
+.form-control,
+.form-select {
+  border-radius: var(--radius-control);
+  border-color: var(--line-soft);
+  min-height: 38px;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: #7cb7d3;
+  box-shadow: 0 0 0 0.2rem rgba(16, 163, 127, 0.15);
+}
+
+.table > :not(caption) > * > * {
+  border-bottom-color: #e4edf5;
+  padding: 0.62rem 0.75rem;
+}
+
+.table-hover tbody tr:hover {
+  background: #f3f8ff;
+}
+
+.modal-content {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-pop);
+}
+
+.modal-header {
+  background: linear-gradient(180deg, #fbfdff, #f3f8ff);
+}
 /* Global readability */
 body {
   font-size: 15px;
-}
-
-.main {
-  font-size: 0.98rem;
 }
 
 /* Sidebar readability */
@@ -204,15 +212,27 @@ body {
   font-size: 1.08rem;
 }
 
-.side .nav-link {
-  font-size: 0.96rem;
-  font-weight: 600;
-  padding: 0.58rem 0.7rem;
-  gap: 10px;
-}
 
 .side .nav-link span {
   line-height: 1.35;
+}
+
+.badge {
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+}
+
+
+.alert {
+  border-width: 1px;
+  border-color: rgba(15, 31, 43, 0.10);
+}
+
+.section-card {
+  border-radius: 14px;
+  border: 1px solid #dce8f2;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
 }
 
 /* Common table action usability */
@@ -236,68 +256,6 @@ body {
   white-space: nowrap;
 }
 
-/* Hardlink task list */
-.hardlink-table {
-  min-width: 1180px;
-}
-
-.hardlink-table .col-actions {
-  min-width: 350px;
-}
-
-/* Mapping/caches table: keep operation visible and avoid giant horizontal drag */
-.mapping-table {
-  min-width: 1280px;
-  table-layout: auto;
-}
-
-.mapping-table th,
-.mapping-table td {
-  vertical-align: middle;
-}
-
-.mapping-table .col-actions {
-  min-width: 280px;
-  position: sticky;
-  right: 0;
-  z-index: 2;
-  background: #fff;
-  box-shadow: -10px 0 10px -12px rgba(12, 32, 54, 0.35);
-}
-
-.mapping-table thead .col-actions {
-  z-index: 3;
-  background: #f3f8ff;
-}
-
-.cache-table {
-  min-width: 760px;
-  table-layout: auto;
-}
-
-/* Modal form layout consistency */
-.field-checks {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 18px;
-  align-items: start;
-}
-
-.field-checks .form-check {
-  margin: 0;
-  min-height: 1.75rem;
-}
-
-@media (max-width: 992px) {
-  .field-checks {
-    grid-template-columns: 1fr;
-  }
-
-  .side .nav-link {
-    font-size: 0.94rem;
-  }
-}
-
 /* ---- Fine tuning round 2 (readability + layout ergonomics) ---- */
 .side {
   width: 272px;
@@ -311,10 +269,6 @@ body {
 
 .side .nav-link i {
   margin-top: 2px;
-}
-
-.page-head h3 {
-  font-size: 1.55rem;
 }
 
 /* Hardlink task operation column: stable two-column action layout */
@@ -424,346 +378,6 @@ body {
 }
 
 
-/* Hardlink table compact layout */
-.hardlink-table {
-  min-width: 980px;
-  table-layout: auto;
-}
-
-.hardlink-table .col-name {
-  width: 11%;
-  min-width: 120px;
-}
-
-.hardlink-table .col-path {
-  width: 28%;
-}
-
-.hardlink-table .col-delete {
-  width: 13%;
-  min-width: 140px;
-}
-
-.hardlink-table .col-state {
-  width: 8%;
-  min-width: 88px;
-}
-
-.hardlink-table .col-actions {
-  width: 22%;
-  min-width: 280px;
-}
-
-.hardlink-table td,
-.hardlink-table th {
-  padding: 0.52rem 0.5rem;
-}
-
-.hardlink-table .actions-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(118px, 1fr));
-  gap: 6px;
-}
-
-.hardlink-table .actions-row form,
-.hardlink-table .actions-row .btn {
-  width: 100%;
-}
-
-.field-checks.field-checks-3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-/* Mapping hash width */
-.mapping-table .col-hash {
-  width: 16%;
-  min-width: 220px;
-}
-
-.mapping-table code {
-  display: inline-block;
-  max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-@media (max-width: 992px) {
-  .field-checks.field-checks-3 {
-    grid-template-columns: 1fr;
-  }
-}
-
-
-/* Visual section subtitle consistency */
-.field-title {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.15rem 0.55rem;
-  border: 1px solid #cfe1ee;
-  border-radius: 999px;
-  background: #eef6fc;
-  color: #0c4f66;
-  font-size: 0.84rem;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-/* keep checkbox labels tidy on desktop */
-.field-checks .form-check-label {
-  line-height: 1.35;
-  white-space: nowrap;
-}
-
-/* logs table readability */
-.logs-op-table .col-time { min-width: 148px; }
-.logs-op-table .col-type { min-width: 140px; }
-.logs-op-table .col-target { min-width: 150px; }
-.logs-op-table .col-result { min-width: 72px; }
-.logs-op-table .col-message { min-width: 260px; }
-
-/* mapping/caches stronger column boundaries */
-.mapping-table td,
-.mapping-table th,
-.cache-table td,
-.cache-table th {
-  border-right: 1px solid #edf2f7;
-}
-
-.mapping-table td:last-child,
-.mapping-table th:last-child,
-.cache-table td:last-child,
-.cache-table th:last-child {
-  border-right: none;
-}
-
-@media (max-width: 992px) {
-  .field-checks .form-check-label {
-    white-space: normal;
-  }
-}
-
-
-/* Unified mini section card inside modal/form groups */
-.section-subcard {
-  border: 1px solid #dbe7f1;
-  border-radius: 10px;
-  background: #f9fcff;
-  padding: 10px 12px;
-}
-
-/* Keep field titles visually consistent with section titles */
-.field-title {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.2rem 0.62rem;
-  border: 1px solid #c7ddeb;
-  border-radius: 999px;
-  background: #edf6fd;
-  color: #0d4f67;
-  font-size: 0.84rem;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.field-checks {
-  gap: 8px 14px;
-}
-
-.field-checks-wide {
-  grid-column: 1 / -1;
-}
-
-.field-note {
-  margin-top: 2px;
-  white-space: normal;
-}
-
-.field-checks .form-check-label {
-  line-height: 1.35;
-  white-space: normal;
-}
-
-/* Logs/mapping/cache clearer boundaries */
-.table-grid thead th {
-  background: #f3f8ff;
-  border-bottom: 1px solid #d2dfeb;
-}
-
-.table-grid tbody td {
-  border-bottom: 1px solid #e6eef5;
-  border-right: 1px solid #edf2f7;
-}
-
-.table-grid tbody td:last-child,
-.table-grid thead th:last-child {
-  border-right: none;
-}
-
-.table-grid tbody tr:hover td {
-  background: #f9fcff;
-}
-
-/* Hash content should wrap full value */
-.mapping-table .col-hash {
-  min-width: 220px;
-}
-
-.mapping-table code {
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-all;
-}
-
-/* Settings transfer stack */
-.settings-transfer {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.settings-transfer .transfer-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.settings-transfer form {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.settings-transfer input[type="file"] {
-  flex: 1 1 320px;
-  min-width: 260px;
-}
-
-
-/* Hardlink section harmonization */
-.section-card > .row > .section-subcard,
-.modal .section-subcard {
-  min-height: 96px;
-}
-
-.section-subcard .form-label {
-  margin-bottom: 4px;
-}
-
-.section-subcard .field-title {
-  margin-bottom: 6px;
-}
-
-@media (max-width: 992px) {
-  .section-card > .row > .section-subcard,
-  .modal .section-subcard {
-    min-height: auto;
-  }
-}
-
-
-/* Unified list/table framing */
-.table-shell {
-  border: 1px solid #dbe7f1;
-  border-radius: 14px;
-  overflow: hidden;
-  background: #fff;
-  box-shadow: 0 10px 26px rgba(12, 32, 54, 0.05);
-}
-
-.table-shell .table {
-  margin-bottom: 0;
-}
-
-.table-shell .table > :not(caption) > * > * {
-  border-bottom-width: 1px;
-}
-
-.table-grid {
-  margin-bottom: 0;
-}
-
-.table-grid thead th {
-  background: #f3f8ff;
-  border-bottom: 1px solid #d2dfeb;
-  white-space: nowrap;
-}
-
-.table-grid tbody td {
-  border-bottom: 1px solid #e6eef5;
-  border-right: 1px solid #edf2f7;
-}
-
-.table-grid tbody td:last-child,
-.table-grid thead th:last-child {
-  border-right: none;
-}
-
-.table-grid tbody tr:hover td {
-  background: #f9fcff;
-}
-
-.table-grid .btn,
-.table-grid .btn-sm,
-.table-grid .badge {
-  white-space: nowrap;
-}
-
-@media (max-width: 992px) {
-  .table-grid thead th {
-    white-space: normal;
-  }
-}
-
-/* Modal form section rhythm */
-.modal .section-card + .section-card {
-  margin-top: 0;
-}
-
-.modal .section-subcard {
-  min-height: auto;
-}
-
-.modal .section-card .row.g-3 > [class*="col-"] {
-  min-width: 0;
-}
-
-
-/* Final UI rhythm pass */
-.page-head {
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(216, 225, 234, 0.75);
-  margin-bottom: 18px;
-}
-
-.page-head h3 {
-  font-size: 1.42rem;
-  letter-spacing: 0.2px;
-}
-
-.section-title {
-  font-size: 0.98rem;
-  letter-spacing: 0.2px;
-}
-
-.btn,
-.btn-sm {
-  border-radius: 10px;
-}
-
-.btn-sm {
-  padding-left: 0.62rem;
-  padding-right: 0.62rem;
-}
-
-.modal .btn,
-.page-head .btn {
-  box-shadow: none;
-}
-
-
 /* Unified page zoning */
 .section-stack {
   display: grid;
@@ -861,35 +475,55 @@ body {
 }
 
 
-/* Cron table visibility fixes */
-.cron-table {
-  min-width: 1220px;
-  table-layout: auto;
-}
+/* ---- Global refinement: density + action semantics (low risk) ---- */
 
-.cron-table .col-actions {
-  min-width: 280px;
-  position: sticky;
-  right: 0;
-  z-index: 2;
-  background: #fff;
-  box-shadow: -10px 0 10px -12px rgba(12, 32, 54, 0.35);
-}
-
-.cron-table thead .col-actions {
-  z-index: 3;
-  background: #f3f8ff;
-}
-
-@media (max-width: 1200px) {
-  .cron-table .col-cron-hint {
-    display: none;
-  }
+/* Inputs/buttons: slightly roomier, more modern */
+.form-control,
+.form-select {
+  padding: 0.5rem 0.75rem;
 }
 
 
-.log-msg { word-break: break-word; }
 
-@media (max-width: 992px) {
-  .logs-op-table, .logs-op-table thead th, .logs-op-table td { font-size: 13px; }
+/* Tables: modern spacing + clearer headers */
+
+.table thead th {
+  font-size: 0.9rem;
+  letter-spacing: 0.2px;
+}
+
+/* Action buttons: make danger clearly distinct without being loud */
+.btn-outline-danger {
+  border-color: rgba(220, 53, 69, 0.45);
+}
+
+.btn-outline-danger:hover {
+  background: rgba(220, 53, 69, 0.08);
+  border-color: rgba(220, 53, 69, 0.6);
+}
+
+.btn-danger,
+.btn-outline-danger {
+  box-shadow: none;
+}
+
+/* Secondary buttons look less flat */
+.btn-outline-secondary {
+  border-color: rgba(108, 117, 125, 0.35);
+}
+
+.btn-outline-secondary:hover {
+  background: rgba(108, 117, 125, 0.08);
+  border-color: rgba(108, 117, 125, 0.55);
+}
+
+/* Alerts: a touch more polish */
+
+/* Reduce visual noise in cards */
+.card .card-header {
+  padding: 0.85rem 1rem;
+}
+
+.card .card-body {
+  padding: 1rem;
 }

@@ -1,0 +1,12 @@
+/* Local vendored font faces.
+ * We ship a small latin-only woff2 subset to keep the repo/image lightweight.
+ * If you need full CJK coverage, rely on system fonts as fallback.
+ */
+
+@font-face {
+  font-family: "InterLocal";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("/static/vendor/fonts/inter-latin.woff2") format("woff2");
+}
