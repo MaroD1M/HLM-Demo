@@ -1,13 +1,16 @@
-.PHONY: check test smoke lint-compile clean-cache dev format
+.PHONY: check test smoke lint-compile asset-guard clean-cache dev format
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
 
-check: lint-compile test smoke
+check: lint-compile asset-guard test smoke
 	@echo "All checks passed."
 
 lint-compile:
 	$(PY) -m py_compile app.py core/deps.py core/extensions.py core/models.py core/routes/*.py core/services/*.py
+
+asset-guard:
+	./scripts/check_asset_sizes.sh
 
 test:
 	$(PY) -m pytest -q tests

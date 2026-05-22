@@ -1,0 +1,185 @@
+/*
+  App shell + navigation styling.
+  Extracted from templates/base.html inline <style> to keep UI maintainable.
+  Local-only resources; safe for offline deployments.
+*/
+
+body {
+  color: var(--ink);
+  min-height: 100vh;
+  background:
+    radial-gradient(980px 420px at -8% -10%, #d8f5ef 0%, transparent 60%),
+    radial-gradient(760px 380px at 110% -4%, #d9eefe 0%, transparent 58%),
+    linear-gradient(180deg, #f6fbff 0%, #eef5fb 100%);
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 100vh;
+}
+
+.side {
+  color: #def1ff;
+  padding: 18px 12px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  border-right: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.08);
+  background: linear-gradient(165deg, #143259 0%, #1e4f77 44%, #0f766e 100%);
+}
+
+.brand {
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.11);
+  backdrop-filter: blur(2px);
+}
+
+.nav-link {
+  color: #d2ebf8;
+  border-radius: 12px;
+  margin: 5px 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0.56rem 0.7rem;
+  font-weight: 600;
+  transition: background 0.16s ease, transform 0.16s ease, color 0.16s ease;
+}
+
+.nav-link:hover,
+.nav-link.active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  transform: translateX(2px);
+}
+
+.main {
+  padding: 24px;
+  animation: fadeIn 0.28s ease-out;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 10px 28px rgba(8, 30, 52, 0.08);
+  background: var(--panel);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px rgba(8, 30, 52, 0.12);
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  background: #eef6ff;
+  z-index: 1;
+}
+
+.table tbody tr:nth-child(odd) {
+  background: #fafdff;
+}
+
+.badge-soft {
+  display: inline-block;
+  padding: 0.22rem 0.54rem;
+  border-radius: 999px;
+  background: #eaf4ff;
+  color: #184a7a;
+  font-size: 0.75rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.btn-brand {
+  background: linear-gradient(120deg, var(--brand2), var(--brand));
+  border: 0;
+  color: #ffffff;
+  box-shadow: 0 8px 20px rgba(19, 86, 137, 0.26);
+}
+
+.btn-brand:hover {
+  filter: brightness(1.03);
+  color: #ffffff;
+}
+
+.wrap-any {
+  white-space: normal !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.section-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #f9fcff);
+  padding: 14px;
+}
+
+.section-title {
+  font-weight: 700;
+  color: #0c4f66;
+}
+
+.hint-icon {
+  color: #0c4f66;
+  cursor: help;
+  margin-left: 4px;
+}
+
+#liveFeedback {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(92vw, 420px);
+  pointer-events: none;
+}
+
+#liveFeedback .alert {
+  box-shadow: 0 8px 24px rgba(12, 32, 54, 0.18);
+  pointer-events: auto;
+  margin: 0;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 960px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .side {
+    height: auto;
+    position: relative;
+  }
+
+  .main {
+    padding: 16px;
+  }
+}

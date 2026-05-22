@@ -34,6 +34,27 @@ logging.basicConfig(
 app.logger.setLevel(logging.INFO)
 
 
+@app.after_request
+def add_security_headers(resp):
+    # Enforce local-only static assets to avoid UI breakage when external network is unavailable.
+    resp.headers.setdefault(
+        'Content-Security-Policy',
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "font-src 'self' data:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'self'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+    resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    resp.headers.setdefault('Referrer-Policy', 'no-referrer')
+    resp.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    return resp
+
+
 def init_console_logger():
     # Ensure logs are always visible in container stdout (e.g., Synology Container Manager).
     # FileHandler is a StreamHandler subclass, so we must explicitly check for stdout/stderr streams.
