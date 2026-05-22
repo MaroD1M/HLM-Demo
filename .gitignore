@@ -47,14 +47,8 @@ instance/*
 !instance/.gitkeep
 
 # Local planning/agent docs and state
-# Keep plan markdown and task snapshot in repo for release handoff,
-# ignore other agent-local artifacts by default.
-docs/*
-!docs/plan/
-!docs/plan/*.md
-.taskmaster/*
-!.taskmaster/tasks/
-!.taskmaster/tasks/tasks.json
+docs/
+.taskmaster/
 
 # Logs
 logs
