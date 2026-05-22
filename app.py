@@ -1584,7 +1584,7 @@ def init_app():
             except Exception as exc:
                 app.logger.warning('consume dev apply result failed: %s', exc)
 
-        backup_ok, backup_msg = MIGRATION_SVC.pre_migration_backup_if_needed(target_schema=11)
+        backup_ok, backup_msg = MIGRATION_SVC.pre_migration_backup_if_needed(target_schema=MIGRATION_SVC.get_target_schema_version())
         if not backup_ok:
             app.logger.error('pre migration backup failed: %s', backup_msg)
             raise RuntimeError(f'升级前备份失败，已中止启动: {backup_msg}')

@@ -4,7 +4,8 @@ import re
 import time
 import os
 import threading
-from flask import Blueprint, render_template, request, redirect, flash, jsonify, Response
+import urllib.request
+from flask import Blueprint, render_template, request, redirect, flash, jsonify, Response, current_app
 from core.deps import RouteDeps
 
 web_bp = Blueprint('web_bp', __name__)
@@ -1431,6 +1432,67 @@ def init_web_routes(ctx: RouteDeps):
 
     @web_bp.route('/diagnostics')
     def diagnostics_page():
+        from core.services.migration_service import MigrationService
+        def _human_size(size_bytes):
+            size = float(max(0, int(size_bytes or 0)))
+            units = ['B', 'KB', 'MB', 'GB', 'TB']
+            for unit in units:
+                if size < 1024 or unit == units[-1]:
+                    return f'{size:.1f} {unit}' if unit != 'B' else f'{int(size)} B'
+                size /= 1024
+            return f'{int(size_bytes or 0)} B'
+
+        def _safe_file_size(path_obj):
+            try:
+                if path_obj.exists() and path_obj.is_file():
+                    return path_obj.stat().st_size
+            except Exception:
+                pass
+            return None
+
+        def _safe_dir_size(path_obj):
+            total = 0
+            files = 0
+            try:
+                if not path_obj.exists() or not path_obj.is_dir():
+                    return 0, 0
+                for child in path_obj.rglob('*'):
+                    if child.is_file():
+                        try:
+                            total += child.stat().st_size
+                            files += 1
+                        except Exception:
+                            continue
+            except Exception:
+                return None, None
+            return total, files
+
+        def _schema_meta_get(key, default=''):
+            try:
+                row = db.session.execute(db.text("SELECT value FROM schema_meta WHERE key=:k"), {'k': key}).fetchone()
+                return str(row[0]) if row and row[0] is not None else str(default)
+            except Exception:
+                return str(default)
+
+        def _check_writable(path_obj):
+            try:
+                path_obj.mkdir(parents=True, exist_ok=True)
+                probe = path_obj / '.hlm_write_probe'
+                probe.write_text('ok', encoding='utf-8')
+                probe.unlink(missing_ok=True)
+                return True
+            except Exception:
+                return False
+
+        def _probe_url(url, timeout=3):
+            try:
+                req = urllib.request.Request(url, method='HEAD')
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    code = getattr(resp, 'status', 200) or 200
+                return True, f'HTTP {code}'
+            except Exception as exc:
+                return False, str(exc)
+
         panel_view = (request.args.get('panel_view') or 'overview').strip().lower()
         if panel_view not in {'overview', 'backfill'}:
             panel_view = 'overview'
@@ -1446,11 +1508,66 @@ def init_web_routes(ctx: RouteDeps):
             current_schema = str(row[0]) if row and row[0] is not None else '0'
         except Exception:
             current_schema = '0'
-        checks.append(('数据库结构版本', True, f'current={current_schema}, target=9'))
+        target_schema = MigrationService.get_target_schema_version()
+        try:
+            current_schema_num = int(current_schema)
+        except Exception:
+            current_schema_num = 0
+        if current_schema_num == target_schema:
+            schema_state = '已是最新版本'
+        elif current_schema_num < target_schema:
+            schema_state = '低于目标版本（通常重启后会自动升级）'
+        else:
+            schema_state = '高于应用目标版本（兼容模式）'
+        checks.append(('数据库结构状态', True, schema_state))
+        checks.append(('数据库结构版本（内部）', True, f'当前 {current_schema_num}，目标 {target_schema}'))
+
+        migration_status = _schema_meta_get('last_migration_status', 'unknown')
+        migration_error = _schema_meta_get('last_migration_error', '')
+        migration_at = _schema_meta_get('pre_migration_backup_at', '')
+        migration_detail = f'状态={migration_status}'
+        if migration_at:
+            migration_detail += f'，最近升级前备份时间={migration_at}'
+        if migration_error:
+            migration_detail += f'，错误={migration_error}'
+        checks.append(('最近迁移状态', migration_status in {'success', 'backup_ok', 'unknown'}, migration_detail))
+
+        db_file = Path(current_app.instance_path) / 'hardlink_manager.db'
+        db_size_bytes = _safe_file_size(db_file)
+        if db_size_bytes is None:
+            checks.append(('数据库文件大小', False, f'未找到数据库文件：{db_file}'))
+        else:
+            checks.append(('数据库文件大小', True, f'{_human_size(db_size_bytes)} ({db_file})'))
+
+        logs_dir = Path('data/logs').resolve()
+        logs_size, logs_files = _safe_dir_size(logs_dir)
+        if logs_size is None:
+            checks.append(('日志目录占用', False, f'统计失败：{logs_dir}'))
+        else:
+            checks.append(('日志目录占用', True, f'{_human_size(logs_size)}，{logs_files} 个文件'))
+
+        log_max_mb = str(get_config('app_log_max_mb', '10') or '10').strip()
+        log_keep = str(get_config('app_log_backup_count', '5') or '5').strip()
+        log_days = str(get_config('log_retention_days', '30') or '30').strip()
+        checks.append(('日志保留策略', True, f'单文件上限 {log_max_mb}MB，滚动保留 {log_keep} 份，清理保留天数 {log_days} 天'))
+
+        instance_dir = Path(current_app.instance_path)
+        backup_dir = Path((get_config('backup_dir', '/app/data/backups') or '/app/data/backups').strip()).resolve()
+        checks.append(('目录可写性(instance)', _check_writable(instance_dir), str(instance_dir)))
+        checks.append(('目录可写性(logs)', _check_writable(logs_dir), str(logs_dir)))
+        checks.append(('目录可写性(backup)', _check_writable(backup_dir), str(backup_dir)))
+
+        version_check_enabled = str(get_config('github_version_check_enabled', 'true') or 'true').strip().lower() == 'true'
+        github_api_base = (get_config('github_api_base', 'https://api.github.com') or 'https://api.github.com').strip()
+        if version_check_enabled and github_api_base:
+            ok_probe, probe_detail = _probe_url(github_api_base, timeout=3)
+            checks.append(('版本检查地址可达性', ok_probe, f'{github_api_base} -> {probe_detail}'))
+        else:
+            checks.append(('版本检查地址可达性', True, '已禁用版本检查或未配置地址'))
 
         checks.append(('代理配置', True, (get_config('proxy_url','') or '').strip() or '未设置（直连）'))
         checks.append(('应用版本', True, get_release_info().get('local_version','-')))
-        checks.append(('日志目录', True, str(Path('data/logs').resolve())))
+        checks.append(('日志目录', True, str(logs_dir)))
         checks.append(('待判定来源保护', True, f"enabled={get_config('pending_source_guard_enabled','true')}, window={get_config('pending_source_guard_seconds','900')}s, log_mode={get_config('pending_source_log_mode','aggregate')}"))
 
         pending_count = FileLinkMap.query.filter(FileLinkMap.source_type == 'pending', FileLinkMap.deleted_at.is_(None)).count()
