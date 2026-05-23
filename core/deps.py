@@ -14,6 +14,7 @@ class RouteDeps:
     JobExecutionLog: Any
     DeletePendingAction: Any
     AppConfig: Any
+    AppConfigSnapshot: Any
     CronJob: Any
     db: Any
     scheduler: Any
@@ -44,3 +45,5 @@ class RouteDeps:
     get_release_info: Callable
     request_stop_by_execution: Callable
     get_running_executions_snapshot: Callable
+    save_config_snapshot: Callable
+    restore_config_snapshot: Callable

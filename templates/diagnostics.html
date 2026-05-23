@@ -5,16 +5,39 @@
   <h3 class="mb-0">系统诊断</h3>
   <div class="page-actions">
     <button class="btn btn-outline-secondary" type="button" data-help-target="pageHelp" aria-expanded="false"><i class="fa-solid fa-circle-info me-1"></i><span class="help-toggle-label">页面说明</span></button>
+    <a class="btn btn-brand" href="/diagnostics/support-bundle?panel_view={{ panel_view or 'overview' }}"><i class="fa-solid fa-file-zipper me-1"></i>导出支持包</a>
   </div>
 </div>
 
 <div id="pageHelp" class="section-card mb-3 d-none"><div class="section-muted">用于检查环境状态、运行中任务和自动关联指标；建议先看总览，再进入自动关联诊断。</div></div>
 
 <div class="section-card mb-3">
+  <div class="section-title mb-2">支持包说明</div>
+  <div class="section-muted">
+    “导出支持包”用于一键打包当前系统诊断信息（如环境检查结果、关键统计、最近日志与执行记录）以便排障。
+    支持包会对敏感配置做脱敏处理（显示为 <code>***</code>），且它不是数据库备份，不能替代备份恢复。
+  </div>
+</div>
+
+<div class="section-card mb-3">
   <div class="section-title mb-2">显示视图</div>
   <div class="d-flex gap-2 flex-wrap">
     <a class="btn btn-sm {{ 'btn-brand' if (panel_view or 'overview')=='overview' else 'btn-outline-secondary' }}" href="/diagnostics?panel_view=overview">诊断总览</a>
     <a class="btn btn-sm {{ 'btn-brand' if panel_view=='backfill' else 'btn-outline-secondary' }}" href="/diagnostics?panel_view=backfill">自动关联诊断</a>
+  </div>
+</div>
+
+{% set hs = health_summary or {} %}
+<div class="section-card mb-3">
+  <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center">
+    <div>
+      <div class="section-title mb-1">运行健康</div>
+      <div class="section-muted">{{ hs.summary or '-' }}</div>
+    </div>
+    <div class="text-end">
+      <span class="badge text-bg-{{ 'success' if hs.status == 'healthy' else ('warning' if hs.status == 'degraded' else 'danger') }}">{{ hs.label or '未知' }}</span>
+      <div class="small text-muted mt-1">{{ hs.detail or '-' }}</div>
+    </div>
   </div>
 </div>
 
@@ -26,11 +49,11 @@
       <table class="table table-grid">
         <thead><tr><th>检查项</th><th>状态</th><th>详情</th></tr></thead>
         <tbody>
-        {% for name, ok, detail in checks %}
+        {% for row in checks %}
           <tr>
-            <td>{{ name }}</td>
-            <td>{% if ok %}<span class="badge text-bg-success">正常</span>{% else %}<span class="badge text-bg-danger">异常</span>{% endif %}</td>
-            <td class="wrap-any">{{ detail }}</td>
+            <td>{{ row.name }}</td>
+            <td>{% if row.ok %}<span class="badge text-bg-success">正常</span>{% else %}<span class="badge text-bg-danger">异常</span>{% endif %}</td>
+            <td class="wrap-any">{{ row.detail }}</td>
           </tr>
         {% endfor %}
         </tbody>
@@ -48,7 +71,7 @@
           {% for r in running_rows %}
             <tr>
               <td>{{ r.id }}</td><td>{{ r.job_name }}</td><td>{{ r.job_type }}</td><td>{{ r.source }}</td><td>{{ r.elapsed_seconds }} 秒</td>
-              <td><form class="d-inline" action="/executions/stop/{{ r.id }}" method="POST" onsubmit="return confirm('确认停止该任务？')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">停止</button></form></td>
+              <td><form class="d-inline" action="/executions/stop/{{ r.id }}" method="POST" onsubmit="return confirm('确认停止该任务？任务将在当前步骤结束后退出。')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">停止</button></form></td>
             </tr>
           {% endfor %}
         {% else %}
@@ -71,6 +94,36 @@
           {% endfor %}
         {% else %}
           <tr><td colspan="3" class="text-muted">暂无待判定来源事件</td></tr>
+        {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-title mb-2">备份与恢复</div>
+    <div class="table-responsive table-shell">
+      <table class="table table-sm align-middle table-grid">
+        <thead><tr><th>文件</th><th>时间</th><th>校验</th><th>操作</th></tr></thead>
+        <tbody>
+        {% if backup_files %}
+          {% for b in backup_files %}
+            <tr>
+              <td class="wrap-any"><code>{{ b.name }}</code></td>
+              <td>{{ fmt_dt(b.created_at) if b.created_at else '-' }}</td>
+              <td>{% if b.ok %}<span class="badge text-bg-success">通过</span>{% else %}<span class="badge text-bg-danger">异常</span>{% endif %}</td>
+              <td>
+                <a class="btn btn-sm btn-outline-secondary" href="/diagnostics/backup/restore-preview/{{ b.name }}">预览</a>
+                <form class="d-inline js-ajax-form" action="/diagnostics/backup/restore/{{ b.name }}" method="POST" onsubmit="return confirm('确认恢复该备份？当前数据库将被覆盖。')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="critical_passphrase" value="">
+                  <button class="btn btn-sm btn-outline-warning">恢复</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="4" class="text-muted">暂无备份文件</td></tr>
         {% endif %}
         </tbody>
       </table>

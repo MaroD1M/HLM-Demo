@@ -1,4 +1,5 @@
 import os
+import json
 import secrets
 import logging
 import sys
@@ -10,18 +11,20 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import requests
-from flask import Flask, request, session, abort, redirect, url_for, render_template, flash
+from flask import Flask, request, session, abort, redirect, url_for, render_template, flash, jsonify
 from core.services.backfill_service import scan_backfill_rows
 from core.routes.api import init_api_routes
 from core.routes.web import init_web_routes
 from core.deps import RouteDeps
+from core.services.config_service import build_default_config_rows, get_importable_setting_keys
 from core.services.hardlink_service import create_hardlink_for_file as svc_create_hardlink_for_file
 from core.services.delete_service import scan_delete_rows
 from core.services.backup_service import run_sqlite_backup
 from core.services.execution_service import ExecutionManager
 from core.services.migration_service import MigrationService
+from core.services.security_service import is_ip_allowed, is_read_only_forbidden_endpoint
 from core.extensions import db, bcrypt, scheduler
-from core.models import HardlinkTask, DeleteMonitorTask, Downloader, Notifier, HardlinkCache, FileLinkMap, OperationLog, JobExecutionLog, DeletePendingAction, AppConfig, CronJob
+from core.models import HardlinkTask, DeleteMonitorTask, Downloader, Notifier, HardlinkCache, FileLinkMap, OperationLog, JobExecutionLog, DeletePendingAction, AppConfig, AppConfigSnapshot, CronJob
 
 
 app = Flask(__name__)
@@ -299,34 +302,86 @@ def inject_csrf_token():
 def format_datetime_local(dt_obj, fmt='%Y-%m-%d %H:%M:%S'):
     if not dt_obj:
         return '-'
+    if isinstance(dt_obj, str):
+        raw = dt_obj.strip()
+        if not raw:
+            return '-'
+        try:
+            parsed = datetime.fromisoformat(raw.replace('Z', '+00:00'))
+            dt_obj = parsed
+        except Exception:
+            # Fall back to original string for unknown formats.
+            return raw
     if dt_obj.tzinfo is None:
         dt_obj = dt_obj.replace(tzinfo=UTC)
     try:
         return dt_obj.astimezone(APP_TZ).strftime(fmt)
     except Exception:
-        return dt_obj.strftime(fmt)
+        try:
+            return dt_obj.strftime(fmt)
+        except Exception:
+            return str(dt_obj)
 
 
 @app.before_request
 def security_guard():
     if request.endpoint == 'static':
         return
+    is_api_request = bool(request.path.startswith('/api/'))
 
     # Allow unauthenticated health checks and auth pages.
     if request.endpoint in {'api_bp.api_health', 'login_page', 'logout'}:
         return
 
     if _auth_enabled() and not _is_logged_in():
+        if is_api_request:
+            return jsonify({'ok': False, 'message': 'unauthorized'}), 401
         next_path = request.full_path if request.query_string else request.path
         return redirect(url_for('login_page', next=next_path))
+
+    # Optional security: IP allowlist (default off).
+    if str(get_config('security_ip_allowlist_enabled', 'false')).lower() == 'true':
+        client_ip = _get_client_ip()
+        allowlist = get_config('security_ip_allowlist', '')
+        if not is_ip_allowed(client_ip, allowlist):
+            log_operation(
+                'security_ip_blocked',
+                'Security',
+                None,
+                request.endpoint or '-',
+                f'ip={client_ip};path={request.path}',
+                False,
+            )
+            abort(403, description='IP not allowed')
+
+    # Optional security: read-only mode (default off).
+    if str(get_config('security_read_only_enabled', 'false')).lower() == 'true':
+        if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'} and is_read_only_forbidden_endpoint(request.endpoint):
+            log_operation(
+                'security_read_only_blocked',
+                'Security',
+                None,
+                request.endpoint or '-',
+                f'method={request.method};path={request.path}',
+                False,
+            )
+            abort(403, description='Read-only mode is enabled')
 
     if app.config.get('ACCESS_LOG_ENABLED', True):
         app.logger.info('request method=%s path=%s endpoint=%s ip=%s', request.method, request.path, request.endpoint, request.remote_addr)
     if request.method == 'POST':
-        request_token = request.form.get('csrf_token') or request.headers.get('X-CSRF-Token')
-        session_token = session.get('_csrf_token')
-        if not session_token or not request_token or request_token != session_token:
-            abort(400, description='Invalid CSRF token')
+        if is_api_request:
+            # API endpoints use optional in-app API token and do not rely on form CSRF sessions.
+            required_token = str(get_config('api_access_token', '') or '').strip()
+            if required_token:
+                provided_token = (request.headers.get('X-API-Token') or '').strip()
+                if not provided_token or provided_token != required_token:
+                    return jsonify({'ok': False, 'message': 'invalid api token'}), 401
+        else:
+            request_token = request.form.get('csrf_token') or request.headers.get('X-CSRF-Token')
+            session_token = session.get('_csrf_token')
+            if not session_token or not request_token or request_token != session_token:
+                abort(400, description='Invalid CSRF token')
 
 
 
@@ -394,6 +449,62 @@ def set_config(key, value, description=None, commit=True):
         db.session.add(AppConfig(key=key, value=value, description=description))
     if commit:
         db.session.commit()
+
+
+def build_config_snapshot_payload(label='snapshot', note='', created_by=''):
+    rows = AppConfig.query.order_by(AppConfig.key.asc()).all()
+    items = {}
+    for row in rows:
+        items[row.key] = {
+            'value': row.value,
+            'description': row.description,
+            'updated_at': row.updated_at.isoformat() if row.updated_at else None,
+        }
+    return {
+        '__meta': {
+            'format_version': 1,
+            'kind': 'config_snapshot',
+            'label': label,
+            'created_at': datetime.now(UTC).isoformat(),
+            'created_by': created_by or '',
+            'note': note or '',
+        },
+        'settings': items,
+    }
+
+
+def save_config_snapshot(label='snapshot', note='', created_by=''):
+    payload = build_config_snapshot_payload(label=label, note=note, created_by=created_by)
+    row = AppConfigSnapshot(
+        label=label or 'snapshot',
+        payload_json=json.dumps(payload, ensure_ascii=False, indent=2),
+        created_by=created_by or '',
+        note=note or '',
+    )
+    db.session.add(row)
+    db.session.commit()
+    return row
+
+
+def restore_config_snapshot(snapshot_row):
+    try:
+        payload = json.loads(snapshot_row.payload_json or '{}')
+    except Exception:
+        return False, '快照内容格式错误'
+    settings = payload.get('settings') if isinstance(payload, dict) else None
+    if not isinstance(settings, dict):
+        return False, '快照缺少 settings'
+    applied = 0
+    for key, item in settings.items():
+        if key not in get_importable_setting_keys():
+            continue
+        value = item.get('value') if isinstance(item, dict) else item
+        if value is None:
+            continue
+        set_config(key, str(value), commit=False)
+        applied += 1
+    db.session.commit()
+    return True, f'已回滚 {applied} 项'
 
 
 def log_operation(operation_type, target_type=None, target_id=None, target_name=None, message=None, success=True, commit=True, execution_id=None):
@@ -1438,56 +1549,7 @@ def ensure_compat_columns():
 
 
 def init_defaults():
-    default_configs = [
-        ('log_retention_days', '30', '日志保留天数'),
-        ('auto_clean_logs', 'true', '自动清理日志'),
-        ('default_extensions', '.mkv,.mp4,.avi,.mov,.wmv,.flv', '默认文件扩展名'),
-        ('default_exclude_dirs', 'sample,subs', '默认排除目录'),
-        ('delete_files_with_torrent', 'false', '删除种子时同时删除文件'),
-        ('notify_on_delete', 'true', '启用删除通知'),
-        ('notify_on_risky_delete', 'true', '疑似误删风险通知'),
-        ('delete_match_strict_mode', 'true', '删除联动仅精确匹配自动执行'),
-        ('pending_source_guard_enabled', 'true', '删除联动来源待判定保护开关'),
-        ('pending_source_guard_seconds', '900', '删除联动来源待判定窗口（秒）'),
-        ('pending_source_warn_threshold', '200', '系统诊断：待判定映射告警阈值'),
-        ('pending_source_log_mode', 'aggregate', '待判定来源日志模式（aggregate/detail）'),
-        ('manual_dest_delete_delete_source', 'true', '手动来源：删除目标后自动删除源文件'),
-        ('manual_source_delete_delete_dest', 'true', '手动来源：删除源文件后自动删除目标文件'),
-        ('downloader_dest_delete_delete_source', 'true', '下载器来源：删除目标后自动删除源文件'),
-        ('downloader_source_delete_delete_dest', 'true', '下载器来源：删除源文件后自动删除目标文件'),
-        ('downloader_dest_delete_delete_torrent', 'true', '下载器来源：删除目标后自动删种'),
-        ('downloader_source_delete_delete_torrent', 'true', '下载器来源：删除源后自动删种'),
-        ('allowed_roots', '', '允许访问的路径根目录，逗号分隔'),
-        ('tg_api_base', 'https://api.telegram.org', 'Telegram API基础地址'),
-        ('backup_dir', '/app/data/backups', '数据库备份目录'),
-        ('backup_keep_last', '7', '数据库备份保留数量'),
-        ('github_version_check_enabled', 'true', '启用GitHub版本检查'),
-        ('github_repo', 'marod1m/HLM-Demo', 'GitHub仓库 owner/repo'),
-        ('github_api_base', 'https://api.github.com', 'GitHub API基础地址'),
-        ('proxy_url', 'http://127.0.0.1:7890', '统一外网代理地址（Telegram/GitHub），留空则直连'),
-        ('app_log_max_mb', '10', '应用日志单文件大小上限（MB）'),
-        ('app_log_backup_count', '5', '应用日志滚动保留文件数'),
-        ('version_check_cache_minutes', '720', '版本检查缓存分钟数'),
-        ('critical_action_passphrase', '', '关键操作口令（留空=不启用）'),
-        ('backfill_batch_limit', '500', '映射回填批次大小（自动调优）'),
-        ('backfill_max_candidates', '120', '映射回填候选上限'),
-        ('backfill_file_fetch_workers', '4', '映射回填文件列表并发请求数'),
-        ('backfill_max_failures', '2', '映射回填失败跳过阈值'),
-        ('backfill_path_mappings', '', '回填路径映射，格式 /host/path=>/container/path;...'),
-        ('backfill_failure_retention_days', '7', '长期失败回填记录重置阈值（天）'),
-        ('dev_mode', (os.environ.get('APP_DEV_MODE', 'false') or 'false').lower(), '开发模式开关（页面配置）'),
-        ('dev_auto_pull', (os.environ.get('APP_DEV_AUTO_PULL', 'false') or 'false').lower(), '开发模式：启动自动拉取'),
-        ('dev_git_repo', os.environ.get('APP_DEV_GIT_REPO', '') or 'https://github.com/MaroD1M/HLM-Demo.git', '开发模式：Git 仓库地址'),
-        ('dev_git_branch', os.environ.get('APP_DEV_GIT_BRANCH', 'master') or 'master', '开发模式：Git 分支'),
-        ('dev_auto_pip_sync', (os.environ.get('APP_DEV_AUTO_PIP_SYNC', 'true') or 'true').lower(), '开发模式：依赖自动同步'),
-        ('dev_pip_sync_timeout', os.environ.get('APP_DEV_PIP_SYNC_TIMEOUT', '120') or '120', '开发模式：pip 同步超时（秒）'),
-        ('dev_git_token', os.environ.get('APP_DEV_GIT_TOKEN', '') or '', '开发模式：Git 访问令牌（敏感）'),
-        ('dev_proxy_url', os.environ.get('APP_DEV_PROXY_URL', '') or '', '开发模式：代理地址'),
-        ('dev_no_proxy', os.environ.get('APP_DEV_NO_PROXY', 'localhost,127.0.0.1,::1') or 'localhost,127.0.0.1,::1', '开发模式：NO_PROXY'),
-        ('last_dev_apply_status', '', '开发模式最近应用状态'),
-        ('last_dev_apply_message', '', '开发模式最近应用消息'),
-        ('last_dev_apply_at', '', '开发模式最近应用时间'),
-    ]
+    default_configs = build_default_config_rows()
     changed = False
     for key, value, desc in default_configs:
         if not AppConfig.query.filter_by(key=key).first():
@@ -1601,7 +1663,17 @@ def init_app():
         start_cron_scheduler()
         if APP_BOOTSTRAPPED:
             return
-        app.register_blueprint(init_api_routes(HardlinkTask, DeleteMonitorTask))
+        app.register_blueprint(init_api_routes(
+            HardlinkTask,
+            DeleteMonitorTask,
+            AppConfig=AppConfig,
+            OperationLog=OperationLog,
+            db=db,
+            get_config=get_config,
+            get_release_info=get_release_info,
+            get_running_executions_snapshot=get_running_executions_snapshot,
+            logger=app.logger,
+        ))
         app.register_blueprint(init_web_routes(RouteDeps(
             HardlinkTask=HardlinkTask,
             DeleteMonitorTask=DeleteMonitorTask,
@@ -1613,6 +1685,7 @@ def init_app():
             JobExecutionLog=JobExecutionLog,
             DeletePendingAction=DeletePendingAction,
             AppConfig=AppConfig,
+            AppConfigSnapshot=AppConfigSnapshot,
             CronJob=CronJob,
             db=db,
             scheduler=scheduler,
@@ -1641,6 +1714,8 @@ def init_app():
             get_release_info=get_release_info,
             request_stop_by_execution=request_stop_by_execution,
             get_running_executions_snapshot=get_running_executions_snapshot,
+            save_config_snapshot=save_config_snapshot,
+            restore_config_snapshot=restore_config_snapshot,
         )))
         APP_BOOTSTRAPPED = True
 

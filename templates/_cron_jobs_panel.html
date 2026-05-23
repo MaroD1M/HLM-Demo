@@ -42,25 +42,25 @@
               <span class="badge text-bg-secondary">禁用</span>
             {% endif %}
           </td>
-          <td class="col-actions"><div class="actions-row">
-            <form class="d-inline js-ajax-form" action="/cron/run/{{ j.id }}" method="POST" data-target="cronJobsPanel">
+          <td class="col-actions"><div class="actions-row cron-actions-row">
+            {% if j.task_type in ['batch_hardlink', 'db_backup', 'clean_backfill_failures'] %}
+            <form class="d-inline js-ajax-form" action="/cron/preview/{{ j.id }}" method="POST" data-target="cronJobsPanel">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button class="btn btn-sm btn-outline-primary">立即执行一次</button>
-            </form>
-            {% if j.task_type == 'clean_backfill_failures' %}
-            <form class="d-inline js-ajax-form" action="/cron/test/{{ j.id }}" method="POST" data-target="cronJobsPanel">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button class="btn btn-sm btn-outline-secondary">测试</button>
+              <button class="btn btn-sm btn-outline-secondary btn-cron-action">预览</button>
             </form>
             {% endif %}
-            <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editCronModal{{ j.id }}">修改计划</button>
+            <form class="d-inline js-ajax-form" action="/cron/run/{{ j.id }}" method="POST" data-target="cronJobsPanel">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-sm btn-outline-primary btn-cron-action">立即执行一次</button>
+            </form>
+            <button class="btn btn-sm btn-outline-info btn-cron-action" data-bs-toggle="modal" data-bs-target="#editCronModal{{ j.id }}">修改计划</button>
             <form class="d-inline js-ajax-form" action="/cron/toggle/{{ j.id }}" method="POST" data-target="cronJobsPanel">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button class="btn btn-sm btn-outline-warning">{{ '禁用' if j.enabled else '启用' }}</button>
+              <button class="btn btn-sm btn-outline-warning btn-cron-action">{{ '禁用' if j.enabled else '启用' }}</button>
             </form>
-            <form class="d-inline js-ajax-form" action="/cron/delete/{{ j.id }}" method="POST" data-target="cronJobsPanel" data-confirm="确认删除该定时任务？">
+            <form class="d-inline js-ajax-form" action="/cron/delete/{{ j.id }}" method="POST" data-target="cronJobsPanel" data-confirm="确认删除该定时任务？删除后不可恢复。">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button class="btn btn-sm btn-outline-danger">删除</button>
+              <button class="btn btn-sm btn-outline-danger btn-cron-action">删除</button>
             </form>
           </div></td>
         </tr>

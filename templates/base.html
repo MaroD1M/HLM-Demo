@@ -156,7 +156,7 @@ window.HLMAjax={
             const short=text ? text.slice(0,120).replace(/\s+/g,' ') : '';
             throw new Error(`NON_JSON_${res.status}:${short}`);
           }
-          window.HLMNotice(data.message|| (data.ok ? '操作成功' : '操作失败'), data.ok ? 'success' : 'danger');
+          window.HLMNotice(data.message|| (data.ok ? '操作已完成' : '操作未完成，请检查后重试'), data.ok ? 'success' : 'danger');
           if(!res.ok||!data.ok){return;}
           if(data.target&&data.html){
             const panel=document.getElementById(data.target);
@@ -167,11 +167,16 @@ window.HLMAjax={
             document.body.style.removeProperty('padding-right');
             document.querySelectorAll('.modal form.js-ajax-form').forEach((f)=>{ if(f.hasAttribute('data-keep-values')) return; try{f.reset&&f.reset();}catch(_){}});
             window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();if(window.initCronEditModal) window.initCronEditModal();if(window.bindMappingPanel) window.bindMappingPanel();if(window.bindLogMsgToggles) window.bindLogMsgToggles();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();if(window.HLMCopyBind) window.HLMCopyBind();
+          } else {
+            const refreshOnSuccess = (submitter && submitter.getAttribute('data-refresh-on-success')) || form.getAttribute('data-refresh-on-success');
+            if (String(refreshOnSuccess || '').toLowerCase() === 'true') {
+              window.location.reload();
+            }
           }
         }catch(err){
           const msg=(err&&err.message&&String(err.message).startsWith('NON_JSON_'))
-            ? `请求失败：服务返回非JSON响应（${String(err.message).replace('NON_JSON_','')}）`
-            : '网络异常，请稍后重试';
+            ? '请求失败：服务器返回异常响应，请稍后重试或查看系统日志'
+            : '网络异常：请检查网络连接后重试';
           window.HLMNotice(msg,'danger');
         }
         finally{if(btn){btn.disabled=false;btn.textContent=old;}}

@@ -1,33 +1,26 @@
 from pathlib import Path
 import json
-import re
-import time
 import os
-import threading
-import urllib.request
-from flask import Blueprint, render_template, request, redirect, flash, jsonify, Response, current_app
+from datetime import datetime, UTC
+from flask import Blueprint, render_template, request, redirect, flash, jsonify, Response, current_app, session
 from core.deps import RouteDeps
+from core.services.audit_service import build_kv_message, summarize_changed_keys
+from core.services.backup_service import restore_sqlite_backup, verify_backup_integrity
+from core.services.diagnostics_service import build_support_bundle, collect_diagnostics
+from core.services.config_service import (
+    get_default_setting_value,
+    get_editable_setting_keys,
+    get_importable_setting_keys,
+    get_setting_scopes,
+    validate_setting_value,
+)
+from core.services.operation_guard_service import build_operation_preview, run_preflight_checks
+from core.services.runtime_config_service import write_dev_runtime_env
+from core.services.webhook_service import dispatch_webhook
 
 web_bp = Blueprint('web_bp', __name__)
 
 
-
-
-SETTINGS_SAVE_KEYS = (
-    'log_retention_days', 'auto_clean_logs', 'default_extensions', 'default_exclude_dirs',
-    'delete_files_with_torrent', 'notify_on_delete',
-    'allowed_roots', 'proxy_url', 'tg_api_base', 'backup_dir', 'backup_keep_last', 'notify_on_risky_delete', 'delete_match_strict_mode',
-    'manual_dest_delete_delete_source', 'manual_source_delete_delete_dest',
-    'downloader_dest_delete_delete_source', 'downloader_source_delete_delete_dest',
-    'downloader_dest_delete_delete_torrent', 'downloader_source_delete_delete_torrent',
-    'pending_source_guard_enabled', 'pending_source_guard_seconds', 'pending_source_warn_threshold', 'pending_source_log_mode',
-    'github_version_check_enabled', 'github_repo', 'github_api_base',
-    'app_log_max_mb', 'app_log_backup_count', 'version_check_cache_minutes', 'critical_action_passphrase',
-    'backfill_batch_limit', 'backfill_max_candidates', 'backfill_file_fetch_workers', 'backfill_max_failures', 'backfill_path_mappings',
-    'dev_mode', 'dev_auto_pull', 'dev_git_repo', 'dev_git_branch', 'dev_auto_pip_sync', 'dev_pip_sync_timeout', 'dev_git_token', 'dev_proxy_url', 'dev_no_proxy',
-)
-
-IMPORTABLE_SETTINGS_KEYS = frozenset(SETTINGS_SAVE_KEYS)
 DEV_DEFAULT_GIT_REPO = 'https://github.com/MaroD1M/HLM-Demo.git'
 OPERATION_TYPE_LABELS = {
     'hardlink_created': '创建硬链接',
@@ -87,20 +80,22 @@ OPERATION_TYPE_LABELS = {
     'backfill_metrics': '自动关联指标',
     'job_execute_failed': '任务执行异常',
     'db_backup': '数据库备份',
+    'settings_saved': '保存设置',
+    'settings_save_failed': '保存设置失败',
+    'settings_imported': '导入配置',
+    'settings_import_failed': '导入配置失败',
+    'settings_exported': '导出配置',
+    'settings_snapshot_saved': '保存配置快照',
+    'settings_snapshot_rollback': '回滚配置快照',
+    'settings_snapshot_deleted': '删除配置快照',
+    'diagnostics_support_bundle': '导出支持包',
+    'diagnostics_support_bundle_failed': '导出支持包失败',
 }
 
 
-SETTINGS_SAVE_SCOPES = {
-    'general_template': {'default_extensions', 'default_exclude_dirs'},
-    'log_cleanup': {'log_retention_days', 'auto_clean_logs', 'app_log_max_mb', 'app_log_backup_count'},
-    'delete_notify': {'delete_files_with_torrent', 'notify_on_delete', 'notify_on_risky_delete', 'delete_match_strict_mode', 'pending_source_guard_enabled', 'pending_source_guard_seconds', 'pending_source_warn_threshold', 'pending_source_log_mode'},
-    'source_policy': {'manual_dest_delete_delete_source', 'manual_source_delete_delete_dest', 'downloader_dest_delete_delete_source', 'downloader_source_delete_delete_dest', 'downloader_dest_delete_delete_torrent', 'downloader_source_delete_delete_torrent'},
-    'network_notify': {'allowed_roots', 'proxy_url', 'tg_api_base'},
-    'backfill': {'backfill_batch_limit', 'backfill_max_candidates', 'backfill_file_fetch_workers', 'backfill_max_failures', 'backfill_path_mappings'},
-    'backup': {'backup_dir', 'backup_keep_last'},
-    'dev': {'dev_mode', 'dev_auto_pull', 'dev_git_repo', 'dev_git_branch', 'dev_auto_pip_sync', 'dev_pip_sync_timeout', 'dev_git_token', 'dev_proxy_url', 'dev_no_proxy'},
-    'update': {'github_version_check_enabled', 'github_repo', 'github_api_base', 'version_check_cache_minutes', 'critical_action_passphrase'},
-}
+SETTINGS_SAVE_SCOPES = get_setting_scopes()
+SETTINGS_SAVE_KEYS = tuple(get_importable_setting_keys())
+IMPORTABLE_SETTINGS_KEYS = frozenset(SETTINGS_SAVE_KEYS)
 
 
 
@@ -110,7 +105,7 @@ def _op_type_label(op_type):
         return '未归类'
     if key in OPERATION_TYPE_LABELS:
         return OPERATION_TYPE_LABELS[key]
-    return f'未归类（{key}）'
+    return '未归类'
 
 def init_web_routes(ctx: RouteDeps):
     HardlinkTask = ctx.HardlinkTask
@@ -123,6 +118,7 @@ def init_web_routes(ctx: RouteDeps):
     JobExecutionLog = ctx.JobExecutionLog
     DeletePendingAction = ctx.DeletePendingAction
     AppConfig = ctx.AppConfig
+    AppConfigSnapshot = ctx.AppConfigSnapshot
     CronJob = ctx.CronJob
     db = ctx.db
     scheduler = ctx.scheduler
@@ -147,6 +143,8 @@ def init_web_routes(ctx: RouteDeps):
     get_release_info = ctx.get_release_info
     request_stop_by_execution = ctx.request_stop_by_execution
     get_running_executions_snapshot = ctx.get_running_executions_snapshot
+    save_config_snapshot = ctx.save_config_snapshot
+    restore_config_snapshot = ctx.restore_config_snapshot
 
     def _wants_json():
         return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
@@ -158,95 +156,16 @@ def init_web_routes(ctx: RouteDeps):
         return redirect(redirect_path)
 
     def _validate_backfill_setting(key, raw):
-        text = str(raw or '').strip()
-        if key == 'backfill_path_mappings':
-            return True, text
-
-        bounds = {
-            'backfill_batch_limit': (50, 3000),
-            'backfill_max_candidates': (20, 500),
-            'backfill_file_fetch_workers': (1, 16),
-            'backfill_max_failures': (0, 10),
-        }
-        lo, hi = bounds.get(key, (None, None))
-        if lo is None:
-            return True, text
-        try:
-            val = int(text)
-        except Exception:
-            return False, f'{key} must be an integer'
-        if val < lo or val > hi:
-            return False, f'{key} must be in [{lo}, {hi}]'
-        return True, str(val)
+        ok, checked = validate_setting_value(key, raw)
+        if ok:
+            return True, checked
+        return False, f'{key} {checked}'
 
     def _validate_dev_setting(key, raw):
-        text = str(raw or '').strip()
-
-        if key in {'dev_mode', 'dev_auto_pull', 'dev_auto_pip_sync'}:
-            if text not in {'true', 'false'}:
-                return False, f'{key} must be true or false'
-            return True, text
-
-        if key == 'dev_git_repo':
-            if text and (not text.startswith('http://') and not text.startswith('https://')):
-                return False, 'dev_git_repo must start with http:// or https://'
-            if len(text) > 300:
-                return False, 'dev_git_repo is too long'
-            return True, text
-
-        if key == 'dev_git_branch':
-            if text and not re.fullmatch(r'[A-Za-z0-9._/-]{1,120}', text):
-                return False, 'dev_git_branch contains invalid characters'
-            return True, text
-
-        if key == 'dev_pip_sync_timeout':
-            try:
-                val = int(text or '120')
-            except Exception:
-                return False, 'dev_pip_sync_timeout must be an integer'
-            if val < 30 or val > 1800:
-                return False, 'dev_pip_sync_timeout must be in [30, 1800]'
-            return True, str(val)
-
-        if key == 'dev_proxy_url':
-            if text and (not text.startswith('http://') and not text.startswith('https://') and not text.startswith('socks5://')):
-                return False, 'dev_proxy_url must start with http://, https:// or socks5://'
-            if len(text) > 300:
-                return False, 'dev_proxy_url is too long'
-            return True, text
-
-        if key == 'dev_no_proxy':
-            if len(text) > 500:
-                return False, 'dev_no_proxy is too long'
-            return True, text
-
-        if key == 'dev_git_token':
-            if len(text) > 300:
-                return False, 'dev_git_token is too long'
-            return True, text
-
-        return True, text
-
-    def _sync_dev_runtime_env():
-        runtime_file = Path('instance') / 'dev_runtime.env'
-        keys = (
-            ('APP_DEV_MODE', 'dev_mode', 'false'),
-            ('APP_DEV_AUTO_PULL', 'dev_auto_pull', 'false'),
-            ('APP_DEV_GIT_REPO', 'dev_git_repo', ''),
-            ('APP_DEV_GIT_BRANCH', 'dev_git_branch', 'master'),
-            ('APP_DEV_AUTO_PIP_SYNC', 'dev_auto_pip_sync', 'true'),
-            ('APP_DEV_PIP_SYNC_TIMEOUT', 'dev_pip_sync_timeout', '120'),
-            ('APP_DEV_GIT_TOKEN', 'dev_git_token', ''),
-            ('APP_DEV_PROXY_URL', 'dev_proxy_url', ''),
-            ('APP_DEV_NO_PROXY', 'dev_no_proxy', 'localhost,127.0.0.1,::1'),
-        )
-        lines = ['# Auto-generated by HLM settings page. Applied on container restart.']
-        for env_key, cfg_key, default in keys:
-            val = str(get_config(cfg_key, default) or default)
-            escaped = val.replace("'", "'\"'\"'")
-            lines.append(f"{env_key}='{escaped}'")
-        runtime_file.parent.mkdir(parents=True, exist_ok=True)
-        runtime_file.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+        ok, checked = validate_setting_value(key, raw)
+        if ok:
+            return True, checked
+        return False, f'{key} {checked}'
 
     def _critical_guard():
         expected = (get_config('critical_action_passphrase', '') or '').strip()
@@ -270,6 +189,15 @@ def init_web_routes(ctx: RouteDeps):
             if key:
                 metrics[key] = val
         return metrics
+
+    def _guard_message(report):
+        issues = report.get('issues') or []
+        warnings = report.get('warnings') or []
+        if issues:
+            return '；'.join(issues)
+        if warnings:
+            return '；'.join(warnings)
+        return '预检通过'
 
 
     def _fmt_local_dt(dt_obj):
@@ -470,6 +398,7 @@ def init_web_routes(ctx: RouteDeps):
             pending_warn_threshold=pending_warn_threshold,
             pending_is_warn=pending_is_warn,
             latest_pending_event=latest_pending_event,
+            operation_type_labeler=_op_type_label,
         )
 
     @web_bp.route('/executions/retry/<int:execution_id>', methods=['POST'])
@@ -692,12 +621,30 @@ def init_web_routes(ctx: RouteDeps):
     @web_bp.route('/hardlink/batch/<int:task_id>', methods=['POST'])
     @web_bp.route('/hardlink/execute/<int:task_id>', methods=['POST'])
     def hardlink_execute(task_id):
+        task = db.session.get(HardlinkTask, task_id)
+        if not task:
+            return _json_or_redirect(False, '任务不存在', '/hardlink', status=404)
+        report = run_preflight_checks('hardlink', task=task, get_config=get_config)
+        if not report['ok']:
+            return _json_or_redirect(False, f'执行前检查失败: {_guard_message(report)}', '/hardlink', status=400)
         ok, msg = run_hardlink_once(task_id)
         if _wants_json():
             payload = _hardlink_payload()
             html = render_template('_hardlink_jobs_panel.html', **payload)
             return _json_or_redirect(ok, msg, '/hardlink', html=html if ok else None, target='hardlinkJobsPanel', status=200 if ok else 400)
         return _json_or_redirect(ok, msg, '/hardlink')
+
+    @web_bp.route('/hardlink/preflight/<int:task_id>', methods=['POST'])
+    def hardlink_preflight(task_id):
+        task = db.session.get(HardlinkTask, task_id)
+        if not task:
+            return _json_or_redirect(False, '任务不存在', '/hardlink', status=404)
+        report = build_operation_preview('hardlink', task=task, get_config=get_config)
+        msg = _guard_message(report)
+        if _wants_json():
+            return jsonify({'ok': report['ok'], 'message': msg, 'report': report})
+        flash(msg, 'success' if report['ok'] else 'danger')
+        return redirect('/hardlink')
 
     @web_bp.route('/delete-monitor')
     def delete_monitor_list():
@@ -762,6 +709,9 @@ def init_web_routes(ctx: RouteDeps):
     def delete_pending_bulk():
         if not _critical_guard():
             return _json_or_redirect(False, '关键操作口令错误', '/delete-monitor', status=403)
+        report = build_operation_preview('delete_pending_bulk', get_config=get_config)
+        if not report['ok']:
+            return _json_or_redirect(False, f'执行前检查失败: {_guard_message(report)}', '/delete-monitor', status=400)
         action = (request.form.get('bulk_action') or '').strip()
         ids = request.form.getlist('pending_ids')
         if not ids:
@@ -812,8 +762,17 @@ def init_web_routes(ctx: RouteDeps):
         html = render_template('_delete_jobs_panel.html', **payload) if _wants_json() else None
         return _json_or_redirect(True, msg, '/delete-monitor', html=html, target='deleteJobsPanel')
 
+    @web_bp.route('/delete-monitor/pending/preview', methods=['POST'])
+    def delete_pending_preview():
+        if not _critical_guard():
+            return _json_or_redirect(False, '关键操作口令错误', '/delete-monitor', status=403)
+        report = build_operation_preview('delete_pending_bulk', get_config=get_config)
+        return _json_or_redirect(True, _guard_message(report), '/delete-monitor')
+
     @web_bp.route('/delete-monitor/pending/reject/<int:pending_id>', methods=['POST'])
     def delete_pending_reject(pending_id):
+        if not _critical_guard():
+            return _json_or_redirect(False, '关键操作口令错误', '/delete-monitor', status=403)
         pending = db.session.get(DeletePendingAction, pending_id)
         if not pending or pending.status != 'pending':
             return _json_or_redirect(False, '待确认记录不存在或已处理', '/delete-monitor', status=404)
@@ -1286,33 +1245,41 @@ def init_web_routes(ctx: RouteDeps):
     @web_bp.route('/logs/clear', methods=['POST'])
     def logs_clear():
         if not _critical_guard():
+            log_operation('security_critical_guard_failed', 'OperationLog', None, 'logs_clear', 'critical_guard_failed', False)
             flash('关键操作口令错误，已拒绝清空日志', 'danger')
             return redirect('/logs')
         OperationLog.query.delete()
         db.session.commit()
+        log_operation('logs_cleared', 'OperationLog', None, 'logs_clear', 'all_logs_deleted')
         flash('操作日志已清空', 'success')
         return redirect('/logs')
 
     def _settings_page_payload():
         settings = {c.key: c.value for c in AppConfig.query.all()}
+        # Fill missing editable keys with canonical defaults from the config registry.
+        for key in get_editable_setting_keys():
+            if key not in settings:
+                settings[key] = get_default_setting_value(key)
         if not (settings.get('dev_git_repo') or '').strip():
             settings['dev_git_repo'] = os.environ.get('APP_DEV_GIT_REPO', '') or DEV_DEFAULT_GIT_REPO
         settings['dev_git_token_masked'] = '******' if (settings.get('dev_git_token') or '').strip() else ''
         release = get_release_info()
-        return settings, release
+        snapshots = AppConfigSnapshot.query.order_by(AppConfigSnapshot.created_at.desc()).limit(10).all()
+        return settings, release, snapshots
 
     @web_bp.route('/settings')
     def settings_page():
-        settings, release = _settings_page_payload()
-        return render_template('settings.html', settings=settings, release=release)
+        settings, release, snapshots = _settings_page_payload()
+        return render_template('settings.html', settings=settings, release=release, snapshots=snapshots)
 
     @web_bp.route('/settings/devops')
     def settings_devops_page():
-        settings, release = _settings_page_payload()
-        return render_template('settings_devops.html', settings=settings, release=release)
+        settings, release, snapshots = _settings_page_payload()
+        return render_template('settings_devops.html', settings=settings, release=release, snapshots=snapshots)
 
-    def _save_settings_from_form(form, allowed_keys=None):
+    def _save_settings_from_form(form, allowed_keys=None, save_scope=''):
         changed = False
+        changed_keys = []
         for key in SETTINGS_SAVE_KEYS:
             if allowed_keys is not None and key not in allowed_keys:
                 continue
@@ -1326,6 +1293,7 @@ def init_web_routes(ctx: RouteDeps):
                 if clear_token:
                     set_config('dev_git_token', '', commit=False)
                     changed = True
+                    changed_keys.append('dev_git_token')
                     continue
                 if value == '':
                     # Keep existing token when password field is left empty.
@@ -1334,32 +1302,50 @@ def init_web_routes(ctx: RouteDeps):
             if key.startswith('backfill_'):
                 ok, checked = _validate_backfill_setting(key, value)
                 if not ok:
-                    return False, checked
+                    return False, checked, changed_keys
                 value = checked
 
             if key.startswith('dev_'):
                 ok, checked = _validate_dev_setting(key, value)
                 if not ok:
-                    return False, checked
+                    return False, checked, changed_keys
                 value = checked
 
             set_config(key, value, commit=False)
             changed = True
+            changed_keys.append(key)
         if changed:
             db.session.commit()
             # Keep entrypoint runtime config in sync with DB settings for next restart.
             if allowed_keys is not None and 'dev_mode' in allowed_keys:
-                _sync_dev_runtime_env()
-        return True, ''
+                write_dev_runtime_env(get_config, Path('instance') / 'dev_runtime.env')
+            if save_scope in {'update', 'dev'}:
+                dispatch_webhook('settings_changed', {'scope': save_scope or 'all', 'changed_keys': changed_keys}, get_config, logger=current_app.logger)
+        return True, '', changed_keys
 
     @web_bp.route('/settings/save', methods=['POST'])
     def settings_save():
         save_scope = (request.form.get('save_scope') or '').strip()
         allowed_keys = SETTINGS_SAVE_SCOPES.get(save_scope)
-        ok, msg = _save_settings_from_form(request.form, allowed_keys=allowed_keys)
+        ok, msg, changed_keys = _save_settings_from_form(request.form, allowed_keys=allowed_keys, save_scope=save_scope)
         redirect_to = '/settings/devops' if save_scope in {'dev', 'update'} else '/settings'
         if not ok:
+            log_operation(
+                'settings_save_failed',
+                'AppConfig',
+                None,
+                save_scope or 'all',
+                build_kv_message(scope=save_scope or 'all', error=msg),
+                False,
+            )
             return _json_or_redirect(False, f'设置保存失败: {msg}', redirect_to, status=400)
+        log_operation(
+            'settings_saved',
+            'AppConfig',
+            None,
+            save_scope or 'all',
+            build_kv_message(scope=save_scope or 'all', changed=summarize_changed_keys(changed_keys), changed_count=len(changed_keys)),
+        )
         return _json_or_redirect(True, '设置已保存并生效', redirect_to)
 
 
@@ -1372,42 +1358,76 @@ def init_web_routes(ctx: RouteDeps):
     @web_bp.route('/settings/check-update', methods=['POST'])
     def settings_check_update():
         info = get_release_info(force_refresh=True)
+        log_operation(
+            'settings_check_update',
+            'AppConfig',
+            None,
+            'update',
+            build_kv_message(local=info.get('local_version', '-'), remote=info.get('remote_version', '-'), message=info.get('message', '-')),
+        )
         return _json_or_redirect(True, f"版本检查完成：本地 {info.get('local_version','-')}，远端 {info.get('remote_version','-')}（{info.get('message','-')}）", '/settings/devops')
 
 
     @web_bp.route('/settings/export', methods=['GET'])
     def settings_export():
-        data = {c.key: c.value for c in AppConfig.query.all()}
-        for k in ('critical_action_passphrase', 'dev_git_token'):
-            if k in data and data[k]:
-                data[k] = '***'
+        settings_data = {c.key: c.value for c in AppConfig.query.all()}
+        for k in ('critical_action_passphrase', 'dev_git_token', 'security_2fa_secret', 'webhook_secret', 'api_access_token'):
+            if k in settings_data and settings_data[k]:
+                settings_data[k] = '***'
+        data = {
+            '__meta': {
+                'format_version': 1,
+                'exported_at': datetime.utcnow().isoformat() + 'Z',
+                'app_version': (current_app.config.get('APP_VERSION') or 'dev'),
+            },
+            'settings': settings_data,
+        }
+        log_operation(
+            'settings_exported',
+            'AppConfig',
+            None,
+            'settings_export',
+            build_kv_message(export_keys=len(settings_data)),
+        )
         return Response(json.dumps(data, ensure_ascii=False, indent=2), mimetype='application/json', headers={'Content-Disposition': 'attachment; filename=hlm-settings.json'})
 
     @web_bp.route('/settings/import', methods=['POST'])
     def settings_import():
         f = request.files.get('config_file')
         if not f:
+            log_operation('settings_import_failed', 'AppConfig', None, 'settings_import', 'missing_file', False)
             flash('请上传配置文件', 'danger')
             return redirect('/settings')
         try:
             payload = json.loads(f.read().decode('utf-8'))
         except Exception:
+            log_operation('settings_import_failed', 'AppConfig', None, 'settings_import', 'invalid_json', False)
             flash('配置文件格式错误', 'danger')
             return redirect('/settings')
+        if isinstance(payload, dict) and isinstance(payload.get('settings'), dict):
+            payload_settings = payload.get('settings') or {}
+        elif isinstance(payload, dict):
+            # Backward compatibility: old flat export payload.
+            payload_settings = payload
+        else:
+            log_operation('settings_import_failed', 'AppConfig', None, 'settings_import', 'payload_not_object', False)
+            return _json_or_redirect(False, '配置导入失败: 顶层必须是对象', '/settings', status=400)
         allowed = IMPORTABLE_SETTINGS_KEYS
         applied = 0
         changed = False
-        for k,v in payload.items():
+        for k, v in payload_settings.items():
             if k in allowed and v is not None and v != '***':
                 value = str(v)
                 if k.startswith('backfill_'):
                     ok, checked = _validate_backfill_setting(k, value)
                     if not ok:
+                        log_operation('settings_import_failed', 'AppConfig', None, 'settings_import', build_kv_message(key=k, error=checked), False)
                         return _json_or_redirect(False, f'配置导入失败: {checked}', '/settings', status=400)
                     value = checked
                 if k.startswith('dev_'):
                     ok, checked = _validate_dev_setting(k, value)
                     if not ok:
+                        log_operation('settings_import_failed', 'AppConfig', None, 'settings_import', build_kv_message(key=k, error=checked), False)
                         return _json_or_redirect(False, f'配置导入失败: {checked}', '/settings', status=400)
                     value = checked
                 set_config(k, value, commit=False)
@@ -1415,7 +1435,42 @@ def init_web_routes(ctx: RouteDeps):
                 applied += 1
         if changed:
             db.session.commit()
+            log_operation(
+                'settings_imported',
+                'AppConfig',
+                None,
+                'settings_import',
+                build_kv_message(applied=applied),
+            )
         return _json_or_redirect(True, f'配置导入完成，已更新 {applied} 项', '/settings')
+
+    @web_bp.route('/settings/snapshot/save', methods=['POST'])
+    def settings_snapshot_save():
+        label = (request.form.get('snapshot_label') or request.form.get('label') or 'snapshot').strip() or 'snapshot'
+        note = (request.form.get('snapshot_note') or request.form.get('note') or '').strip()
+        row = save_config_snapshot(label=label, note=note, created_by=session.get('login_user') or '')
+        log_operation('settings_snapshot_saved', 'AppConfigSnapshot', row.id, row.label, build_kv_message(label=row.label, note=row.note or ''))
+        return _json_or_redirect(True, f'配置快照已保存：{row.label}', '/settings')
+
+    @web_bp.route('/settings/snapshot/rollback/<int:snapshot_id>', methods=['POST'])
+    def settings_snapshot_rollback(snapshot_id):
+        row = db.session.get(AppConfigSnapshot, snapshot_id)
+        if not row:
+            return _json_or_redirect(False, '快照不存在', '/settings', status=404)
+        ok, msg = restore_config_snapshot(row)
+        log_operation('settings_snapshot_rollback', 'AppConfigSnapshot', row.id, row.label, msg, ok)
+        return _json_or_redirect(ok, msg, '/settings', status=200 if ok else 400)
+
+    @web_bp.route('/settings/snapshot/delete/<int:snapshot_id>', methods=['POST'])
+    def settings_snapshot_delete(snapshot_id):
+        row = db.session.get(AppConfigSnapshot, snapshot_id)
+        if not row:
+            return _json_or_redirect(False, '快照不存在', '/settings', status=404)
+        label = row.label
+        db.session.delete(row)
+        db.session.commit()
+        log_operation('settings_snapshot_deleted', 'AppConfigSnapshot', snapshot_id, label, '已删除配置快照')
+        return _json_or_redirect(True, f'已删除快照：{label}', '/settings')
 
     @web_bp.route('/diagnostics/backfill-metrics')
     def diagnostics_backfill_metrics():
@@ -1432,180 +1487,145 @@ def init_web_routes(ctx: RouteDeps):
 
     @web_bp.route('/diagnostics')
     def diagnostics_page():
-        from core.services.migration_service import MigrationService
-        def _human_size(size_bytes):
-            size = float(max(0, int(size_bytes or 0)))
-            units = ['B', 'KB', 'MB', 'GB', 'TB']
-            for unit in units:
-                if size < 1024 or unit == units[-1]:
-                    return f'{size:.1f} {unit}' if unit != 'B' else f'{int(size)} B'
-                size /= 1024
-            return f'{int(size_bytes or 0)} B'
-
-        def _safe_file_size(path_obj):
-            try:
-                if path_obj.exists() and path_obj.is_file():
-                    return path_obj.stat().st_size
-            except Exception:
-                pass
-            return None
-
-        def _safe_dir_size(path_obj):
-            total = 0
-            files = 0
-            try:
-                if not path_obj.exists() or not path_obj.is_dir():
-                    return 0, 0
-                for child in path_obj.rglob('*'):
-                    if child.is_file():
-                        try:
-                            total += child.stat().st_size
-                            files += 1
-                        except Exception:
-                            continue
-            except Exception:
-                return None, None
-            return total, files
-
-        def _schema_meta_get(key, default=''):
-            try:
-                row = db.session.execute(db.text("SELECT value FROM schema_meta WHERE key=:k"), {'k': key}).fetchone()
-                return str(row[0]) if row and row[0] is not None else str(default)
-            except Exception:
-                return str(default)
-
-        def _check_writable(path_obj):
-            try:
-                path_obj.mkdir(parents=True, exist_ok=True)
-                probe = path_obj / '.hlm_write_probe'
-                probe.write_text('ok', encoding='utf-8')
-                probe.unlink(missing_ok=True)
-                return True
-            except Exception:
-                return False
-
-        def _probe_url(url, timeout=3):
-            try:
-                req = urllib.request.Request(url, method='HEAD')
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
-                    code = getattr(resp, 'status', 200) or 200
-                return True, f'HTTP {code}'
-            except Exception as exc:
-                return False, str(exc)
-
         panel_view = (request.args.get('panel_view') or 'overview').strip().lower()
         if panel_view not in {'overview', 'backfill'}:
             panel_view = 'overview'
-        checks = []
-        try:
-            db.session.execute(db.text('SELECT 1')).fetchone()
-            checks.append(('数据库连接', True, '正常'))
-        except Exception as exc:
-            checks.append(('数据库连接', False, str(exc)))
+        payload = collect_diagnostics(
+            db=db,
+            current_app=current_app,
+            get_config=get_config,
+            get_release_info=get_release_info,
+            get_running_executions_snapshot=get_running_executions_snapshot,
+            models={
+                'OperationLog': OperationLog,
+                'FileLinkMap': FileLinkMap,
+                'AppConfig': AppConfig,
+                'JobExecutionLog': JobExecutionLog,
+                'AppConfigSnapshot': AppConfigSnapshot,
+                'HardlinkTask': HardlinkTask,
+                'DeleteMonitorTask': DeleteMonitorTask,
+                'Downloader': Downloader,
+                'Notifier': Notifier,
+                'CronJob': CronJob,
+            },
+            panel_view=panel_view,
+        )
+        return render_template('diagnostics.html', **payload)
 
-        try:
-            row = db.session.execute(db.text("SELECT value FROM schema_meta WHERE key='db_schema_version'" )).fetchone()
-            current_schema = str(row[0]) if row and row[0] is not None else '0'
-        except Exception:
-            current_schema = '0'
-        target_schema = MigrationService.get_target_schema_version()
-        try:
-            current_schema_num = int(current_schema)
-        except Exception:
-            current_schema_num = 0
-        if current_schema_num == target_schema:
-            schema_state = '已是最新版本'
-        elif current_schema_num < target_schema:
-            schema_state = '低于目标版本（通常重启后会自动升级）'
-        else:
-            schema_state = '高于应用目标版本（兼容模式）'
-        checks.append(('数据库结构状态', True, schema_state))
-        checks.append(('数据库结构版本（内部）', True, f'当前 {current_schema_num}，目标 {target_schema}'))
-
-        migration_status = _schema_meta_get('last_migration_status', 'unknown')
-        migration_error = _schema_meta_get('last_migration_error', '')
-        migration_at = _schema_meta_get('pre_migration_backup_at', '')
-        migration_detail = f'状态={migration_status}'
-        if migration_at:
-            migration_detail += f'，最近升级前备份时间={migration_at}'
-        if migration_error:
-            migration_detail += f'，错误={migration_error}'
-        checks.append(('最近迁移状态', migration_status in {'success', 'backup_ok', 'unknown'}, migration_detail))
-
-        db_file = Path(current_app.instance_path) / 'hardlink_manager.db'
-        db_size_bytes = _safe_file_size(db_file)
-        if db_size_bytes is None:
-            checks.append(('数据库文件大小', False, f'未找到数据库文件：{db_file}'))
-        else:
-            checks.append(('数据库文件大小', True, f'{_human_size(db_size_bytes)} ({db_file})'))
-
-        logs_dir = Path('data/logs').resolve()
-        logs_size, logs_files = _safe_dir_size(logs_dir)
-        if logs_size is None:
-            checks.append(('日志目录占用', False, f'统计失败：{logs_dir}'))
-        else:
-            checks.append(('日志目录占用', True, f'{_human_size(logs_size)}，{logs_files} 个文件'))
-
-        log_max_mb = str(get_config('app_log_max_mb', '10') or '10').strip()
-        log_keep = str(get_config('app_log_backup_count', '5') or '5').strip()
-        log_days = str(get_config('log_retention_days', '30') or '30').strip()
-        checks.append(('日志保留策略', True, f'单文件上限 {log_max_mb}MB，滚动保留 {log_keep} 份，清理保留天数 {log_days} 天'))
-
-        instance_dir = Path(current_app.instance_path)
+    @web_bp.route('/diagnostics/backup/restore/<path:backup_name>', methods=['POST'])
+    def diagnostics_backup_restore(backup_name):
+        if not _critical_guard():
+            return _json_or_redirect(False, '关键操作口令错误', '/diagnostics', status=403)
         backup_dir = Path((get_config('backup_dir', '/app/data/backups') or '/app/data/backups').strip()).resolve()
-        checks.append(('目录可写性(instance)', _check_writable(instance_dir), str(instance_dir)))
-        checks.append(('目录可写性(logs)', _check_writable(logs_dir), str(logs_dir)))
-        checks.append(('目录可写性(backup)', _check_writable(backup_dir), str(backup_dir)))
-
-        version_check_enabled = str(get_config('github_version_check_enabled', 'true') or 'true').strip().lower() == 'true'
-        github_api_base = (get_config('github_api_base', 'https://api.github.com') or 'https://api.github.com').strip()
-        if version_check_enabled and github_api_base:
-            ok_probe, probe_detail = _probe_url(github_api_base, timeout=3)
-            checks.append(('版本检查地址可达性', ok_probe, f'{github_api_base} -> {probe_detail}'))
-        else:
-            checks.append(('版本检查地址可达性', True, '已禁用版本检查或未配置地址'))
-
-        checks.append(('代理配置', True, (get_config('proxy_url','') or '').strip() or '未设置（直连）'))
-        checks.append(('应用版本', True, get_release_info().get('local_version','-')))
-        checks.append(('日志目录', True, str(logs_dir)))
-        checks.append(('待判定来源保护', True, f"enabled={get_config('pending_source_guard_enabled','true')}, window={get_config('pending_source_guard_seconds','900')}s, log_mode={get_config('pending_source_log_mode','aggregate')}"))
-
-        pending_count = FileLinkMap.query.filter(FileLinkMap.source_type == 'pending', FileLinkMap.deleted_at.is_(None)).count()
+        backup_path = (backup_dir / backup_name).resolve(strict=False)
         try:
-            pending_warn_threshold = int((get_config('pending_source_warn_threshold', '200') or '200').strip())
+            backup_path.relative_to(backup_dir)
         except Exception:
-            pending_warn_threshold = 200
-        pending_warn_threshold = max(1, pending_warn_threshold)
-        checks.append(('待判定映射数量', pending_count < pending_warn_threshold, f'{pending_count} (threshold={pending_warn_threshold})'))
+            log_operation('db_backup_restore', 'System', None, backup_name, '备份路径越界', False)
+            return _json_or_redirect(False, '备份路径非法', '/diagnostics', status=400)
+        db_file = Path(current_app.instance_path) / 'hardlink_manager.db'
+        ok_check, msg_check = verify_backup_integrity(backup_path)
+        if not ok_check:
+            log_operation('db_backup_restore', 'System', None, backup_name, msg_check, False)
+            return _json_or_redirect(False, f'恢复前检查失败: {msg_check}', '/diagnostics', status=400)
+        ok, msg = restore_sqlite_backup(
+            str(db_file),
+            str(backup_path),
+            create_fallback_backup=True,
+            fallback_backup_dir=str(backup_dir / 'restore-preflight'),
+            keep_last=int(get_config('backup_keep_last', '7') or '7'),
+        )
+        log_operation('db_backup_restore', 'System', None, backup_name, msg, ok)
+        return _json_or_redirect(ok, msg, '/diagnostics', status=200 if ok else 400)
 
-        pending_events = OperationLog.query.filter_by(operation_type='delete_pending_source').order_by(OperationLog.created_at.desc()).limit(5).all()
-        backfill_metrics_logs = OperationLog.query.filter_by(operation_type='backfill_metrics').order_by(OperationLog.created_at.desc()).limit(5).all()
-        backfill_metrics_rows = [
-            {
-                'created_at': row.created_at,
-                'metrics': _parse_backfill_metrics_message(row.message),
-                'message': row.message or '',
+    @web_bp.route('/diagnostics/backup/restore-preview/<path:backup_name>', methods=['GET', 'POST'])
+    def diagnostics_backup_restore_preview(backup_name):
+        backup_dir = Path((get_config('backup_dir', '/app/data/backups') or '/app/data/backups').strip()).resolve()
+        backup_path = (backup_dir / backup_name).resolve(strict=False)
+        in_dir = True
+        try:
+            backup_path.relative_to(backup_dir)
+        except Exception:
+            in_dir = False
+        ok, msg = verify_backup_integrity(backup_path) if in_dir else (False, '备份路径非法')
+        payload = {
+            'ok': ok,
+            'message': msg,
+            'backup_name': backup_name,
+            'backup_path': str(backup_path),
+            'backup_dir': str(backup_dir),
+            'fallback_backup_dir': str(backup_dir / 'restore-preflight'),
+        }
+        log_operation('db_backup_restore_preview', 'System', None, backup_name, build_kv_message(ok=ok, message=msg), ok)
+        return jsonify(payload), (200 if ok else 400)
+
+    @web_bp.route('/diagnostics/support-bundle', methods=['GET'])
+    def diagnostics_support_bundle():
+        panel_view = (request.args.get('panel_view') or 'overview').strip().lower()
+        if panel_view not in {'overview', 'backfill'}:
+            panel_view = 'overview'
+        bundle_format = (request.args.get('format') or 'zip').strip().lower()
+        try:
+            payload = collect_diagnostics(
+                db=db,
+                current_app=current_app,
+                get_config=get_config,
+                get_release_info=get_release_info,
+                get_running_executions_snapshot=get_running_executions_snapshot,
+                models={
+                    'OperationLog': OperationLog,
+                    'FileLinkMap': FileLinkMap,
+                    'AppConfig': AppConfig,
+                    'JobExecutionLog': JobExecutionLog,
+                    'AppConfigSnapshot': AppConfigSnapshot,
+                    'HardlinkTask': HardlinkTask,
+                    'DeleteMonitorTask': DeleteMonitorTask,
+                    'Downloader': Downloader,
+                    'Notifier': Notifier,
+                    'CronJob': CronJob,
+                },
+                panel_view=panel_view,
+            )
+            content, filename, mime_type, _ = build_support_bundle(payload, bundle_format=bundle_format)
+            log_operation('diagnostics_support_bundle', 'System', None, filename, build_kv_message(format=bundle_format, size=len(content)), True)
+            return Response(
+                content,
+                mimetype=mime_type,
+                headers={
+                    'Content-Disposition': f'attachment; filename={filename}',
+                    'X-HLM-Support-Bundle-Status': 'ok',
+                },
+            )
+        except Exception as exc:
+            current_app.logger.exception('diagnostics_support_bundle_failed: %s', exc)
+            fallback = {
+                'generated_at': datetime.now(UTC).isoformat(),
+                'panel_view': panel_view,
+                'health_summary': {'status': 'degraded', 'label': '需要关注', 'detail': f'支持包生成失败: {exc}'},
+                'counts': {},
+                'storage': {},
+                'schema': {},
+                'release': {},
+                'checks': [],
+                'running_rows': [],
+                'pending_events': [],
+                'backfill_metrics_rows': [],
+                'backup_files': [],
+                'config_rows': [],
+                'recent_operations': [],
+                'recent_job_rows': [],
             }
-            for row in backfill_metrics_logs
-        ]
-
-        running_snaps = get_running_executions_snapshot()
-        now = __import__('datetime').datetime.now(__import__('datetime').UTC)
-        running_rows = []
-        for snap in running_snaps:
-            started = snap.get('started_at')
-            elapsed = int((now - started).total_seconds()) if started else 0
-            running_rows.append({
-                'id': snap.get('execution_id'),
-                'job_name': snap.get('job_name') or '-',
-                'job_type': snap.get('job_type') or '-',
-                'source': snap.get('source') or '-',
-                'elapsed_seconds': max(0, elapsed),
-                'target_id': snap.get('target_id'),
-                'has_snapshot': True,
-            })
-
-        return render_template('diagnostics.html', checks=checks, running_rows=running_rows, pending_events=pending_events, backfill_metrics_rows=backfill_metrics_rows, panel_view=panel_view)
+            content, filename, mime_type, _ = build_support_bundle(fallback, bundle_format=bundle_format)
+            log_operation('diagnostics_support_bundle_failed', 'System', None, filename, build_kv_message(error=str(exc), format=bundle_format, size=len(content)), False)
+            return Response(
+                content,
+                mimetype=mime_type,
+                headers={
+                    'Content-Disposition': f'attachment; filename={filename}',
+                    'X-HLM-Support-Bundle-Status': 'degraded',
+                    'X-HLM-Support-Bundle-Error': 'generation_failed',
+                },
+            )
 
     @web_bp.route('/delete-monitor/test/<int:task_id>', methods=['POST'])
     def delete_monitor_test(task_id):
@@ -1698,15 +1718,25 @@ def init_web_routes(ctx: RouteDeps):
 
     @web_bp.route('/cron/run/<int:job_id>', methods=['POST'])
     def cron_run_once(job_id):
+        db_file = Path(current_app.instance_path) / 'hardlink_manager.db'
         c = db.session.get(CronJob, job_id)
         if not c:
             return _json_or_redirect(False, '定时任务不存在', '/cron', status=404)
 
         if c.task_type == 'batch_hardlink':
+            task = db.session.get(HardlinkTask, c.target_id) if c.target_id else None
+            if not task:
+                return _json_or_redirect(False, '关联硬链接任务不存在', '/cron', status=404)
+            report = run_preflight_checks('hardlink', task=task, get_config=get_config)
+            if not report['ok']:
+                return _json_or_redirect(False, f'执行前检查失败: {_guard_message(report)}', '/cron', status=400)
             ok, msg = run_hardlink_once(c.target_id)
         elif c.task_type == 'backfill_mapping':
             ok, msg = run_backfill_once(c.target_id)
         elif c.task_type == 'db_backup':
+            report = run_preflight_checks('backup', db_path=str(db_file))
+            if not report['ok']:
+                return _json_or_redirect(False, f'备份前检查失败: {_guard_message(report)}', '/cron', status=400)
             ok, msg = run_backup_once()
         else:
             run_cron_job(c.id)
@@ -1742,12 +1772,53 @@ def init_web_routes(ctx: RouteDeps):
 
     @web_bp.route('/cron/backup-now', methods=['POST'])
     def backup_now():
+        db_file = Path(current_app.instance_path) / 'hardlink_manager.db'
+        report = run_preflight_checks('backup', db_path=str(db_file))
+        if not report['ok']:
+            return _json_or_redirect(False, f'备份前检查失败: {_guard_message(report)}', '/cron', status=400)
         ok, msg = run_backup_once()
         if _wants_json():
             payload = _cron_payload()
             html = render_template('_cron_jobs_panel.html', **payload)
             return _json_or_redirect(ok, msg, '/cron', html=html if ok else None, target='cronJobsPanel', status=200 if ok else 400)
         return _json_or_redirect(ok, msg, '/cron')
+
+    @web_bp.route('/cron/backup-preview', methods=['POST'])
+    def backup_preview():
+        db_file = Path(current_app.instance_path) / 'hardlink_manager.db'
+        report = build_operation_preview('backup', db_path=str(db_file))
+        return _json_or_redirect(True, _guard_message(report), '/cron')
+
+    @web_bp.route('/cron/preview/<int:job_id>', methods=['POST'])
+    def cron_preview(job_id):
+        c = db.session.get(CronJob, job_id)
+        if not c:
+            return _json_or_redirect(False, '定时任务不存在', '/cron', status=404)
+        if c.task_type == 'batch_hardlink':
+            task = db.session.get(HardlinkTask, c.target_id) if c.target_id else None
+            if not task:
+                return _json_or_redirect(False, '关联硬链接任务不存在', '/cron', status=404)
+            report = build_operation_preview('hardlink', task=task, get_config=get_config)
+            return _json_or_redirect(True, _guard_message(report), '/cron')
+        if c.task_type == 'db_backup':
+            db_file = Path(current_app.instance_path) / 'hardlink_manager.db'
+            report = build_operation_preview('backup', db_path=str(db_file))
+            return _json_or_redirect(True, _guard_message(report), '/cron')
+        if c.task_type == 'clean_backfill_failures':
+            from datetime import UTC, datetime, timedelta
+
+            days = int(get_config('backfill_failure_retention_days', '7') or '7')
+            days = max(1, min(90, days))
+            cutoff = datetime.now(UTC) - timedelta(days=days)
+            count = FileLinkMap.query.filter(
+                FileLinkMap.torrent_hash.is_(None),
+                FileLinkMap.deleted_at.is_(None),
+                db.func.coalesce(FileLinkMap.backfill_fail_count, 0) > 2,
+                FileLinkMap.backfill_last_attempt_at.is_not(None),
+                FileLinkMap.backfill_last_attempt_at < cutoff,
+            ).count()
+            return _json_or_redirect(True, f'预览完成：将重置 {count} 条（>{days}天）', '/cron')
+        return _json_or_redirect(False, '该任务类型暂不支持预览', '/cron', status=400)
 
     @web_bp.route('/cron/toggle/<int:job_id>', methods=['POST'])
     def cron_toggle(job_id):

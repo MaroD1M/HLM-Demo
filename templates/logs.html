@@ -5,7 +5,7 @@
   <h3 class="mb-0">日志与执行历史</h3>
   <div class="page-actions">
     <button class="btn btn-outline-secondary" type="button" data-help-target="pageHelp" aria-expanded="false"><i class="fa-solid fa-circle-info me-1"></i><span class="help-toggle-label">页面说明</span></button>
-    <form action="/logs/clear" method="POST" onsubmit="return confirm('确认清空操作日志？')" class="d-flex gap-2 align-items-center flex-wrap">
+    <form action="/logs/clear" method="POST" onsubmit="return confirm('确认清空操作日志？该操作不可恢复。')" class="d-flex gap-2 align-items-center flex-wrap">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input class="form-control form-control-sm" style="width:180px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
       <button class="btn btn-outline-danger">清空操作日志</button>
@@ -132,7 +132,7 @@
           <tr>
             <td><span title="{{ e.started_at }}">{{ fmt_dt(e.started_at) }}</span></td>
             <td class="wrap-any">{{ e.job_name }}</td>
-            <td>{{ "手动" if e.source=="manual" else ("定时任务" if e.source=="cron" else e.source) }}</td>
+            <td>{{ "手动" if e.source=="manual" else ("定时任务" if e.source=="cron" else "系统") }}</td>
             <td>{% if e.status=='success' %}<span class="badge text-bg-success">成功</span>{% elif e.status=='failed' %}<span class="badge text-bg-danger">失败</span>{% else %}<span class="badge text-bg-secondary">运行中</span>{% endif %}</td>
             <td>{% set d = e.duration_ms or 0 %}{% if d >= 1000 %}{{ '%.1fs'|format(d / 1000) }}{% elif d > 0 %}{{ d }}ms{% else %}<span class="text-muted">-</span>{% endif %}</td>
             <td class="wrap-any">

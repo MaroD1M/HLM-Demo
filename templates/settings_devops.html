@@ -36,6 +36,36 @@
     </div>
 
     <div class="section-card mb-3">
+      <details>
+        <summary class="section-title mb-2" style="cursor:pointer;">安全与访问控制（高级可选，默认不展开）</summary>
+        <div class="section-muted mb-3 mt-2">以下功能全部为可选项，默认关闭。未启用时不会改变现有登录与访问流程。建议先在局域网或测试环境验证，再用于生产环境。</div>
+        <div class="alert alert-secondary py-2 mb-3">
+          <div><strong>功能说明与建议：</strong></div>
+          <ul class="mb-0">
+            <li><strong>只读模式：</strong>启用后会阻止新增、编辑、删除等写操作，适合排障/审计窗口。若忘记关闭，可能导致“保存无效”的误解。</li>
+            <li><strong>IP 白名单：</strong>仅允许指定 IP 或网段访问。配置错误会造成自己被锁在系统外，建议先加入当前访问 IP 再保存。</li>
+            <li><strong>RBAC（预留）：</strong>当前为预留开关，未来用于角色权限模型；现阶段不建议普通用户启用。</li>
+            <li><strong>2FA（预留）：</strong>当前为预留配置，密钥仅保存，不会强制用户开启双因子。</li>
+            <li><strong>Webhook：</strong>用于把系统事件推送到外部服务；建议配合密钥校验，仅在可信地址上启用。</li>
+            <li><strong>API 访问令牌：</strong>为 API POST 请求增加额外访问令牌校验。留空即关闭，不影响普通页面操作。</li>
+          </ul>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-3 section-subcard"><label class="form-label">启用只读模式</label><select class="form-select" name="security_read_only_enabled"><option value="false" {% if settings.get('security_read_only_enabled','false')=='false' %}selected{% endif %}>禁用</option><option value="true" {% if settings.get('security_read_only_enabled')=='true' %}selected{% endif %}>启用</option></select><div class="form-text">只影响写操作，不影响查看页面。</div></div>
+          <div class="col-md-3 section-subcard"><label class="form-label">启用 IP 白名单</label><select class="form-select" name="security_ip_allowlist_enabled"><option value="false" {% if settings.get('security_ip_allowlist_enabled','false')=='false' %}selected{% endif %}>禁用</option><option value="true" {% if settings.get('security_ip_allowlist_enabled')=='true' %}selected{% endif %}>启用</option></select><div class="form-text">建议保存前先配置白名单内容。</div></div>
+          <div class="col-md-6 section-subcard"><label class="form-label">IP 白名单列表</label><textarea class="form-control" name="security_ip_allowlist" rows="3" placeholder="例如：127.0.0.1,10.0.0.0/24">{{ settings.get('security_ip_allowlist','') }}</textarea><div class="form-text">支持逗号分隔与 CIDR。示例：<code>127.0.0.1,192.168.1.0/24</code>。</div></div>
+          <div class="col-md-3 section-subcard"><label class="form-label">启用 RBAC（预留）</label><select class="form-select" name="security_role_model_enabled"><option value="false" {% if settings.get('security_role_model_enabled','false')=='false' %}selected{% endif %}>禁用</option><option value="true" {% if settings.get('security_role_model_enabled')=='true' %}selected{% endif %}>启用</option></select><div class="form-text">预留能力，不影响当前基础流程。</div></div>
+          <div class="col-md-3 section-subcard"><label class="form-label">启用 2FA（预留）</label><select class="form-select" name="security_2fa_enabled"><option value="false" {% if settings.get('security_2fa_enabled','false')=='false' %}selected{% endif %}>禁用</option><option value="true" {% if settings.get('security_2fa_enabled')=='true' %}selected{% endif %}>启用</option></select><div class="form-text">预留能力，默认关闭且不强制。</div></div>
+          <div class="col-md-6 section-subcard"><label class="form-label">2FA 密钥（预留）</label><input class="form-control" type="password" name="security_2fa_secret" value="{{ settings.get('security_2fa_secret','') }}" placeholder="仅保存，不强制使用"><div class="form-text">建议使用随机高强度密钥。</div></div>
+          <div class="col-md-3 section-subcard"><label class="form-label">启用 Webhook（可选）</label><select class="form-select" name="webhook_enabled"><option value="false" {% if settings.get('webhook_enabled','false')=='false' %}selected{% endif %}>禁用</option><option value="true" {% if settings.get('webhook_enabled')=='true' %}selected{% endif %}>启用</option></select><div class="form-text">关闭时不会对外发送请求。</div></div>
+          <div class="col-md-6 section-subcard"><label class="form-label">Webhook 地址</label><input class="form-control" name="webhook_url" value="{{ settings.get('webhook_url','') }}" placeholder="https://example.com/hook"><div class="form-text">建议使用 HTTPS 且目标服务可鉴权。</div></div>
+          <div class="col-md-3 section-subcard"><label class="form-label">Webhook 密钥</label><input class="form-control" type="password" name="webhook_secret" value="{{ settings.get('webhook_secret','') }}" placeholder="可选"><div class="form-text">用于签名或共享密钥校验。</div></div>
+          <div class="col-md-6 section-subcard"><label class="form-label">API 访问令牌（可选）</label><input class="form-control" type="password" name="api_access_token" value="{{ settings.get('api_access_token','') }}" placeholder="留空=不启用"><div class="form-text">设置后，API POST 需在请求头提供 <code>X-API-Token</code>。</div></div>
+        </div>
+      </details>
+    </div>
+
+    <div class="section-card mb-3">
       <div class="section-title mb-2">开发模式（页面配置）</div>
       <div class="row g-3">
         <div class="col-md-3 section-subcard"><label class="form-label">启用开发模式</label><select class="form-select" name="dev_mode"><option value="true" {% if settings.get('dev_mode','false')=='true' %}selected{% endif %}>启用</option><option value="false" {% if settings.get('dev_mode','false')=='false' %}selected{% endif %}>禁用</option></select></div>
@@ -48,7 +78,6 @@
         <div class="col-md-4 section-subcard"><label class="form-label">不走代理地址（NO_PROXY）</label><input class="form-control" name="dev_no_proxy" value="{{ settings.get('dev_no_proxy','localhost,127.0.0.1,::1') }}"></div>
         <div class="col-md-9 section-subcard"><label class="form-label">Git 访问令牌（可选）</label><input class="form-control" type="password" name="dev_git_token" placeholder="{% if settings.get('dev_git_token_masked') %}已保存，留空保持不变{% else %}留空=不使用{% endif %}"><div class="form-text">当前状态：{{ settings.get('dev_git_token_masked') or '未设置' }}</div></div>
         <div class="col-md-3 section-subcard"><label class="form-label">清空令牌</label><select class="form-select" name="dev_git_token_clear"><option value="false" selected>否</option><option value="true">是（保存时清空）</option></select></div>
-                </div>
       </div>
       <div class="settings-actions mt-3">
         <button class="btn btn-outline-primary" type="submit" name="save_scope" value="dev">保存开发模式设置</button>

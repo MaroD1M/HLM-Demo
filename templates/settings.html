@@ -122,6 +122,54 @@
       <div class="settings-actions mt-3"><button class="btn btn-outline-primary" type="submit" name="save_scope" value="backup">保存备份配置</button></div>
     </div>
 
+    <div class="section-card mb-2">
+      <div class="section-title mb-2">配置快照</div>
+      <div class="alert alert-secondary py-2 mb-3">
+        <div><strong>功能说明：</strong>配置快照会保存“当前可导入配置”的完整副本，便于后续快速回滚。</div>
+        <ul class="mb-0 mt-1">
+          <li><strong>保存快照：</strong>记录当前设置状态，不会立即变更系统行为。</li>
+          <li><strong>回滚快照：</strong>将当前设置覆盖为快照内容，建议回滚后检查关键配置。</li>
+          <li><strong>删除快照：</strong>仅删除历史记录，不影响当前生效配置。</li>
+          <li><strong>保留策略：</strong>页面默认展示最近 10 条快照，可按需手动清理。</li>
+        </ul>
+      </div>
+      <div class="row g-3">
+        <div class="col-md-4 section-subcard"><label class="form-label">快照名称</label><input class="form-control" name="snapshot_label" placeholder="例如：release-20260523"></div>
+        <div class="col-md-8 section-subcard"><label class="form-label">备注</label><input class="form-control" name="snapshot_note" placeholder="可选备注"></div>
+      </div>
+      <div class="settings-actions mt-3">
+        <button class="btn btn-outline-primary" type="submit" formaction="/settings/snapshot/save" formmethod="post" data-refresh-on-success="true">保存当前配置快照</button>
+      </div>
+      <div class="table-responsive table-shell mt-3">
+        <table class="table table-sm align-middle table-grid">
+          <thead><tr><th>名称</th><th>时间</th><th>备注</th><th>操作</th></tr></thead>
+          <tbody>
+            {% if snapshots %}
+              {% for s in snapshots %}
+              <tr>
+                <td>{{ s.label }}</td>
+                <td>{{ fmt_dt(s.created_at) }}</td>
+                <td class="wrap-any">{{ s.note or '-' }}</td>
+                <td>
+                  <form class="d-inline js-ajax-form" action="/settings/snapshot/rollback/{{ s.id }}" method="POST" data-refresh-on-success="true" onsubmit="return confirm('确认回滚到该快照？当前配置将被覆盖。')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn-sm btn-outline-warning">回滚</button>
+                  </form>
+                  <form class="d-inline js-ajax-form" action="/settings/snapshot/delete/{{ s.id }}" method="POST" data-refresh-on-success="true" onsubmit="return confirm('确认删除该快照？删除后不可恢复。')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn-sm btn-outline-danger">删除</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="4" class="text-muted">暂无快照</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="mt-3 settings-actions">
       <button class="btn btn-brand" type="submit">保存全部设置</button>
       <a class="btn btn-outline-secondary" href="/settings/devops">前往开发与更新</a>
