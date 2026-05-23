@@ -376,6 +376,24 @@
   background: #f3f8ff;
 }
 
+.cron-table .cron-actions-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.cron-table .cron-actions-row form,
+.cron-table .cron-actions-row .btn-cron-action {
+  width: 100%;
+}
+
+.cron-table .btn-cron-action {
+  min-height: 32px;
+  padding: 0.35rem 0.5rem;
+  line-height: 1.2;
+  text-align: center;
+}
+
 .log-msg {
   word-break: break-word;
 }
@@ -391,6 +409,10 @@
 
   .cron-table .col-cron-hint {
     display: none;
+  }
+
+  .cron-table .cron-actions-row {
+    grid-template-columns: 1fr;
   }
 }
 

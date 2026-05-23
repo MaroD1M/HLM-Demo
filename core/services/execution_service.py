@@ -1,5 +1,4 @@
 from contextvars import ContextVar
-from datetime import datetime
 from threading import Lock
 
 

@@ -64,7 +64,7 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="将该记录失败计数清零并清空上次失败时间">重置失败计数</button>
                   </form>
-                  <form action="/mapping/link/delete" method="POST" class="m-0 js-ajax-form" data-target="mappingPanel" onsubmit="return confirm('确认删除该映射记录？仅删除数据库映射，不删除文件。')">
+                  <form action="/mapping/link/delete" method="POST" class="m-0 js-ajax-form" data-target="mappingPanel" onsubmit="return confirm('确认删除该映射记录？仅删除数据库映射，不删除真实文件。')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="map_id" value="{{ m.id }}">
                     <button class="btn btn-sm btn-outline-danger" data-bs-toggle="tooltip" title="仅删除映射记录，不删除真实文件">删除映射</button>
@@ -112,7 +112,7 @@
                 <td class="wrap-any"><small>{{ c.source_path }}</small></td>
                 <td class="wrap-any"><small>{{ c.dest_path }}</small></td>
                 <td>
-                  <form action="/mapping/cache/delete" method="POST" class="js-ajax-form" data-target="mappingPanel" onsubmit="return confirm('确认删除该缓存记录？删除后该源文件可再次硬链接。')">
+                  <form action="/mapping/cache/delete" method="POST" class="js-ajax-form" data-target="mappingPanel" onsubmit="return confirm('确认删除该缓存记录？删除后该源文件可再次参与硬链接。')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="source_path" value="{{ c.source_path }}">
                     <button class="btn btn-sm btn-outline-danger">删除缓存</button>

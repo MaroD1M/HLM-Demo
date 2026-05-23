@@ -21,6 +21,10 @@
   </form>
 
   {% if pending_actions %}
+  <form class="d-none js-ajax-form" action="/delete-monitor/pending/preview" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="critical_passphrase" value="">
+  </form>
   <form class="js-ajax-form" action="/delete-monitor/pending/bulk" method="POST" data-target="deleteJobsPanel">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="mb-2"><input class="form-control form-control-sm" type="password" name="critical_passphrase" placeholder="关键操作口令（如已设置）"></div>
@@ -28,6 +32,7 @@
       <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.togglePendingAll(true)">全选</button>
       <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.togglePendingAll(false)">取消全选</button>
       <input type="hidden" name="bulk_action" id="bulkActionInput">
+      <button type="button" class="btn btn-sm btn-outline-info" onclick="window.submitPendingPreview && window.submitPendingPreview()">执行前预览</button>
       <button type="button" class="btn btn-sm btn-outline-danger" onclick="window.submitPendingBulk('confirm')">批量确认删除</button>
       <button type="button" class="btn btn-sm btn-outline-warning" onclick="window.submitPendingBulk('reject')">批量驳回</button>
     </div>
@@ -46,7 +51,7 @@
           <td class="wrap-any"><code>{{ p.torrent_hash or '-' }}</code></td>
           <td class="wrap-any">{{ p.reason or '-' }}</td>
           <td>
-            <button class="btn btn-sm btn-outline-danger" type="submit" formaction="/delete-monitor/pending/confirm/{{ p.id }}" formmethod="post" onclick="return confirm('确认执行删种？此操作不可撤销。')">确认删除</button>
+            <button class="btn btn-sm btn-outline-danger" type="submit" formaction="/delete-monitor/pending/confirm/{{ p.id }}" formmethod="post" onclick="return confirm('确认执行删种？该操作不可恢复。')">确认删除</button>
             <button class="btn btn-sm btn-outline-secondary" type="submit" formaction="/delete-monitor/pending/reject/{{ p.id }}" formmethod="post">驳回</button>
           </td>
         </tr>
@@ -69,9 +74,18 @@ window.submitPendingBulk=function(action){
   const checked=document.querySelectorAll('.pending-check:checked').length;
   if(checked===0){ window.HLMNotice && window.HLMNotice('请先勾选待确认项','warning'); return; }
   window.HLMNotice && window.HLMNotice(`已选择 ${checked} 项，准备批量处理`,'info');
-  if(action==='confirm' && !window.confirm('确认批量执行删种？该操作不可撤销。')) return;
+  if(action==='confirm' && !window.confirm('确认批量执行删种？该操作不可恢复。')) return;
   const input=document.getElementById('bulkActionInput');
   if(input) input.value=action;
+  if (typeof form.requestSubmit === "function") {
+    form.requestSubmit();
+  } else {
+    form.submit();
+  }
+};
+window.submitPendingPreview=function(){
+  const form=document.querySelector('form[action="/delete-monitor/pending/preview"]');
+  if(!form) return;
   if (typeof form.requestSubmit === "function") {
     form.requestSubmit();
   } else {

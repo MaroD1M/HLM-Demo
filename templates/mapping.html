@@ -5,12 +5,12 @@
   <h3 class="mb-0">文件映射与缓存管理</h3>
   <div class="page-actions">
     <button class="btn btn-outline-secondary" type="button" data-help-target="pageHelp" aria-expanded="false"><i class="fa-solid fa-circle-info me-1"></i><span class="help-toggle-label">页面说明</span></button>
-    <form action="/mapping/link/clear" method="POST" onsubmit="return confirm('确认清空全部映射记录吗？仅删除数据库映射，不删除真实文件。')" class="js-ajax-form d-flex gap-2" data-target="mappingPanel">
+    <form action="/mapping/link/clear" method="POST" onsubmit="return confirm('确认清空全部映射记录？仅删除数据库映射，不删除真实文件。')" class="js-ajax-form d-flex gap-2" data-target="mappingPanel">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input class="form-control form-control-sm" style="width:160px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
       <button class="btn btn-outline-warning" data-bs-toggle="tooltip" title="仅清理文件映射记录，不删除真实文件">清空全部映射</button>
     </form>
-    <form action="/mapping/cache/clear" method="POST" onsubmit="return confirm('确认清空全部缓存记录吗？')" class="js-ajax-form d-flex gap-2" data-target="mappingPanel">
+    <form action="/mapping/cache/clear" method="POST" onsubmit="return confirm('确认清空全部缓存记录？删除后源文件可再次参与硬链接。')" class="js-ajax-form d-flex gap-2" data-target="mappingPanel">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input class="form-control form-control-sm" style="width:160px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
       <button class="btn btn-outline-danger" data-bs-toggle="tooltip" title="仅清理硬链接缓存，不删除真实文件">清空全部缓存</button>

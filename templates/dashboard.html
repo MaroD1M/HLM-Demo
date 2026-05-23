@@ -58,10 +58,10 @@
           <tbody>
           {% for e in recent_executions %}
             <tr>
-              <td>{{ fmt_dt(e.started_at) }}</td><td>{{ e.job_name }}</td><td>{{ e.source }}</td>
+              <td>{{ fmt_dt(e.started_at) }}</td><td>{{ e.job_name }}</td><td>{{ "手动" if e.source=="manual" else ("定时任务" if e.source=="cron" else "系统") }}</td>
               <td>{% if e.id in stale_running_ids %}<span class="badge text-bg-warning">状态待刷新</span>{% elif e.status=='success' %}<span class="badge text-bg-success">成功</span>{% elif e.status=='failed' %}<span class="badge text-bg-danger">失败</span>{% else %}<span class="badge text-bg-secondary">运行中</span>{% endif %}</td>
               <td>{{ e.duration_ms or 0 }}ms</td>
-              <td>{% if e.id in stale_running_ids %}<span class="text-muted">需刷新状态</span>{% elif e.status=='running' %}<form class="d-inline" action="/executions/stop/{{ e.id }}" method="POST" onsubmit="return confirm('确认停止该任务？')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">停止</button></form>{% else %}<form class="d-inline" action="/executions/retry/{{ e.id }}" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">重试</button></form>{% endif %}</td>
+              <td>{% if e.id in stale_running_ids %}<span class="text-muted">需刷新状态</span>{% elif e.status=='running' %}<form class="d-inline" action="/executions/stop/{{ e.id }}" method="POST" onsubmit="return confirm('确认停止该任务？任务将在当前步骤结束后退出。')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">停止</button></form>{% else %}<form class="d-inline" action="/executions/retry/{{ e.id }}" method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">重试</button></form>{% endif %}</td>
             </tr>
           {% endfor %}
           </tbody>
@@ -79,7 +79,7 @@
           {% for log in recent_logs %}
             <tr>
               <td>{{ fmt_dt(log.created_at) }}</td>
-              <td>{{ log.operation_type }}</td>
+              <td><span title="{{ log.operation_type }}">{{ operation_type_labeler(log.operation_type) }}</span></td>
               <td>{{ log.target_name or '-' }}</td>
               <td>{% if log.success %}<span class="badge text-bg-success">成功</span>{% else %}<span class="badge text-bg-danger">失败</span>{% endif %}</td>
             </tr>

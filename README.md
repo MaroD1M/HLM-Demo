@@ -49,6 +49,19 @@
 - 🛡️ 待判定保护：减少映射重建窗口期误删风险
 - 📦 映射/缓存管理：筛选、重试、批量清理
 - 🪵 日志与诊断：方便定位配置与运行问题
+- 🩺 诊断支持包：可导出脱敏后的运行诊断信息（Support Bundle）
+- 💾 备份恢复增强：备份校验、恢复前预检、恢复前自动留底
+- 🔌 API 与 Webhook：提供基础 JSON 接口与可选事件推送
+
+---
+
+## ⚠️ 重要运行规则（本版本建议）
+
+- **不新增 Docker 环境变量作为新功能配置入口**。  
+  新增运行时能力统一通过“页面配置 + 数据库配置”生效。
+- `RBAC / 只读模式 / IP 白名单 / 2FA / 关键操作口令 / Webhook` 均为**可选功能**，默认关闭，不强制配置。
+- Compose 里的环境变量建议保持“启动基础项”（如 `SECRET_KEY`、登录凭据、时区）即可。
+- 开发模式相关 `APP_DEV_*` 仅建议作为首次启动兜底；实际以页面保存配置为主。
 
 ---
 
@@ -61,6 +74,43 @@
 - ⏰ **定时任务**：统一调度入口
 - ⚙️ **系统设置**：白名单、通知、版本检查、备份
 - 🔍 **系统诊断/日志**：问题排查入口
+
+---
+
+## 🔁 备份与恢复（推荐操作顺序）
+
+1. 进入“系统诊断 -> 备份与恢复”，先查看备份状态与校验结果。  
+2. 若要恢复，先点“预览”确认该备份可恢复。  
+3. 再执行“恢复”（如配置了关键口令需输入）。  
+4. 系统会在恢复前自动对当前数据库做一份留底备份（`restore-preflight` 目录）。  
+
+说明：
+- 恢复流程包含路径合法性检查（防止路径越界）与备份完整性校验。
+- 支持包导出和配置导出均会对敏感字段做脱敏处理（`***`）。
+
+---
+
+## 🔐 可选安全策略（默认关闭）
+
+- 只读模式：限制高风险写操作入口。
+- IP 白名单：支持单 IP 与 CIDR。
+- 2FA / RBAC：预留配置项，按需启用。
+- 关键操作口令：用于恢复、批量高风险操作等二次确认。
+
+这些策略均可单独启用/关闭，不影响未启用场景的基础使用流程。
+
+---
+
+## 🔌 API 与自动化入口（概览）
+
+当前可用的基础 JSON 接口：
+
+- `GET /api/health`：健康检查
+- `GET /api/tasks/status`：任务开关状态
+- `GET /api/runtime/summary`：运行摘要（配置状态、近期日志、运行任务）
+- `POST /api/webhooks/test`：Webhook 测试（需先在设置页启用并配置 URL）
+- `GET /diagnostics/backfill-metrics`：自动关联指标
+- `GET /diagnostics/support-bundle?format=zip|json`：导出诊断支持包（脱敏）
 
 ---
 
@@ -279,12 +329,19 @@ core/
     web.py
     api.py
   services/
+    config_service.py
+    audit_service.py
     execution_service.py
     migration_service.py
     hardlink_service.py
     delete_service.py
     backfill_service.py
     backup_service.py
+    operation_guard_service.py
+    diagnostics_service.py
+    security_service.py
+    webhook_service.py
+    runtime_config_service.py
 templates/
 static/
 scripts/

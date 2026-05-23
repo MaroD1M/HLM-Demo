@@ -5,6 +5,7 @@ __pycache__/
 
 # Test caches
 .pytest_cache/
+.mypy_cache/
 
 # Virtual environments
 .venv/
@@ -64,3 +65,13 @@ dev-debug.log
 
 # Dependency directories
 node_modules/
+
+# Environment variables
+# Editor directories and files
+.idea
+.vscode
+# OS specific
+
+# Task files
+# tasks.json
+# tasks/ 
