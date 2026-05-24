@@ -8,6 +8,10 @@ RESULT_FILE="/app/instance/dev_apply_result.json"
 RUNTIME_ENV_FILE="/app/instance/dev_runtime.env"
 PIP_SYNC_NOTE=""
 
+# Development mode is controlled only by settings page generated runtime file.
+unset HLM_DEV_MODE HLM_DEV_AUTO_PULL HLM_DEV_GIT_REPO HLM_DEV_GIT_BRANCH HLM_DEV_AUTO_PIP_SYNC
+unset HLM_DEV_PIP_SYNC_TIMEOUT HLM_DEV_GIT_TOKEN HLM_DEV_PROXY_URL HLM_DEV_NO_PROXY
+
 log() {
   printf '[entrypoint] %s\n' "$*"
 }
@@ -29,13 +33,13 @@ load_runtime_env() {
 
 
 log_dev_effective_config() {
-  local mode="${APP_DEV_MODE:-false}"
-  local auto_pull="${APP_DEV_AUTO_PULL:-false}"
-  local repo="${APP_DEV_GIT_REPO:-}"
-  local branch="${APP_DEV_GIT_BRANCH:-master}"
-  local pip_sync="${APP_DEV_AUTO_PIP_SYNC:-false}"
-  local timeout_s="${APP_DEV_PIP_SYNC_TIMEOUT:-120}"
-  local proxy="${APP_DEV_PROXY_URL:-}"
+  local mode="${HLM_DEV_MODE:-false}"
+  local auto_pull="${HLM_DEV_AUTO_PULL:-false}"
+  local repo="${HLM_DEV_GIT_REPO:-}"
+  local branch="${HLM_DEV_GIT_BRANCH:-master}"
+  local pip_sync="${HLM_DEV_AUTO_PIP_SYNC:-false}"
+  local timeout_s="${HLM_DEV_PIP_SYNC_TIMEOUT:-120}"
+  local proxy="${HLM_DEV_PROXY_URL:-}"
   if [[ -z "$repo" ]]; then
     repo='(empty)'
   fi
@@ -54,11 +58,11 @@ write_result() {
 }
 
 ensure_repo() {
-  local repo="${APP_DEV_GIT_REPO:-}"
-  local branch="${APP_DEV_GIT_BRANCH:-master}"
+  local repo="${HLM_DEV_GIT_REPO:-}"
+  local branch="${HLM_DEV_GIT_BRANCH:-master}"
 
   if [[ -z "$repo" ]]; then
-    log "APP_DEV_GIT_REPO 未设置，跳过自动拉取。"
+    log "HLM_DEV_GIT_REPO 未设置，跳过自动拉取。"
     write_result "skipped" "dev_auto_pull=true but repo is empty"
     return 1
   fi
@@ -67,8 +71,8 @@ ensure_repo() {
     rm -rf "$DEV_ROOT"
     mkdir -p "$DEV_ROOT"
     log "初始化开发仓库: $repo ($branch)"
-    if [[ -n "${APP_DEV_GIT_TOKEN:-}" && "$repo" =~ ^https:// ]]; then
-      git -c "http.extraHeader=Authorization: Bearer ${APP_DEV_GIT_TOKEN}" clone --depth 1 --branch "$branch" "$repo" "$DEV_ROOT"
+    if [[ -n "${HLM_DEV_GIT_TOKEN:-}" && "$repo" =~ ^https:// ]]; then
+      git -c "http.extraHeader=Authorization: Bearer ${HLM_DEV_GIT_TOKEN}" clone --depth 1 --branch "$branch" "$repo" "$DEV_ROOT"
     else
       git clone --depth 1 --branch "$branch" "$repo" "$DEV_ROOT"
     fi
@@ -77,8 +81,8 @@ ensure_repo() {
 
   log "更新开发仓库到最新: $branch"
   git -C "$DEV_ROOT" remote set-url origin "$repo" >/dev/null 2>&1 || true
-  if [[ -n "${APP_DEV_GIT_TOKEN:-}" && "$repo" =~ ^https:// ]]; then
-    git -C "$DEV_ROOT" -c "http.extraHeader=Authorization: Bearer ${APP_DEV_GIT_TOKEN}" fetch --depth 1 origin "$branch"
+  if [[ -n "${HLM_DEV_GIT_TOKEN:-}" && "$repo" =~ ^https:// ]]; then
+    git -C "$DEV_ROOT" -c "http.extraHeader=Authorization: Bearer ${HLM_DEV_GIT_TOKEN}" fetch --depth 1 origin "$branch"
   else
     git -C "$DEV_ROOT" fetch --depth 1 origin "$branch"
   fi
@@ -90,8 +94,8 @@ ensure_repo() {
 }
 
 apply_dev_proxy() {
-  local proxy="${APP_DEV_PROXY_URL:-}"
-  local no_proxy="${APP_DEV_NO_PROXY:-}"
+  local proxy="${HLM_DEV_PROXY_URL:-}"
+  local no_proxy="${HLM_DEV_NO_PROXY:-}"
   if [[ -z "$proxy" ]]; then
     return 0
   fi
@@ -110,7 +114,7 @@ apply_dev_proxy() {
 }
 
 maybe_sync_requirements() {
-  if ! bool_true "${APP_DEV_AUTO_PIP_SYNC:-false}"; then
+  if ! bool_true "${HLM_DEV_AUTO_PIP_SYNC:-false}"; then
     return 0
   fi
 
@@ -131,7 +135,7 @@ maybe_sync_requirements() {
     return 0
   fi
 
-  local timeout_s="${APP_DEV_PIP_SYNC_TIMEOUT:-120}"
+  local timeout_s="${HLM_DEV_PIP_SYNC_TIMEOUT:-120}"
   log "检测到 requirements 变化，开始同步依赖（超时 ${timeout_s}s）..."
   if timeout "${timeout_s}" pip install --no-cache-dir -r "$req_file"; then
     echo "$new_sha" > "$REQ_MARK_FILE"
@@ -146,10 +150,10 @@ maybe_sync_requirements() {
 load_runtime_env
 log_dev_effective_config
 
-if bool_true "${APP_DEV_MODE:-false}"; then
+if bool_true "${HLM_DEV_MODE:-false}"; then
   log "开发模式已启用。"
   apply_dev_proxy
-  if bool_true "${APP_DEV_AUTO_PULL:-false}"; then
+  if bool_true "${HLM_DEV_AUTO_PULL:-false}"; then
     if ensure_repo; then
       maybe_sync_requirements
       write_result "success" "git pull/reset ok; ${PIP_SYNC_NOTE:-pip sync skipped} "

@@ -33,51 +33,18 @@ services:
       # 请求超时（秒）
       REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-10}
 
-      # 是否输出访问日志到容器日志
       ACCESS_LOG_ENABLED: ${ACCESS_LOG_ENABLED:-true}
 
       # 时区
       TZ: ${TZ:-Asia/Shanghai}
 
-      # 关闭 Python 输出缓冲，日志更实时
       PYTHONUNBUFFERED: "1"
 
-      # 应用日志分割（防止单日志文件过大）
       APP_LOG_MAX_MB: ${APP_LOG_MAX_MB:-10}
       APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
 
-      # =========================
-      # 开发模式（页面配置优先）
-      # 说明：APP_DEV_* 仅用于首次启动/兜底
-      # 日常请在“系统设置 -> 开发模式”维护，并使用“重启并应用”
-      # =========================
-
-      # true=开发模式；false=普通模式
-      APP_DEV_MODE: ${APP_DEV_MODE:-false}
-
-      # 兜底：true=容器每次重启时自动拉取最新代码（页面未配置时生效）
-      APP_DEV_AUTO_PULL: ${APP_DEV_AUTO_PULL:-false}
-
-      # 兜底：仓库地址（建议在页面配置）
-      APP_DEV_GIT_REPO: ${APP_DEV_GIT_REPO:-}
-
-      # 兜底：拉取分支（建议在页面配置）
-      APP_DEV_GIT_BRANCH: ${APP_DEV_GIT_BRANCH:-master}
-
-      # 兜底：requirements.txt 变化时自动同步依赖（建议在页面配置）
-      APP_DEV_AUTO_PIP_SYNC: ${APP_DEV_AUTO_PIP_SYNC:-false}
-
-      # 依赖同步超时秒数（避免网络问题长时间卡住）
-      APP_DEV_PIP_SYNC_TIMEOUT: ${APP_DEV_PIP_SYNC_TIMEOUT:-120}
-
-      # 兜底：私有仓库 Token（建议在页面配置，避免频繁改 compose）
-      APP_DEV_GIT_TOKEN: ${APP_DEV_GIT_TOKEN:-}
-
-      # 开发模式代理（容器内生效，不要写127.0.0.1）
-      APP_DEV_PROXY_URL: ${APP_DEV_PROXY_URL:-}
-
-      # 开发模式代理白名单
-      APP_DEV_NO_PROXY: ${APP_DEV_NO_PROXY:-localhost,127.0.0.1,::1}
+      # 开发模式相关配置统一在“系统设置 -> 开发模式”页面维护，
+      # 保存后写入 /app/instance/dev_runtime.env，并在容器重启后生效。
 
     volumes:
       # =========================
@@ -90,7 +57,6 @@ services:
       # 数据库备份目录（建议）
       - ./data/backups:/app/data/backups
 
-      # 应用日志目录（建议）
       - ./data/logs:/app/data/logs
 
       # 开发模式代码目录（用于保存自动拉取下来的源码）
@@ -113,7 +79,6 @@ services:
       start_period: 20s
 
     logging:
-      # Docker 日志滚动，防止磁盘被日志打满
       driver: json-file
       options:
         max-size: "10m"

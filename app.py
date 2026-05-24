@@ -1050,7 +1050,9 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
             while True:
                 try:
                     cur_res = cur.resolve(strict=False)
-                    if str(cur_res) == str(root) or not str(cur_res).startswith(str(root)):
+                    # Use commonpath instead of string prefix to avoid sibling-path false positives.
+                    within_root = os.path.commonpath([str(cur_res), str(root)]) == str(root)
+                    if str(cur_res) == str(root) or not within_root:
                         break
                     if any(cur.iterdir()):
                         break
@@ -1062,6 +1064,14 @@ def scan_delete_for_hardlink_task(task_id, should_stop=None):
             return
 
     def _create_pending_action(_proxy_task, row, deleted_path, torrent_hash, match_by, reason):
+        exists = DeletePendingAction.query.filter_by(
+            task_id=legacy_task.id,
+            file_map_id=row.id,
+            torrent_hash=torrent_hash,
+            status='pending',
+        ).first()
+        if exists:
+            return exists
         pending = DeletePendingAction(
             task_id=legacy_task.id,
             file_map_id=row.id,

@@ -75,7 +75,7 @@ def _task_notify_on_risky_enabled(task, get_config):
 
 def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_config, send_notification, create_pending_action, should_stop=None):
     now = datetime.now(UTC)
-    hits = []
+    candidates = []
     monitor_root = (task.directory or '').rstrip('/')
 
     for row in rows:
@@ -89,17 +89,22 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
             row.last_seen_at = now
             continue
 
-        last_seen_at = _as_aware_utc(row.last_seen_at) or now
+        last_seen_at = _as_aware_utc(row.last_seen_at)
+        if last_seen_at is None:
+            # First missing detection starts cooldown window now instead of skipping forever.
+            row.last_seen_at = now
+            continue
         if (now - last_seen_at).total_seconds() < task.cooldown_seconds:
             continue
 
-        row.deleted_at = now
-        hits.append((row, deleted_path))
+        candidates.append((row, deleted_path))
 
-    total_hits = len(hits)
+    total_hits = len(candidates)
     if total_hits > task.max_deletes_per_run:
         log_operation('delete_guard_truncated', 'DeleteMonitorTask', task.id, task.name, f'本轮命中 {total_hits}，按阈值分批执行前 {task.max_deletes_per_run} 条，其余待下轮处理', True)
-        hits = hits[:task.max_deletes_per_run]
+    hits = candidates[:task.max_deletes_per_run]
+    for row, _deleted_path in hits:
+        row.deleted_at = now
 
     deleted_torrents = 0
     pending_count = 0

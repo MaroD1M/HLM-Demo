@@ -1,6 +1,5 @@
 from pathlib import Path
 import json
-import os
 from datetime import datetime, UTC
 from flask import Blueprint, render_template, request, redirect, flash, jsonify, Response, current_app, session
 from core.deps import RouteDeps
@@ -1261,7 +1260,7 @@ def init_web_routes(ctx: RouteDeps):
             if key not in settings:
                 settings[key] = get_default_setting_value(key)
         if not (settings.get('dev_git_repo') or '').strip():
-            settings['dev_git_repo'] = os.environ.get('APP_DEV_GIT_REPO', '') or DEV_DEFAULT_GIT_REPO
+            settings['dev_git_repo'] = DEV_DEFAULT_GIT_REPO
         settings['dev_git_token_masked'] = '******' if (settings.get('dev_git_token') or '').strip() else ''
         release = get_release_info()
         snapshots = AppConfigSnapshot.query.order_by(AppConfigSnapshot.created_at.desc()).limit(10).all()
