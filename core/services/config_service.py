@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import re
 
 
@@ -59,15 +58,15 @@ SETTING_SPECS = {
     'backfill_path_mappings': {'default': '', 'desc': '回填路径映射，格式 /host/path=>/container/path;...', 'type': 'text', 'max_length': 4000, 'scopes': ('backfill',)},
     'backfill_failure_retention_days': {'default': '7', 'desc': '长期失败回填记录重置阈值（天）', 'type': 'int', 'min': 1, 'scopes': ('backfill',)},
 
-    'dev_mode': {'default': 'false', 'desc': '开发模式开关（页面配置）', 'type': 'bool', 'scopes': ('dev',), 'bootstrap_env': 'APP_DEV_MODE'},
-    'dev_auto_pull': {'default': 'false', 'desc': '开发模式：启动自动拉取', 'type': 'bool', 'scopes': ('dev',), 'bootstrap_env': 'APP_DEV_AUTO_PULL'},
-    'dev_git_repo': {'default': 'https://github.com/MaroD1M/HLM-Demo.git', 'desc': '开发模式：Git 仓库地址', 'type': 'repo', 'max_length': 300, 'scopes': ('dev',), 'bootstrap_env': 'APP_DEV_GIT_REPO'},
-    'dev_git_branch': {'default': 'master', 'desc': '开发模式：Git 分支', 'type': 'branch', 'scopes': ('dev',), 'bootstrap_env': 'APP_DEV_GIT_BRANCH'},
-    'dev_auto_pip_sync': {'default': 'true', 'desc': '开发模式：依赖自动同步', 'type': 'bool', 'scopes': ('dev',), 'bootstrap_env': 'APP_DEV_AUTO_PIP_SYNC'},
-    'dev_pip_sync_timeout': {'default': '120', 'desc': '开发模式：pip 同步超时（秒）', 'type': 'int', 'min': 30, 'max': 1800, 'scopes': ('dev',), 'bootstrap_env': 'APP_DEV_PIP_SYNC_TIMEOUT'},
-    'dev_git_token': {'default': '', 'desc': '开发模式：Git 访问令牌（敏感）', 'type': 'text', 'max_length': 300, 'scopes': ('dev',), 'bootstrap_env': 'APP_DEV_GIT_TOKEN'},
-    'dev_proxy_url': {'default': '', 'desc': '开发模式：代理地址', 'type': 'proxy_url', 'scopes': ('dev',), 'bootstrap_env': 'APP_DEV_PROXY_URL'},
-    'dev_no_proxy': {'default': 'localhost,127.0.0.1,::1', 'desc': '开发模式：NO_PROXY', 'type': 'text', 'max_length': 500, 'scopes': ('dev',), 'bootstrap_env': 'APP_DEV_NO_PROXY'},
+    'dev_mode': {'default': 'false', 'desc': '开发模式开关（页面配置）', 'type': 'bool', 'scopes': ('dev',)},
+    'dev_auto_pull': {'default': 'false', 'desc': '开发模式：启动自动拉取', 'type': 'bool', 'scopes': ('dev',)},
+    'dev_git_repo': {'default': 'https://github.com/MaroD1M/HLM-Demo.git', 'desc': '开发模式：Git 仓库地址', 'type': 'repo', 'max_length': 300, 'scopes': ('dev',)},
+    'dev_git_branch': {'default': 'master', 'desc': '开发模式：Git 分支', 'type': 'branch', 'scopes': ('dev',)},
+    'dev_auto_pip_sync': {'default': 'true', 'desc': '开发模式：依赖自动同步', 'type': 'bool', 'scopes': ('dev',)},
+    'dev_pip_sync_timeout': {'default': '120', 'desc': '开发模式：pip 同步超时（秒）', 'type': 'int', 'min': 30, 'max': 1800, 'scopes': ('dev',)},
+    'dev_git_token': {'default': '', 'desc': '开发模式：Git 访问令牌（敏感）', 'type': 'text', 'max_length': 300, 'scopes': ('dev',)},
+    'dev_proxy_url': {'default': '', 'desc': '开发模式：代理地址', 'type': 'proxy_url', 'scopes': ('dev',)},
+    'dev_no_proxy': {'default': 'localhost,127.0.0.1,::1', 'desc': '开发模式：NO_PROXY', 'type': 'text', 'max_length': 500, 'scopes': ('dev',)},
 
     'version_check_cached_remote': {'default': '', 'desc': '版本检查缓存远端版本'},
     'version_check_cached_at': {'default': '', 'desc': '版本检查缓存检查时间'},
@@ -88,9 +87,6 @@ def get_default_setting_value(key: str, env: dict[str, str] | None = None):
     spec = SETTING_SPECS.get(str(key))
     if not spec:
         return ''
-    if 'bootstrap_env' in spec:
-        source = env or os.environ
-        return str(source.get(spec['bootstrap_env'], spec['default']) or spec['default'])
     return str(spec['default'])
 
 
