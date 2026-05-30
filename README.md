@@ -7,6 +7,8 @@
 **让下载目录自动入库，让删除联动可控可靠。**  
 **同时支持日常稳定使用与开发调试。**
 
+![项目截图](static/images/dashboard-overview.png)
+
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-Web-black?style=flat-square&logo=flask)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
