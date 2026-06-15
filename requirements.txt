@@ -4,4 +4,4 @@ Flask-Bcrypt==1.0.1
 requests==2.34.2
 APScheduler==3.11.2
 cryptography==48.0.0
-pytest==9.0.3
+pytest==9.1.0
