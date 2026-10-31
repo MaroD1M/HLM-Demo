@@ -59,14 +59,14 @@
             <div class="section-title mb-2">基础信息</div>
             <div class="row g-3">
               <div class="col-md-6"><label class="form-label">名称</label><input class="form-control" name="name" value="{{ n.name }}" required></div>
-              <div class="col-md-6"><label class="form-label">类型</label><select class="form-select" name="type"><option value="telegram" {% if n.type=='telegram' %}selected{% endif %}>Telegram</option></select></div>
+              <div class="col-md-6"><label class="form-label">类型</label><select class="form-select" name="type"><option value="telegram" {% if n.type=='telegram' %}selected{% endif %}>Telegram</option><option value="apprise" {% if n.type=='apprise' %}selected{% endif %}>Apprise</option></select></div>
             </div>
           </div>
           <div class="section-card">
             <div class="section-title mb-2">连接配置</div>
             <div class="row g-3">
-              <div class="col-12"><label class="form-label">机器人令牌</label><input class="form-control" name="api_key" value="{{ n.api_key }}" required></div>
-              <div class="col-md-6"><label class="form-label">聊天编号</label><input class="form-control" name="chat_id" value="{{ n.chat_id or '' }}"></div>
+              <div class="col-12"><label class="form-label">机器人令牌 / Apprise URL{% if n.get_api_key() %}（已配置）{% endif %}</label><input class="form-control" name="api_key" value="" placeholder="{% if n.get_api_key() %}已配置，留空保持{% else %}请输入机器人令牌{% endif %}"></div>
+              <div class="col-md-6"><label class="form-label">聊天编号（Telegram）</label><input class="form-control" name="chat_id" value="{{ n.chat_id or '' }}"></div>
               <div class="col-md-6"><label class="form-label">任务代理(可选)</label><input class="form-control" name="proxy_url" value="{{ n.proxy_url or '' }}" placeholder="留空=使用系统设置中的统一代理"></div>
             </div>
           </div>

@@ -256,3 +256,21 @@ body {
     animation: none;
   }
 }
+
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 2000;
+  padding: 8px 14px;
+  border-radius: 0 0 10px 0;
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: var(--shadow-pop);
+}
+
+.skip-link:focus {
+  left: 0;
+}

@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 class MigrationService:
-    TARGET_SCHEMA_VERSION = 11
+    TARGET_SCHEMA_VERSION = 16
 
     def __init__(self, db, logger, instance_path_getter, app_version_getter, get_config, run_sqlite_backup):
         self.db = db
@@ -160,6 +160,46 @@ class MigrationService:
         self.db.session.execute(self.db.text('CREATE INDEX IF NOT EXISTS idx_file_link_map_deleted_dest ON file_link_map(deleted_at, dest_path)'))
         self.db.session.execute(self.db.text('CREATE INDEX IF NOT EXISTS idx_file_link_map_backfill_scan ON file_link_map(torrent_hash, deleted_at, downloader_id, created_at)'))
 
+    def _migration_v12(self):
+        self.db.session.execute(self.db.text('CREATE INDEX IF NOT EXISTS idx_job_execution_status_started ON job_execution_log(status, started_at)'))
+        self.db.session.execute(self.db.text('CREATE INDEX IF NOT EXISTS idx_job_execution_cron_lookup ON job_execution_log(source, job_name, job_type, started_at)'))
+
+    def _migration_v13(self):
+        self.db.session.execute(self.db.text("CREATE TABLE IF NOT EXISTS admin_user (id INTEGER PRIMARY KEY AUTOINCREMENT, username VARCHAR(100) UNIQUE NOT NULL, password_hash VARCHAR(255) NOT NULL, totp_secret VARCHAR(500), totp_enabled BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME)"))
+        needed = {'downloader': {'category': "ALTER TABLE downloader ADD COLUMN category VARCHAR(100) DEFAULT ''"}}
+        for table, fields in needed.items():
+            existing = {row[1] for row in self.db.session.execute(self.db.text(f'PRAGMA table_info({table})')).fetchall()}
+            for col, sql in fields.items():
+                if col not in existing:
+                    self.db.session.execute(self.db.text(sql))
+
+    def _migration_v14(self):
+        self.db.session.execute(self.db.text("CREATE TABLE IF NOT EXISTS job_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, run_key VARCHAR(200) NOT NULL, job_name VARCHAR(150) NOT NULL, job_type VARCHAR(80) NOT NULL, target_id INTEGER, source VARCHAR(30) DEFAULT 'manual', payload_json TEXT, status VARCHAR(20) DEFAULT 'queued', stop_requested BOOLEAN DEFAULT 0, worker_id VARCHAR(100), message VARCHAR(1000), created_at DATETIME, started_at DATETIME, finished_at DATETIME)"))
+        self.db.session.execute(self.db.text('CREATE INDEX IF NOT EXISTS idx_job_queue_status_created ON job_queue(status, created_at)'))
+        self.db.session.execute(self.db.text('CREATE INDEX IF NOT EXISTS idx_job_queue_run_key ON job_queue(run_key)'))
+
+    def _migration_v15(self):
+        self.db.session.execute(self.db.text("CREATE TABLE IF NOT EXISTS recycle_item (id INTEGER PRIMARY KEY AUTOINCREMENT, original_path VARCHAR(1000) NOT NULL, recycled_path VARCHAR(1000) NOT NULL UNIQUE, size BIGINT DEFAULT 0, created_at DATETIME, restored_at DATETIME)"))
+        self.db.session.execute(self.db.text('CREATE INDEX IF NOT EXISTS idx_recycle_item_created ON recycle_item(created_at)'))
+
+    def _migration_v16(self):
+        needed = {
+            'job_queue': {
+                'priority': 'ALTER TABLE job_queue ADD COLUMN priority INTEGER DEFAULT 0',
+                'retry_count': 'ALTER TABLE job_queue ADD COLUMN retry_count INTEGER DEFAULT 0',
+                'max_retries': 'ALTER TABLE job_queue ADD COLUMN max_retries INTEGER DEFAULT 0',
+                'lease_owner': 'ALTER TABLE job_queue ADD COLUMN lease_owner VARCHAR(100)',
+                'lease_expires_at': 'ALTER TABLE job_queue ADD COLUMN lease_expires_at DATETIME',
+            },
+        }
+        for table, fields in needed.items():
+            existing = {row[1] for row in self.db.session.execute(self.db.text(f'PRAGMA table_info({table})')).fetchall()}
+            for col, sql in fields.items():
+                if col not in existing:
+                    self.db.session.execute(self.db.text(sql))
+        self.db.session.execute(self.db.text('CREATE INDEX IF NOT EXISTS idx_job_queue_priority ON job_queue(status, priority, id)'))
+        self.db.session.execute(self.db.text('CREATE INDEX IF NOT EXISTS idx_job_queue_lease ON job_queue(status, lease_expires_at)'))
+
     def ensure_compat_columns(self):
         target = self.get_target_schema_version()
         current = self._get_schema_version()
@@ -168,7 +208,7 @@ class MigrationService:
             return
         migrations = {
             1: self._migration_v1, 2: self._migration_v2, 3: self._migration_v3, 4: self._migration_v4, 5: self._migration_v5,
-            6: self._migration_v6, 7: self._migration_v7, 8: self._migration_v8, 9: self._migration_v9, 10: self._migration_v10, 11: self._migration_v11,
+            6: self._migration_v6, 7: self._migration_v7, 8: self._migration_v8, 9: self._migration_v9, 10: self._migration_v10, 11: self._migration_v11, 12: self._migration_v12, 13: self._migration_v13, 14: self._migration_v14, 15: self._migration_v15, 16: self._migration_v16,
         }
         for version in range(current + 1, target + 1):
             migrations[version]()
@@ -178,15 +218,13 @@ class MigrationService:
 
     def pre_migration_backup_if_needed(self, target_schema):
         current_version = self.app_version_getter()
-        last_version = self.get_schema_meta_value('last_app_version', '')
         current_schema = self._get_schema_version()
         if current_schema >= target_schema:
             return True, '当前数据库结构已是目标版本，无需升级前备份'
-        if last_version == current_version:
-            return True, '当前版本已执行过启动流程，无需重复升级前备份'
+        backup_marker = f'{current_version}:{int(target_schema)}'
         backup_done_for = self.get_schema_meta_value('pre_migration_backup_for_version', '')
         backup_path_done = self.get_schema_meta_value('pre_migration_backup_path', '')
-        if backup_done_for == current_version and backup_path_done:
+        if backup_done_for == backup_marker and backup_path_done:
             return True, f'已存在本版本升级前备份: {backup_path_done}'
 
         db_file = Path(self.instance_path_getter()) / 'hardlink_manager.db'
@@ -194,8 +232,19 @@ class MigrationService:
             return True, '数据库文件尚不存在，跳过升级前备份'
 
         backup_base = (self.get_config('backup_dir', '/app/data/backups') or '/app/data/backups').strip()
+        try:
+            backup_path_obj = Path(backup_base)
+            backup_path_obj.mkdir(parents=True, exist_ok=True)
+            probe = backup_path_obj / '.hlm_write_probe'
+            probe.write_text('ok', encoding='utf-8')
+            probe.unlink(missing_ok=True)
+        except Exception:
+            backup_base = str(Path(self.instance_path_getter()) / 'backups')
         backup_dir = str(Path(backup_base) / 'migration-pre')
-        keep_last = int(self.get_config('backup_keep_last', '7') or '7')
+        try:
+            keep_last = int(self.get_config('backup_keep_last', '7') or '7')
+        except Exception:
+            keep_last = 7
         ok, msg, backup_path = self.run_sqlite_backup(str(db_file), backup_dir, keep_last=max(1, keep_last))
         if not ok:
             self.set_schema_meta_value('last_migration_status', 'backup_failed')
@@ -204,7 +253,7 @@ class MigrationService:
             return False, msg
 
         stamped = datetime.now(UTC).isoformat()
-        self.set_schema_meta_value('pre_migration_backup_for_version', current_version)
+        self.set_schema_meta_value('pre_migration_backup_for_version', backup_marker)
         self.set_schema_meta_value('pre_migration_backup_path', backup_path or '-')
         self.set_schema_meta_value('pre_migration_backup_at', stamped)
         self.set_schema_meta_value('last_migration_status', 'backup_ok')

@@ -1,9 +1,16 @@
+import hashlib
 from contextvars import ContextVar
+from pathlib import Path
 from threading import Lock
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 
 
 class ExecutionManager:
-    def __init__(self, db, job_execution_model, utc_now):
+    def __init__(self, db, job_execution_model, utc_now, lock_dir_getter=None):
         self.db = db
         self.job_execution_model = job_execution_model
         self.utc_now = utc_now
@@ -12,6 +19,8 @@ class ExecutionManager:
         self.stop_requested_keys = set()
         self.running_keys = set()
         self.current_execution_id = ContextVar('current_execution_id', default=None)
+        self.lock_dir_getter = lock_dir_getter
+        self.file_locks = {}
 
     def current_execution(self):
         return self.current_execution_id.get()
@@ -27,6 +36,13 @@ class ExecutionManager:
                     self.stop_requested_keys.add(key)
                     return True, meta
         return False, None
+
+    def request_stop_by_run_key(self, run_key):
+        with self.run_lock:
+            if run_key in self.running_keys:
+                self.stop_requested_keys.add(run_key)
+                return True
+        return False
 
     def get_running_executions_snapshot(self):
         with self.run_lock:
@@ -75,6 +91,27 @@ class ExecutionManager:
             self.running_keys.add(run_key)
             self.stop_requested_keys.discard(run_key)
 
+        file_lock = None
+        if fcntl is not None and self.lock_dir_getter is not None:
+            try:
+                lock_dir = Path(self.lock_dir_getter())
+                lock_dir.mkdir(parents=True, exist_ok=True)
+                lock_name = hashlib.sha256(run_key.encode('utf-8')).hexdigest()
+                lock_path = lock_dir / f'{lock_name}.lock'
+                file_lock = lock_path.open('w', encoding='utf-8')
+                fcntl.flock(file_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                self.file_locks[run_key] = file_lock
+            except BlockingIOError:
+                if file_lock:
+                    file_lock.close()
+                with self.run_lock:
+                    self.running_keys.discard(run_key)
+                return False, '同任务正在其他进程中执行，请稍后重试'
+            except Exception:
+                if file_lock:
+                    file_lock.close()
+                file_lock = None
+
         record = None
         started_at = None
         token = None
@@ -112,3 +149,10 @@ class ExecutionManager:
                 self.running_keys.discard(run_key)
                 self.running_meta.pop(run_key, None)
                 self.stop_requested_keys.discard(run_key)
+                held_lock = self.file_locks.pop(run_key, None)
+            if held_lock is not None:
+                try:
+                    fcntl.flock(held_lock.fileno(), fcntl.LOCK_UN)
+                except Exception:
+                    pass
+                held_lock.close()

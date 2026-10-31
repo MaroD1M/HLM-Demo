@@ -5,7 +5,10 @@ __pycache__/
 
 # Test caches
 .pytest_cache/
+.coverage
+htmlcov/
 .mypy_cache/
+.ruff_cache/
 
 # Virtual environments
 .venv/
@@ -42,6 +45,8 @@ data/backups/*
 # Runtime logs
 data/logs/*
 !data/logs/.gitkeep
+data/recycle/*
+!data/recycle/.gitkeep
 
 # Local runtime instance (root)
 instance/*

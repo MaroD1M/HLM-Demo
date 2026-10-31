@@ -16,10 +16,17 @@ SETTING_SPECS = {
     'notify_on_delete': {'default': 'true', 'desc': '启用删除通知', 'type': 'bool', 'scopes': ('delete_notify',)},
     'notify_on_risky_delete': {'default': 'true', 'desc': '启用疑似误删通知', 'type': 'bool', 'scopes': ('delete_notify',)},
     'delete_match_strict_mode': {'default': 'true', 'desc': '删除联动仅精确匹配自动执行', 'type': 'bool', 'scopes': ('delete_notify',)},
+    'delete_protect_cross_seed': {'default': 'true', 'desc': '删除种子前检测 cross-seed 并转待确认', 'type': 'bool', 'scopes': ('delete_notify',)},
+    'delete_recycle_bin_enabled': {'default': 'false', 'desc': '删除对侧文件时移入回收站', 'type': 'bool', 'scopes': ('delete_notify',)},
+    'delete_recycle_bin_dir': {'default': '/app/data/recycle', 'desc': '回收站目录', 'type': 'text', 'max_length': 500, 'scopes': ('delete_notify',)},
+    'delete_recycle_retention_days': {'default': '30', 'desc': '回收站保留天数', 'type': 'int', 'min': 1, 'max': 3650, 'scopes': ('delete_notify',)},
     'pending_source_guard_enabled': {'default': 'true', 'desc': '删除联动来源待判定保护开关', 'type': 'bool', 'scopes': ('delete_notify',)},
     'pending_source_guard_seconds': {'default': '900', 'desc': '删除联动来源待判定窗口（秒）', 'type': 'int', 'min': 0, 'scopes': ('delete_notify',)},
     'pending_source_warn_threshold': {'default': '200', 'desc': '系统诊断：待判定映射告警阈值', 'type': 'int', 'min': 1, 'scopes': ('delete_notify',)},
     'pending_source_log_mode': {'default': 'aggregate', 'desc': '待判定来源日志模式', 'type': 'choice', 'choices': ('aggregate', 'detail'), 'scopes': ('delete_notify',)},
+    'delete_anomaly_guard_enabled': {'default': 'true', 'desc': '删除联动批量异常熔断开关', 'type': 'bool', 'scopes': ('delete_notify',)},
+    'delete_anomaly_min_candidates': {'default': '50', 'desc': '删除联动熔断最小命中数', 'type': 'int', 'min': 1, 'max': 100000, 'scopes': ('delete_notify',)},
+    'delete_anomaly_max_ratio': {'default': '50', 'desc': '删除联动熔断缺失比例上限（百分比）', 'type': 'int', 'min': 1, 'max': 100, 'scopes': ('delete_notify',)},
 
     'manual_dest_delete_delete_source': {'default': 'true', 'desc': '手动来源：删除目标后自动删除源文件', 'type': 'bool', 'scopes': ('source_policy',)},
     'manual_source_delete_delete_dest': {'default': 'true', 'desc': '手动来源：删除源文件后自动删除目标文件', 'type': 'bool', 'scopes': ('source_policy',)},
@@ -29,7 +36,7 @@ SETTING_SPECS = {
     'downloader_source_delete_delete_torrent': {'default': 'true', 'desc': '下载器来源：删除源后自动删种', 'type': 'bool', 'scopes': ('source_policy',)},
 
     'allowed_roots': {'default': '', 'desc': '允许访问的路径根目录，逗号分隔', 'type': 'text', 'max_length': 1000, 'scopes': ('network_notify',)},
-    'proxy_url': {'default': 'http://127.0.0.1:7890', 'desc': '统一外网代理地址', 'type': 'url', 'scopes': ('network_notify',)},
+    'proxy_url': {'default': '', 'desc': '统一外网代理地址', 'type': 'url', 'scopes': ('network_notify',)},
     'tg_api_base': {'default': 'https://api.telegram.org', 'desc': 'Telegram API基础地址', 'type': 'url', 'scopes': ('network_notify',)},
 
     'backup_dir': {'default': '/app/data/backups', 'desc': '数据库备份目录', 'type': 'text', 'max_length': 500, 'scopes': ('backup',)},
@@ -43,9 +50,9 @@ SETTING_SPECS = {
     'security_read_only_enabled': {'default': 'false', 'desc': '可选安全：只读模式开关', 'type': 'bool', 'scopes': ('update',)},
     'security_ip_allowlist_enabled': {'default': 'false', 'desc': '可选安全：IP 白名单开关', 'type': 'bool', 'scopes': ('update',)},
     'security_ip_allowlist': {'default': '', 'desc': '可选安全：IP 白名单列表（逗号分隔，支持 CIDR）', 'type': 'text', 'max_length': 1200, 'scopes': ('update',)},
-    'security_2fa_enabled': {'default': 'false', 'desc': '可选安全：2FA 开关（预留）', 'type': 'bool', 'scopes': ('update',)},
-    'security_2fa_secret': {'default': '', 'desc': '可选安全：2FA 密钥（预留）', 'type': 'text', 'max_length': 500, 'scopes': ('update',)},
-    'security_role_model_enabled': {'default': 'false', 'desc': '可选安全：RBAC 开关（预留）', 'type': 'bool', 'scopes': ('update',)},
+    'security_2fa_enabled': {'default': 'false', 'desc': '已弃用：2FA 已迁移到数据库管理员账号', 'type': 'bool', 'scopes': ('update',)},
+    'security_2fa_secret': {'default': '', 'desc': '已弃用：2FA 已迁移到数据库管理员账号', 'type': 'text', 'max_length': 500, 'scopes': ('update',)},
+    'security_role_model_enabled': {'default': 'false', 'desc': '已弃用：当前为单管理员模型', 'type': 'bool', 'scopes': ('update',)},
     'webhook_enabled': {'default': 'false', 'desc': '可选：启用事件 Webhook', 'type': 'bool', 'scopes': ('update',)},
     'webhook_url': {'default': '', 'desc': '可选：Webhook 地址', 'type': 'url', 'max_length': 500, 'scopes': ('update',)},
     'webhook_secret': {'default': '', 'desc': '可选：Webhook 密钥', 'type': 'text', 'max_length': 500, 'scopes': ('update',)},
@@ -73,6 +80,8 @@ SETTING_SPECS = {
     'last_dev_apply_status': {'default': '', 'desc': '开发模式最近应用状态'},
     'last_dev_apply_message': {'default': '', 'desc': '开发模式最近应用消息'},
     'last_dev_apply_at': {'default': '', 'desc': '开发模式最近应用时间'},
+    'worker_last_seen_at': {'default': '', 'desc': 'worker 最近心跳时间'},
+    'worker_heartbeat_ttl_seconds': {'default': '45', 'desc': 'worker 心跳有效秒数', 'type': 'int', 'min': 5, 'max': 3600},
 }
 
 
@@ -140,8 +149,12 @@ def validate_setting_value(key: str, raw):
         return True, text
 
     if typ == 'repo':
-        if text and not text.startswith(('http://', 'https://')):
+        is_url = text.startswith(('http://', 'https://'))
+        is_slug = bool(re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', text))
+        if key == 'dev_git_repo' and text and not is_url:
             return False, 'must start with http:// or https://'
+        if text and not (is_url or is_slug):
+            return False, 'must be a URL or owner/repo slug'
         if len(text) > spec.get('max_length', 10**9):
             return False, f'is too long (max {spec["max_length"]})'
         return True, text

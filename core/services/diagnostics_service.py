@@ -4,6 +4,9 @@ from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 import json
+import os
+
+from core.services.audit_service import redact_url_credentials
 import urllib.request
 import zipfile
 
@@ -85,6 +88,8 @@ def _schema_meta_get(db, key, default=''):
 
 
 def _probe_url(url, timeout=3):
+    if not str(url or '').startswith(('http://', 'https://')):
+        return False, 'unsupported url scheme'
     try:
         req = urllib.request.Request(url, method='HEAD')
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -134,6 +139,8 @@ def _redact_kv_message(message):
         value = value.strip()
         if _is_sensitive_key(key):
             value = '***'
+        else:
+            value = redact_url_credentials(value)
         parts.append(f'{key}={value}')
     return ';'.join(parts)
 
@@ -149,9 +156,12 @@ def _redact_config_rows(rows):
         key = str(_get(row, 'key', '') or '')
         value = _get(row, 'value', '')
         updated_at = _get(row, 'updated_at', None)
+        display_value = '***' if _is_sensitive_key(key) and value else value
+        if isinstance(display_value, str):
+            display_value = redact_url_credentials(display_value)
         items.append({
             'key': key,
-            'value': '***' if _is_sensitive_key(key) and value else value,
+            'value': display_value,
             'description': _get(row, 'description', '') or '',
             'updated_at': updated_at.isoformat() if updated_at and hasattr(updated_at, 'isoformat') else None,
         })
@@ -159,36 +169,30 @@ def _redact_config_rows(rows):
 
 
 def _redact_operation_rows(rows):
-    items = []
-    for row in rows:
-        items.append({
-            'id': row.id,
-            'operation_type': row.operation_type,
-            'target_type': row.target_type,
-            'target_id': row.target_id,
-            'target_name': row.target_name,
-            'success': row.success,
-            'created_at': row.created_at.isoformat() if row.created_at else None,
-            'message': _redact_kv_message(row.message),
-        })
-    return items
+    return [{
+        'id': row.id,
+        'operation_type': row.operation_type,
+        'target_type': row.target_type,
+        'target_id': row.target_id,
+        'target_name': row.target_name,
+        'success': row.success,
+        'created_at': row.created_at.isoformat() if row.created_at else None,
+        'message': _redact_kv_message(row.message),
+    } for row in rows]
 
 
 def _redact_job_rows(rows):
-    items = []
-    for row in rows:
-        items.append({
-            'id': row.id,
-            'job_name': row.job_name,
-            'job_type': row.job_type,
-            'source': row.source,
-            'status': row.status,
-            'started_at': row.started_at.isoformat() if row.started_at else None,
-            'finished_at': row.finished_at.isoformat() if row.finished_at else None,
-            'duration_ms': row.duration_ms,
-            'message': _redact_kv_message(row.message),
-        })
-    return items
+    return [{
+        'id': row.id,
+        'job_name': row.job_name,
+        'job_type': row.job_type,
+        'source': row.source,
+        'status': row.status,
+        'started_at': row.started_at.isoformat() if row.started_at else None,
+        'finished_at': row.finished_at.isoformat() if row.finished_at else None,
+        'duration_ms': row.duration_ms,
+        'message': _redact_kv_message(row.message),
+    } for row in rows]
 
 
 def _dt_to_iso(value):
@@ -198,20 +202,6 @@ def _dt_to_iso(value):
         return value.isoformat()
     except Exception:
         return str(value)
-
-
-def _latest_log_summary(rows):
-    if not rows:
-        return {'count': 0, 'failed': 0, 'latest_at': None, 'latest_type': '-', 'latest_message': '-'}
-    failed = sum(1 for row in rows if not row.success)
-    latest = rows[0]
-    return {
-        'count': len(rows),
-        'failed': failed,
-        'latest_at': latest.created_at.isoformat() if latest.created_at else None,
-        'latest_type': latest.operation_type or '-',
-        'latest_message': _redact_kv_message(latest.message) or '-',
-    }
 
 
 def _build_schema_summary(db):
@@ -288,7 +278,7 @@ def collect_diagnostics(*, db, current_app, get_config, get_release_info, get_ru
     else:
         checks.append({'name': '数据库文件大小', 'ok': True, 'detail': f'{_human_size(db_size_bytes)} ({db_file})'})
 
-    logs_dir = Path('data/logs').resolve()
+    logs_dir = Path(os.environ.get('APP_LOG_DIR', 'data/logs')).resolve()
     logs_size, logs_files = _safe_dir_size(logs_dir)
     if logs_size is None:
         checks.append({'name': '日志目录占用', 'ok': False, 'detail': f'统计失败：{logs_dir}'})
@@ -327,11 +317,12 @@ def collect_diagnostics(*, db, current_app, get_config, get_release_info, get_ru
     github_api_base = (get_config('github_api_base', 'https://api.github.com') or 'https://api.github.com').strip()
     if version_check_enabled and github_api_base:
         ok_probe, probe_detail = _probe_url(github_api_base, timeout=3)
-        checks.append({'name': '版本检查地址可达性', 'ok': ok_probe, 'detail': f'{github_api_base} -> {probe_detail}'})
+        checks.append({'name': '版本检查地址可达性', 'ok': ok_probe, 'detail': f'{redact_url_credentials(github_api_base)} -> {probe_detail}'})
     else:
         checks.append({'name': '版本检查地址可达性', 'ok': True, 'detail': '已禁用版本检查或未配置地址'})
 
-    checks.append({'name': '代理配置', 'ok': True, 'detail': (get_config('proxy_url', '') or '').strip() or '未设置（直连）'})
+    proxy_text = (get_config('proxy_url', '') or '').strip()
+    checks.append({'name': '代理配置', 'ok': True, 'detail': redact_url_credentials(proxy_text) or '未设置（直连）'})
     checks.append({'name': '应用版本', 'ok': True, 'detail': get_release_info().get('local_version', '-')})
     checks.append({'name': '日志目录', 'ok': True, 'detail': str(logs_dir)})
     checks.append({'name': '待判定来源保护', 'ok': True, 'detail': f"enabled={get_config('pending_source_guard_enabled', 'true')}, window={get_config('pending_source_guard_seconds', '900')}s, log_mode={get_config('pending_source_log_mode', 'aggregate')}"})

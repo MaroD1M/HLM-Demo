@@ -15,7 +15,35 @@ env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Compile check
+        run: python -m py_compile app.py worker.py scheduler.py wsgi.py core/deps.py core/extensions.py core/models.py core/routes/*.py core/services/*.py
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Run tests
+        run: python -m pytest -q tests
+
+      - name: Asset size guard
+        run: bash scripts/check_asset_sizes.sh
+
   docker:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

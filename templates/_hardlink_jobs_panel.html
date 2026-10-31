@@ -15,6 +15,7 @@
         <td class="col-actions"><div class="actions-row">
           <form class="d-inline js-ajax-form" action="/hardlink/preflight/{{ t.id }}" method="POST" data-target="hardlinkJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-secondary" data-confirm="确认查看执行前预览？">预览</button></form>
           <form class="d-inline js-ajax-form" action="/hardlink/execute/{{ t.id }}" method="POST" data-target="hardlinkJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary">立即执行一次</button></form>
+          <form class="d-inline js-ajax-form" action="/hardlink/enqueue/{{ t.id }}" method="POST" data-target="hardlinkJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-secondary" title="加入后台队列，由 worker 执行">后台执行</button></form>
           <a class="btn btn-sm btn-outline-info" href="/hardlink/edit/{{ t.id }}">编辑</a>
           <form class="d-inline js-ajax-form" action="/hardlink/toggle/{{ t.id }}" method="POST" data-target="hardlinkJobsPanel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-warning">{{ '禁用' if t.enabled else '启用' }}</button></form>
           <form class="d-inline js-ajax-form" action="/hardlink/delete/{{ t.id }}" method="POST" data-target="hardlinkJobsPanel" data-confirm="确认删除该硬链接任务？删除后不可恢复。"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">删除</button></form>

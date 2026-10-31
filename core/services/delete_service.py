@@ -49,6 +49,37 @@ def _safe_unlink_file(path_text):
     return False
 
 
+def _prune_empty_dirs_from(file_path, roots):
+    try:
+        current = Path(file_path).parent
+        resolved_roots = []
+        for root in roots or []:
+            if not str(root or '').strip():
+                continue
+            try:
+                resolved_roots.append(Path(root).resolve(strict=False))
+            except Exception:
+                continue
+        while True:
+            try:
+                current_resolved = current.resolve(strict=False)
+                matched_root = None
+                for root in resolved_roots:
+                    if os.path.commonpath([str(current_resolved), str(root)]) == str(root):
+                        matched_root = root
+                        break
+                if matched_root is None or current_resolved == matched_root:
+                    break
+                if any(current.iterdir()):
+                    break
+                current.rmdir()
+                current = current.parent
+            except Exception:
+                break
+    except Exception:
+        return
+
+
 def _policy_enabled(get_config, key, default='false'):
     return str(get_config(key, default)).lower() == 'true'
 
@@ -73,10 +104,10 @@ def _task_notify_on_risky_enabled(task, get_config):
     return global_switch and task_switch
 
 
-def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_config, send_notification, create_pending_action, should_stop=None):
+def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_config, send_notification, create_pending_action, should_stop=None, find_cross_seed=None, recycle_file=None):
     now = datetime.now(UTC)
     candidates = []
-    monitor_root = (task.directory or '').rstrip('/')
+    monitor_root = (task.directory or '').rstrip('/') or '/'
 
     for row in rows:
         if should_stop and should_stop():
@@ -103,8 +134,6 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
     if total_hits > task.max_deletes_per_run:
         log_operation('delete_guard_truncated', 'DeleteMonitorTask', task.id, task.name, f'本轮命中 {total_hits}，按阈值分批执行前 {task.max_deletes_per_run} 条，其余待下轮处理', True)
     hits = candidates[:task.max_deletes_per_run]
-    for row, _deleted_path in hits:
-        row.deleted_at = now
 
     deleted_torrents = 0
     pending_count = 0
@@ -141,21 +170,52 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
             policy_key = 'manual_dest_delete_delete_source' if policy_source_type == 'manual' else 'downloader_dest_delete_delete_source'
             action_label = 'dest_deleted'
 
+        if task.dry_run:
+            row.last_seen_at = now
+            log_operation(
+                'delete_dry_run',
+                'DeleteMonitorTask',
+                task.id,
+                task.name,
+                f'dry-run 未执行删除: {action_label}, source_type={source_type}, path={deleted_path_str}, counterpart={counterpart or "-"}',
+                True,
+            )
+            continue
+
         counterpart_removed = None
+        counterpart_recycled = None
+        counterpart_roots = getattr(task, 'prune_roots', None)
+        if counterpart and counterpart_roots and not any(_within(counterpart, root) for root in counterpart_roots if str(root or '').strip()):
+            log_operation('linked_file_delete_skip', 'FileLinkMap', row.id, task.name, f'{action_label} -> counterpart_outside_roots: {counterpart}', False)
+            counterpart = None
         if counterpart and _policy_enabled(get_config, policy_key, 'true'):
-            counterpart_removed = _safe_unlink_file(counterpart)
-            if counterpart_removed:
-                log_operation('linked_file_deleted', 'FileLinkMap', row.id, task.name, f'{action_label} -> delete_counterpart: {counterpart}')
+            if recycle_file and _policy_enabled(get_config, 'delete_recycle_bin_enabled', 'false'):
+                counterpart_removed, counterpart_recycled = recycle_file(counterpart)
+                if counterpart_removed:
+                    log_operation('linked_file_recycled', 'FileLinkMap', row.id, task.name, f'{action_label} -> recycle_counterpart: {counterpart} -> {counterpart_recycled}')
+                else:
+                    log_operation('linked_file_delete_skip', 'FileLinkMap', row.id, task.name, f'{action_label} -> recycle_failed: {counterpart}')
             else:
-                log_operation('linked_file_delete_skip', 'FileLinkMap', row.id, task.name, f'{action_label} -> counterpart_missing_or_failed: {counterpart}')
+                counterpart_removed = _safe_unlink_file(counterpart)
+                if counterpart_removed:
+                    log_operation('linked_file_deleted', 'FileLinkMap', row.id, task.name, f'{action_label} -> delete_counterpart: {counterpart}')
+                else:
+                    log_operation('linked_file_delete_skip', 'FileLinkMap', row.id, task.name, f'{action_label} -> counterpart_missing_or_failed: {counterpart}')
+        if counterpart:
+            prune_roots = getattr(task, 'prune_roots', None) or ([monitor_root] if monitor_root else [])
+            _prune_empty_dirs_from(counterpart, prune_roots)
 
         # Pending/manual sources never auto-delete torrent; pending stays conservative until resolved.
         if source_type in {'manual', 'pending'}:
+            row.deleted_at = now
             log_operation('delete_detected_manual', 'DeleteMonitorTask', task.id, task.name, f'手动来源删除: {deleted_path_str}')
             if task.notifier and _task_notify_on_delete_enabled(task, get_config, source_type):
                 msg = f'📌 删除联动提醒（手动来源）\n任务：{task.name}\n触发路径：{deleted_path_str}\n对侧处理：'
                 if counterpart:
-                    msg += f"已删除({counterpart})" if counterpart_removed else f"未删除/不存在({counterpart})"
+                    if counterpart_recycled:
+                        msg += f"已移入回收站({counterpart_recycled})"
+                    else:
+                        msg += f"已删除({counterpart})" if counterpart_removed else f"未删除/不存在({counterpart})"
                 else:
                     msg += '无'
                 send_notification(task.notifier, msg)
@@ -164,10 +224,12 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
         # Downloader source: optional torrent deletion.
         delete_torrent_key = 'downloader_source_delete_delete_torrent' if deleted_is_source else 'downloader_dest_delete_delete_torrent'
         if not _policy_enabled(get_config, delete_torrent_key, 'true'):
+            row.deleted_at = now
             log_operation('torrent_delete_disabled', 'DeleteMonitorTask', task.id, task.name, f'策略已禁用删种: {deleted_path_str}')
             continue
 
         if not task.downloader:
+            row.last_seen_at = now
             log_operation('delete_detected_no_downloader', 'DeleteMonitorTask', task.id, task.name, f'检测到下载器来源删除但任务未关联下载器: {deleted_path_str}', False)
             continue
 
@@ -177,11 +239,25 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
             torrent_hash, match_by = try_match(Path(deleted_path_str), task.downloader)
 
         if not torrent_hash:
+            row.last_seen_at = now
             log_operation('torrent_match_miss', 'DeleteMonitorTask', task.id, task.name, f'未匹配到种子: {deleted_path_str}')
             continue
 
+        if find_cross_seed and _policy_enabled(get_config, 'delete_protect_cross_seed', 'true'):
+            related = find_cross_seed(task.downloader, torrent_hash) or []
+            if related:
+                row.deleted_at = now
+                pending_count += 1
+                sample = ', '.join(str(item.get('name') or item.get('hash') or '-') for item in related[:3])
+                create_pending_action(task, row, deleted_path_str, torrent_hash, match_by, f'检测到疑似 cross-seed 关联: {sample}')
+                log_operation('torrent_delete_pending', 'DeleteMonitorTask', task.id, task.name, f'cross-seed 保护，已加入待确认: {torrent_hash}, related={sample}', False)
+                if notify_risky and task.notifier:
+                    send_notification(task.notifier, f'⚠️ 检测到 cross-seed，已进入待确认\n任务：{task.name}\n种子：{torrent_hash}\n关联：{sample}\n路径：{deleted_path_str}')
+                continue
+
         risky_match = match_by in {'name_match', 'path_match'}
         if strict_mode and risky_match:
+            row.deleted_at = now
             pending_count += 1
             create_pending_action(task, row, deleted_path_str, torrent_hash, match_by, '疑似误删风险，需人工确认')
             log_operation('torrent_delete_pending', 'DeleteMonitorTask', task.id, task.name, f'已加入待确认: {torrent_hash}, by={match_by}, file={deleted_path_str}', False)
@@ -189,18 +265,16 @@ def scan_delete_rows(task, rows, try_match, delete_torrent, log_operation, get_c
                 send_notification(task.notifier, f'⚠️ 疑似误删，已进入待确认\n任务：{task.name}\n匹配方式：{match_by}\n路径：{deleted_path_str}\n种子：{torrent_hash}')
             continue
 
-        if task.dry_run:
-            log_operation('torrent_delete_dry_run', 'DeleteMonitorTask', task.id, task.name, f'dry-run 删除 {torrent_hash}, by={match_by}')
-            continue
-
         ok = delete_torrent(task.downloader, torrent_hash)
         if ok:
             row.torrent_hash = torrent_hash
+            row.deleted_at = now
             deleted_torrents += 1
             log_operation('torrent_deleted', 'DeleteMonitorTask', task.id, task.name, f'删除种子 {torrent_hash}, by={match_by}, file={deleted_path_str}')
             if task.notifier and _task_notify_on_delete_enabled(task, get_config, source_type):
                 send_notification(task.notifier, f'✅ 联动完成（下载器来源）\n任务：{task.name}\n种子：{torrent_hash}\n匹配方式：{match_by}\n触发路径：{deleted_path_str}')
         else:
+            row.last_seen_at = now
             log_operation('torrent_delete_failed', 'DeleteMonitorTask', task.id, task.name, f'删除失败 {torrent_hash}', False)
 
     return True, deleted_torrents, total_hits, pending_count

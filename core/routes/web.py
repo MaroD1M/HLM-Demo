@@ -1,9 +1,13 @@
 from pathlib import Path
 import json
+import os
+import secrets
+import shutil
+from urllib.parse import unquote, urlparse
 from datetime import datetime, UTC
 from flask import Blueprint, render_template, request, redirect, flash, jsonify, Response, current_app, session
 from core.deps import RouteDeps
-from core.services.audit_service import build_kv_message, summarize_changed_keys
+from core.services.audit_service import build_kv_message, redact_url_credentials, summarize_changed_keys
 from core.services.backup_service import restore_sqlite_backup, verify_backup_integrity
 from core.services.diagnostics_service import build_support_bundle, collect_diagnostics
 from core.services.config_service import (
@@ -37,6 +41,9 @@ OPERATION_TYPE_LABELS = {
     'task_toggled': '启用/禁用任务',
     'delete_scan': '删除联动扫描',
     'delete_scan_stopped': '删除联动扫描中止',
+    'delete_dry_run': '删除联动试运行',
+    'delete_scan_anomaly_aborted': '删除联动异常熔断',
+    'delete_scan_aborted_root_missing': '删除联动目录缺失中止',
     'delete_detected_manual': '删除联动-检测到手动来源删除',
     'delete_detected_no_downloader': '删除联动-未关联下载器',
     'linked_file_deleted': '删除联动-已删除对侧文件',
@@ -79,7 +86,11 @@ OPERATION_TYPE_LABELS = {
     'backfill_metrics': '自动关联指标',
     'job_execute_failed': '任务执行异常',
     'db_backup': '数据库备份',
+    'db_backup_restore': '恢复数据库备份',
+    'db_backup_restore_preview': '预览数据库恢复',
+    'logs_cleared': '清空操作日志',
     'settings_saved': '保存设置',
+    'settings_check_update': '检查版本更新',
     'settings_save_failed': '保存设置失败',
     'settings_imported': '导入配置',
     'settings_import_failed': '导入配置失败',
@@ -118,6 +129,9 @@ def init_web_routes(ctx: RouteDeps):
     DeletePendingAction = ctx.DeletePendingAction
     AppConfig = ctx.AppConfig
     AppConfigSnapshot = ctx.AppConfigSnapshot
+    AdminUser = ctx.AdminUser
+    JobQueue = ctx.JobQueue
+    RecycleItem = ctx.RecycleItem
     CronJob = ctx.CronJob
     db = ctx.db
     scheduler = ctx.scheduler
@@ -130,6 +144,7 @@ def init_web_routes(ctx: RouteDeps):
     validate_cron_expression = ctx.validate_cron_expression
 
     run_hardlink_once = ctx.run_hardlink_once
+    enqueue_job = ctx.enqueue_job
     run_delete_once = ctx.run_delete_once
     run_backfill_once = ctx.run_backfill_once
     run_backfill_for_map_id = ctx.run_backfill_for_map_id
@@ -137,7 +152,7 @@ def init_web_routes(ctx: RouteDeps):
     run_cron_job = ctx.run_cron_job
     update_cron_job = ctx.update_cron_job
     list_torrents = ctx.list_torrents
-    send_telegram_notification = ctx.send_telegram_notification
+    send_notification = ctx.send_notification
     delete_torrent_func = ctx.delete_torrent
     get_release_info = ctx.get_release_info
     request_stop_by_execution = ctx.request_stop_by_execution
@@ -148,30 +163,70 @@ def init_web_routes(ctx: RouteDeps):
     def _wants_json():
         return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
+    def _safe_referrer():
+        ref = (request.referrer or '').strip()
+        if not ref:
+            return '/'
+        parsed = urlparse(ref)
+        if parsed.netloc and parsed.netloc != request.host:
+            return '/'
+        path = parsed.path or '/'
+        decoded = unquote(path)
+        if not path.startswith('/') or path.startswith('//') or decoded.startswith('//') or '\\' in decoded:
+            return '/'
+        if parsed.query:
+            path = f'{path}?{parsed.query}'
+        return path
+
     def _json_or_redirect(ok, message, redirect_path, html=None, target=None, status=200):
         if _wants_json():
             return jsonify({'ok': ok, 'message': message, 'html': html, 'target': target}), status
         flash(message, 'success' if ok else 'danger')
         return redirect(redirect_path)
 
-    def _validate_backfill_setting(key, raw):
-        ok, checked = validate_setting_value(key, raw)
-        if ok:
-            return True, checked
-        return False, f'{key} {checked}'
+    def _paths_overlap(first, second):
+        try:
+            a = Path(first).resolve(strict=False)
+            b = Path(second).resolve(strict=False)
+        except Exception:
+            return False
+        a_text = str(a)
+        b_text = str(b)
+        return a_text == b_text or a_text.startswith(b_text + os.sep) or b_text.startswith(a_text + os.sep)
 
-    def _validate_dev_setting(key, raw):
-        ok, checked = validate_setting_value(key, raw)
-        if ok:
-            return True, checked
-        return False, f'{key} {checked}'
+    def _worker_is_live():
+        raw = (get_config('worker_last_seen_at', '') or '').strip()
+        if not raw:
+            return False
+        try:
+            seen = datetime.fromisoformat(raw.replace('Z', '+00:00'))
+            if seen.tzinfo is None:
+                seen = seen.replace(tzinfo=UTC)
+            ttl = int(get_config('worker_heartbeat_ttl_seconds', '45') or '45')
+            return (datetime.now(UTC) - seen.astimezone(UTC)).total_seconds() <= max(5, ttl)
+        except Exception:
+            return False
+
+    def _enqueue_if_worker(job_type, target_id=None, job_name=None):
+        if not _worker_is_live():
+            return None, ''
+        row, _created, message = enqueue_job(job_type, target_id=target_id, source='web', job_name=job_name)
+        if row:
+            log_operation('job_enqueued', 'JobQueue', row.id, job_name or job_type, message)
+        return row, message
+
+    def _sync_dev_runtime():
+        try:
+            write_dev_runtime_env(get_config, Path(current_app.instance_path) / 'dev_runtime.env')
+        except Exception as exc:
+            current_app.logger.warning('write dev runtime env failed: %s', exc)
 
     def _critical_guard():
         expected = (get_config('critical_action_passphrase', '') or '').strip()
         if not expected:
             return True
         provided = (request.form.get('critical_passphrase') or '').strip()
-        return provided == expected
+        return secrets.compare_digest(provided.encode('utf-8'), expected.encode('utf-8'))
 
 
     def _parse_backfill_metrics_message(message):
@@ -219,27 +274,51 @@ def init_web_routes(ctx: RouteDeps):
             'default_exclude_dirs': get_config('default_exclude_dirs', 'sample,subs'),
         }
 
-    def _resolve_pending_executor(pending):
-        # Compatible with legacy DeleteMonitorTask pending records and new hardlink built-in linkage records.
-        task_name = '-'
-        downloader = None
-        notifier = None
-        if pending.task_id:
-            dm = db.session.get(DeleteMonitorTask, pending.task_id)
-            if dm:
-                task_name = dm.name
-                downloader = getattr(dm, 'downloader', None)
-                notifier = getattr(dm, 'notifier', None)
-                return task_name, downloader, notifier
 
+    def _compat_delete_task(task_id):
+        return DeleteMonitorTask.query.filter_by(name=f'[兼容]硬链接任务#{task_id}').first()
+
+    def _invalidate_hardlink_task_state(task):
+        map_ids = [row[0] for row in db.session.query(FileLinkMap.id).filter(FileLinkMap.task_id == task.id).all()]
+        if map_ids:
+            DeletePendingAction.query.filter(DeletePendingAction.file_map_id.in_(map_ids)).delete(synchronize_session=False)
+            FileLinkMap.query.filter(FileLinkMap.task_id == task.id).delete(synchronize_session=False)
+
+        legacy = _compat_delete_task(task.id)
+        if legacy:
+            DeletePendingAction.query.filter_by(task_id=legacy.id).delete(synchronize_session=False)
+            db.session.delete(legacy)
+
+        cache_removed = 0
+        try:
+            source_root = str(Path(task.source_dir).resolve(strict=False))
+        except Exception:
+            source_root = str(task.source_dir or '')
+        for row in HardlinkCache.query.all():
+            try:
+                source_path = str(Path(row.source_path).resolve(strict=False))
+            except Exception:
+                continue
+            if source_path == source_root or source_path.startswith(source_root + '/'):
+                db.session.delete(row)
+                cache_removed += 1
+        return {'maps': len(map_ids), 'cache': cache_removed, 'compat': 1 if legacy else 0}
+
+    def _resolve_pending_executor(pending):
+        # Prefer the current hardlink task config so stale compatibility tasks cannot re-use old credentials.
         fmap = db.session.get(FileLinkMap, pending.file_map_id) if pending.file_map_id else None
         if fmap and fmap.task_id:
             ht = db.session.get(HardlinkTask, fmap.task_id)
             if ht:
-                task_name = ht.name
                 downloader = db.session.get(Downloader, ht.delete_downloader_id) if ht.delete_downloader_id else None
                 notifier = db.session.get(Notifier, ht.delete_notifier_id) if ht.delete_notifier_id else None
-        return task_name, downloader, notifier
+                return ht.name, downloader, notifier
+
+        if pending.task_id:
+            dm = db.session.get(DeleteMonitorTask, pending.task_id)
+            if dm:
+                return dm.name, getattr(dm, 'downloader', None), getattr(dm, 'notifier', None)
+        return '-', None, None
 
     def _delete_payload():
         pending_q = (request.args.get('pending_q') or '').strip()
@@ -322,6 +401,23 @@ def init_web_routes(ctx: RouteDeps):
             'delete_tasks': DeleteMonitorTask.query.all(),
         }
 
+    def _jobs_payload():
+        jobs = JobQueue.query.order_by(JobQueue.id.desc()).limit(20).all()
+        return {'jobs': jobs}
+
+    @web_bp.route('/partials/jobs')
+    def jobs_partial():
+        return render_template('_jobs_panel.html', **_jobs_payload())
+
+    @web_bp.route('/partials/jobs/<int:job_id>/stop', methods=['POST'])
+    def jobs_partial_stop(job_id):
+        row = db.session.get(JobQueue, job_id)
+        if row and row.status in {'queued', 'running'}:
+            row.stop_requested = True
+            db.session.commit()
+            log_operation('job_queue_stop_requested', 'JobQueue', row.id, row.job_name, '用户请求停止后台任务')
+        return render_template('_jobs_panel.html', **_jobs_payload())
+
     @web_bp.route('/')
     def dashboard():
         hardlink_tasks = HardlinkTask.query.all()
@@ -356,8 +452,8 @@ def init_web_routes(ctx: RouteDeps):
             })
 
         running_snaps = get_running_executions_snapshot()
-        running_ids = set([x.get('execution_id') for x in running_snaps if x.get('execution_id')])
-        stale_running_ids = set([e.id for e in executions if e.status == 'running' and e.id not in running_ids])
+        running_ids = {x.get('execution_id') for x in running_snaps if x.get('execution_id')}
+        stale_running_ids = {e.id for e in executions if e.status == 'running' and e.id not in running_ids}
 
         pending_count = FileLinkMap.query.filter(FileLinkMap.source_type == 'pending', FileLinkMap.deleted_at.is_(None)).count()
         try:
@@ -406,24 +502,38 @@ def init_web_routes(ctx: RouteDeps):
         if not e:
             return _json_or_redirect(False, '执行记录不存在', '/', status=404)
 
+        job_type = None
+        target_id = e.target_id
         if e.job_type in {'batch_hardlink', 'hardlink_scan'} and e.target_id:
-            ok, msg = run_hardlink_once(e.target_id)
+            job_type = 'hardlink'
         elif e.job_type in {'delete_scan', 'delete_monitor_scan'} and e.target_id:
-            ok, msg = run_delete_once(e.target_id)
+            job_type = 'delete'
         elif e.job_type in {'backfill_mapping', 'backfill_torrent_mapping'}:
-            ok, msg = run_backfill_once(e.target_id)
+            job_type = 'backfill'
         elif e.job_type == 'db_backup':
-            ok, msg = run_backup_once()
+            job_type = 'backup'
+            target_id = None
         else:
             return _json_or_redirect(False, f'该任务类型暂不支持重试: {e.job_type}', '/', status=400)
+        row, queue_msg = _enqueue_if_worker(job_type, target_id=target_id, job_name=f'重试:{e.job_name}')
+        if row:
+            return _json_or_redirect(True, f'{queue_msg}，已提交后台重试（任务 #{row.id}）', '/')
+        if job_type == 'hardlink':
+            ok, msg = run_hardlink_once(target_id)
+        elif job_type == 'delete':
+            ok, msg = run_delete_once(target_id)
+        elif job_type == 'backfill':
+            ok, msg = run_backfill_once(target_id)
+        else:
+            ok, msg = run_backup_once()
         return _json_or_redirect(ok, msg, '/', status=200 if ok else 400)
 
     @web_bp.route('/executions/stop/<int:execution_id>', methods=['POST'])
     def execution_stop(execution_id):
         ok, meta = request_stop_by_execution(execution_id)
         if not ok:
-            return _json_or_redirect(True, '任务已结束或未在运行，无需停止', request.referrer or '/')
-        return _json_or_redirect(True, f"已发送停止请求：{meta.get('job_name','任务')}（请等待当前步骤结束）", request.referrer or '/')
+            return _json_or_redirect(True, '任务已结束或未在运行，无需停止', _safe_referrer())
+        return _json_or_redirect(True, f"已发送停止请求：{meta.get('job_name','任务')}（请等待当前步骤结束）", _safe_referrer())
 
 
     @web_bp.route('/hardlink')
@@ -483,6 +593,8 @@ def init_web_routes(ctx: RouteDeps):
             ok, msg = validate_path(val)
             if not ok:
                 return _json_or_redirect(False, f'{label}无效: {msg}', '/hardlink', status=400)
+        if _paths_overlap(source_dir, dest_dir):
+            return _json_or_redirect(False, '源目录与目标目录不能相同或互相包含', '/hardlink', status=400)
 
         min_file_age = request.form.get('min_file_age_seconds', type=int)
         if min_file_age is None or min_file_age < 0 or min_file_age > 86400:
@@ -551,12 +663,23 @@ def init_web_routes(ctx: RouteDeps):
             ok, msg = validate_path(val)
             if not ok:
                 return _json_or_redirect(False, f'{label}无效: {msg}', '/hardlink', status=400)
+        if _paths_overlap(source_dir, dest_dir):
+            return _json_or_redirect(False, '源目录与目标目录不能相同或互相包含', '/hardlink', status=400)
         if min_file_age is None or min_file_age < 0 or min_file_age > 86400:
             return _json_or_redirect(False, '最小文件年龄必须在 0-86400 秒之间', '/hardlink', status=400)
         if delete_cooldown_seconds is None or delete_cooldown_seconds < 0 or delete_cooldown_seconds > 86400:
             return _json_or_redirect(False, '删除联动冷却秒数必须在 0-86400 秒之间', '/hardlink', status=400)
         if delete_max_deletes_per_run is None or delete_max_deletes_per_run < 1 or delete_max_deletes_per_run > 1000:
             return _json_or_redirect(False, '删除联动单次最大删除必须在 1-1000 之间', '/hardlink', status=400)
+
+        path_changed = (
+            task.source_dir != source_dir
+            or task.dest_dir != dest_dir
+            or bool(task.create_folder) != bool(create_folder)
+        )
+        invalidated = {'maps': 0, 'cache': 0, 'compat': 0}
+        if path_changed:
+            invalidated = _invalidate_hardlink_task_state(task)
 
         task.name = name
         task.source_dir = source_dir
@@ -577,11 +700,20 @@ def init_web_routes(ctx: RouteDeps):
         task.delete_notify_on_delete = delete_notify_on_delete
         task.delete_notify_on_risky_delete = delete_notify_on_risky_delete
         db.session.commit()
-        log_operation('hardlink_task_updated', 'HardlinkTask', task.id, task.name)
+        log_operation(
+            'hardlink_task_updated',
+            'HardlinkTask',
+            task.id,
+            task.name,
+            f"path_changed={path_changed}; maps={invalidated['maps']}; cache={invalidated['cache']}; compat={invalidated['compat']}",
+        )
 
         payload = _hardlink_payload()
         html = render_template('_hardlink_jobs_panel.html', **payload) if _wants_json() else None
-        return _json_or_redirect(True, '硬链接任务已更新并生效', '/hardlink', html=html, target='hardlinkJobsPanel')
+        message = '硬链接任务已更新并生效'
+        if path_changed:
+            message += f"；路径配置变更，已清理旧映射 {invalidated['maps']} 条、缓存 {invalidated['cache']} 条；旧目标目录文件不会自动移动"
+        return _json_or_redirect(True, message, '/hardlink', html=html, target='hardlinkJobsPanel')
 
     @web_bp.route('/hardlink/toggle/<int:task_id>', methods=['POST'])
     def hardlink_toggle(task_id):
@@ -600,22 +732,34 @@ def init_web_routes(ctx: RouteDeps):
         task = db.session.get(HardlinkTask, task_id)
         if not task:
             return _json_or_redirect(False, '任务不存在', '/hardlink', status=404)
-        task_root = str(Path(task.source_dir).resolve(strict=False))
-        cache_rows = HardlinkCache.query.all()
-        for row in cache_rows:
-            try:
-                source_path = str(Path(row.source_path).resolve(strict=False))
-                if source_path == task_root or source_path.startswith(task_root + '/'):
-                    db.session.delete(row)
-            except Exception:
-                continue
-        FileLinkMap.query.filter_by(task_id=task.id).delete()
+        task_name = task.name
+        invalidated = _invalidate_hardlink_task_state(task)
+        CronJob.query.filter_by(task_type='batch_hardlink', target_id=task.id).delete(synchronize_session=False)
         db.session.delete(task)
         db.session.commit()
-        log_operation('hardlink_task_deleted', 'HardlinkTask', task_id, task.name)
+        log_operation(
+            'hardlink_task_deleted',
+            'HardlinkTask',
+            task_id,
+            task_name,
+            f"maps={invalidated['maps']}; cache={invalidated['cache']}; compat={invalidated['compat']}",
+        )
         payload = _hardlink_payload()
         html = render_template('_hardlink_jobs_panel.html', **payload) if _wants_json() else None
-        return _json_or_redirect(True, '任务已删除', '/hardlink', html=html, target='hardlinkJobsPanel')
+        return _json_or_redirect(True, '任务已删除（仅删除任务与映射，不删除真实文件）', '/hardlink', html=html, target='hardlinkJobsPanel')
+
+    @web_bp.route('/hardlink/enqueue/<int:task_id>', methods=['POST'])
+    def hardlink_enqueue(task_id):
+        task = db.session.get(HardlinkTask, task_id)
+        if not task:
+            return _json_or_redirect(False, '任务不存在', '/hardlink', status=404)
+        row, _created, message = enqueue_job('hardlink', target_id=task.id, source='web')
+        if not row:
+            return _json_or_redirect(False, message, '/hardlink', status=400)
+        log_operation('job_enqueued', 'JobQueue', row.id, task.name, message)
+        payload = _hardlink_payload()
+        html = render_template('_hardlink_jobs_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(True, f'{message}（任务 #{row.id}）', '/hardlink', html=html, target='hardlinkJobsPanel')
 
     @web_bp.route('/hardlink/batch/<int:task_id>', methods=['POST'])
     @web_bp.route('/hardlink/execute/<int:task_id>', methods=['POST'])
@@ -623,6 +767,13 @@ def init_web_routes(ctx: RouteDeps):
         task = db.session.get(HardlinkTask, task_id)
         if not task:
             return _json_or_redirect(False, '任务不存在', '/hardlink', status=404)
+        if task.enabled and _worker_is_live():
+            row, _created, message = enqueue_job('hardlink', target_id=task.id, source='web')
+            if row:
+                log_operation('job_enqueued', 'JobQueue', row.id, task.name, message)
+                payload = _hardlink_payload()
+                html = render_template('_hardlink_jobs_panel.html', **payload) if _wants_json() else None
+                return _json_or_redirect(True, f'{message}，已提交后台执行（任务 #{row.id}）', '/hardlink', html=html, target='hardlinkJobsPanel')
         report = run_preflight_checks('hardlink', task=task, get_config=get_config)
         if not report['ok']:
             return _json_or_redirect(False, f'执行前检查失败: {_guard_message(report)}', '/hardlink', status=400)
@@ -736,14 +887,16 @@ def init_web_routes(ctx: RouteDeps):
                 pending.status = 'rejected'
                 pending.confirmed_at = db.func.now()
                 done += 1
+                db.session.commit()
                 continue
 
-            task_name, downloader, _notifier = _resolve_pending_executor(pending)
+            _task_name, downloader, _notifier = _resolve_pending_executor(pending)
             torrent_hash = (pending.torrent_hash or '').strip()
             if not downloader or not torrent_hash:
                 pending.status = 'failed'
                 pending.confirmed_at = db.func.now()
                 failed += 1
+                db.session.commit()
                 continue
 
             ok = delete_torrent_func(downloader, torrent_hash)
@@ -753,6 +906,7 @@ def init_web_routes(ctx: RouteDeps):
                 done += 1
             else:
                 failed += 1
+            db.session.commit()
 
         db.session.commit()
         msg = f'批量处理完成：成功 {done}，失败 {failed}'
@@ -803,9 +957,12 @@ def init_web_routes(ctx: RouteDeps):
         session_ttl_seconds = request.form.get('session_ttl_seconds', type=int)
         if session_ttl_seconds is not None and (session_ttl_seconds < 60 or session_ttl_seconds > 86400):
             return _json_or_redirect(False, '会话复用时长必须在 60-86400 秒', '/downloader', status=400)
+        password = request.form.get('password') or ''
+        if len(password) > 300:
+            return _json_or_redirect(False, '密码过长（最大 300 字符）', '/downloader', status=400)
 
-        d = Downloader(name=name, type=request.form.get('type', 'qbittorrent'), host=host, port=port, username=request.form.get('username'), proxy_url=(request.form.get('proxy_url') or '').strip() or None, session_ttl_seconds=session_ttl_seconds)
-        d.set_password(request.form.get('password'))
+        d = Downloader(name=name, type=request.form.get('type', 'qbittorrent'), host=host, port=port, username=request.form.get('username'), proxy_url=(request.form.get('proxy_url') or '').strip() or None, category=(request.form.get('category') or '').strip(), session_ttl_seconds=session_ttl_seconds)
+        d.set_password(password)
         db.session.add(d)
         db.session.commit()
         payload = _downloader_payload()
@@ -848,6 +1005,9 @@ def init_web_routes(ctx: RouteDeps):
         session_ttl_seconds = request.form.get('session_ttl_seconds', type=int)
         if session_ttl_seconds is not None and (session_ttl_seconds < 60 or session_ttl_seconds > 86400):
             return _json_or_redirect(False, '会话复用时长必须在 60-86400 秒', '/downloader', status=400)
+        new_password = request.form.get('password') or ''
+        if len(new_password) > 300:
+            return _json_or_redirect(False, '密码过长（最大 300 字符）', '/downloader', status=400)
 
         d.name = name
         d.type = request.form.get('type', 'qbittorrent')
@@ -855,9 +1015,9 @@ def init_web_routes(ctx: RouteDeps):
         d.port = port
         d.username = request.form.get('username')
         d.proxy_url = (request.form.get('proxy_url') or '').strip() or None
+        d.category = (request.form.get('category') or '').strip()
         d.session_ttl_seconds = session_ttl_seconds
-        new_password = request.form.get('password')
-        if (new_password or '').strip():
+        if new_password.strip():
             d.set_password(new_password)
         db.session.commit()
         log_operation('downloader_updated', 'Downloader', d.id, d.name)
@@ -881,6 +1041,9 @@ def init_web_routes(ctx: RouteDeps):
         d = db.session.get(Downloader, downloader_id)
         if not d:
             return _json_or_redirect(False, '下载器不存在', '/downloader', status=404)
+        HardlinkTask.query.filter_by(delete_downloader_id=d.id).update({'delete_downloader_id': None}, synchronize_session=False)
+        DeleteMonitorTask.query.filter_by(downloader_id=d.id).update({'downloader_id': None}, synchronize_session=False)
+        FileLinkMap.query.filter_by(downloader_id=d.id).update({'downloader_id': None}, synchronize_session=False)
         db.session.delete(d)
         db.session.commit()
         payload = _downloader_payload()
@@ -897,7 +1060,10 @@ def init_web_routes(ctx: RouteDeps):
         api_key = (request.form.get('api_key') or '').strip()
         if not name or not api_key:
             return _json_or_redirect(False, '通知器名称和API Key不能为空', '/notifier', status=400)
-        n = Notifier(name=name, type=request.form.get('type', 'telegram'), api_key=api_key, chat_id=request.form.get('chat_id'), proxy_url=(request.form.get('proxy_url') or '').strip() or None)
+        if len(api_key) > 300:
+            return _json_or_redirect(False, 'API Key 过长（最大 300 字符）', '/notifier', status=400)
+        n = Notifier(name=name, type=request.form.get('type', 'telegram'), api_key='', chat_id=request.form.get('chat_id'), proxy_url=(request.form.get('proxy_url') or '').strip() or None)
+        n.set_api_key(api_key)
         db.session.add(n)
         db.session.commit()
         payload = _notifier_payload()
@@ -909,7 +1075,7 @@ def init_web_routes(ctx: RouteDeps):
         n = db.session.get(Notifier, notifier_id)
         if not n:
             return _json_or_redirect(False, '通知器不存在', '/notifier', status=404)
-        ok = send_telegram_notification(n, 'Hardlink Manager 测试通知')
+        ok = send_notification(n, 'Hardlink Manager 测试通知')
         if _wants_json():
             payload = _notifier_payload()
             html = render_template('_notifier_jobs_panel.html', **payload)
@@ -925,12 +1091,15 @@ def init_web_routes(ctx: RouteDeps):
 
         name = (request.form.get('name') or '').strip()
         api_key = (request.form.get('api_key') or '').strip()
-        if not name or not api_key:
-            return _json_or_redirect(False, '通知器名称和API Key不能为空', '/notifier', status=400)
+        if not name:
+            return _json_or_redirect(False, '通知器名称不能为空', '/notifier', status=400)
+        if len(api_key) > 300:
+            return _json_or_redirect(False, 'API Key 过长（最大 300 字符）', '/notifier', status=400)
 
         n.name = name
         n.type = request.form.get('type', 'telegram')
-        n.api_key = api_key
+        if api_key:
+            n.set_api_key(api_key)
         n.chat_id = request.form.get('chat_id')
         n.proxy_url = (request.form.get('proxy_url') or '').strip() or None
         db.session.commit()
@@ -955,6 +1124,8 @@ def init_web_routes(ctx: RouteDeps):
         n = db.session.get(Notifier, notifier_id)
         if not n:
             return _json_or_redirect(False, '通知器不存在', '/notifier', status=404)
+        HardlinkTask.query.filter_by(delete_notifier_id=n.id).update({'delete_notifier_id': None}, synchronize_session=False)
+        DeleteMonitorTask.query.filter_by(notifier_id=n.id).update({'notifier_id': None}, synchronize_session=False)
         db.session.delete(n)
         db.session.commit()
         payload = _notifier_payload()
@@ -1038,7 +1209,7 @@ def init_web_routes(ctx: RouteDeps):
                 ids.append(int(v))
             except Exception:
                 continue
-        ids = sorted(set([i for i in ids if i > 0]))
+        ids = sorted({i for i in ids if i > 0})
         if not ids:
             return _json_or_redirect(False, '请先勾选要删除的映射记录', '/mapping', status=400)
 
@@ -1047,6 +1218,10 @@ def init_web_routes(ctx: RouteDeps):
             return _json_or_redirect(False, '未找到可删除的映射记录', '/mapping', status=404)
 
         count = 0
+        map_ids = [row.id for row in rows]
+        source_paths = [row.source_path for row in rows]
+        DeletePendingAction.query.filter(DeletePendingAction.file_map_id.in_(map_ids)).delete(synchronize_session=False)
+        HardlinkCache.query.filter(HardlinkCache.source_path.in_(source_paths)).delete(synchronize_session=False)
         for row in rows:
             log_operation('mapping_record_deleted', 'FileLinkMap', row.id, row.source_path, f'批量删除映射: {row.dest_path}')
             db.session.delete(row)
@@ -1060,7 +1235,9 @@ def init_web_routes(ctx: RouteDeps):
     def mapping_link_clear():
         if not _critical_guard():
             return _json_or_redirect(False, '关键操作口令错误', '/mapping', status=403)
-        count = FileLinkMap.query.delete()
+        DeletePendingAction.query.delete(synchronize_session=False)
+        count = FileLinkMap.query.delete(synchronize_session=False)
+        HardlinkCache.query.delete(synchronize_session=False)
         db.session.commit()
         log_operation('mapping_cleared', 'FileLinkMap', None, '全部映射', f'清理 {count} 条映射记录')
         payload = _mapping_payload()
@@ -1078,6 +1255,8 @@ def init_web_routes(ctx: RouteDeps):
             return _json_or_redirect(False, '映射记录不存在', '/mapping', status=404)
         src = row.source_path
         dst = row.dest_path
+        DeletePendingAction.query.filter_by(file_map_id=row.id).delete(synchronize_session=False)
+        HardlinkCache.query.filter_by(source_path=src).delete(synchronize_session=False)
         db.session.delete(row)
         db.session.commit()
         log_operation('mapping_record_deleted', 'FileLinkMap', map_id, src, f'手动删除映射: {dst}')
@@ -1148,7 +1327,7 @@ def init_web_routes(ctx: RouteDeps):
                 ids.append(int(v))
             except Exception:
                 continue
-        ids = sorted(set([i for i in ids if i > 0]))
+        ids = sorted({i for i in ids if i > 0})
         if not ids:
             return _json_or_redirect(False, '请先勾选要删除的缓存记录', '/mapping', status=400)
 
@@ -1177,6 +1356,76 @@ def init_web_routes(ctx: RouteDeps):
         payload = _mapping_payload()
         html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
         return _json_or_redirect(True, f'已清理 {count} 条缓存', '/mapping', html=html, target='mappingPanel')
+
+    def _recycle_payload():
+        items = RecycleItem.query.order_by(RecycleItem.created_at.desc()).limit(300).all()
+        return {'items': items, 'settings_passphrase_required': bool((get_config('critical_action_passphrase', '') or '').strip())}
+
+    def _recycle_path_allowed(path_value):
+        try:
+            target = Path(path_value).resolve(strict=False)
+        except Exception:
+            return False
+        roots = [Path((get_config('delete_recycle_bin_dir', '/app/data/recycle') or '/app/data/recycle')).resolve(strict=False), (Path(current_app.instance_path) / 'recycle').resolve(strict=False)]
+        for root in roots:
+            try:
+                target.relative_to(root)
+                return True
+            except Exception:
+                continue
+        return False
+
+    @web_bp.route('/recycle')
+    def recycle_list():
+        return render_template('recycle.html', **_recycle_payload())
+
+    @web_bp.route('/recycle/restore/<int:item_id>', methods=['POST'])
+    def recycle_restore(item_id):
+        item = db.session.get(RecycleItem, item_id)
+        if not item or item.restored_at:
+            return _json_or_redirect(False, '回收站记录不存在或已恢复', '/recycle', status=404)
+        if not _recycle_path_allowed(item.recycled_path):
+            return _json_or_redirect(False, '回收站路径非法', '/recycle', status=400)
+        ok, msg = validate_path(item.original_path)
+        if not ok:
+            return _json_or_redirect(False, f'原路径不可恢复: {msg}', '/recycle', status=400)
+        source = Path(item.recycled_path)
+        target = Path(item.original_path)
+        if not source.exists() or not source.is_file():
+            return _json_or_redirect(False, '回收文件不存在', '/recycle', status=404)
+        if target.exists():
+            return _json_or_redirect(False, '原路径已存在同名文件，无法自动恢复', '/recycle', status=409)
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source), str(target))
+            item.restored_at = datetime.now(UTC)
+            db.session.commit()
+            log_operation('recycle_restored', 'RecycleItem', item.id, item.original_path, f'从回收站恢复: {item.recycled_path}')
+            return _json_or_redirect(True, '文件已恢复到原路径', '/recycle')
+        except Exception as exc:
+            db.session.rollback()
+            return _json_or_redirect(False, f'恢复失败: {exc}', '/recycle', status=400)
+
+    @web_bp.route('/recycle/delete/<int:item_id>', methods=['POST'])
+    def recycle_delete(item_id):
+        item = db.session.get(RecycleItem, item_id)
+        if not item:
+            return _json_or_redirect(False, '回收站记录不存在', '/recycle', status=404)
+        if not item.restored_at and not _critical_guard():
+            return _json_or_redirect(False, '关键操作口令错误', '/recycle', status=403)
+        if not _recycle_path_allowed(item.recycled_path):
+            return _json_or_redirect(False, '回收站路径非法', '/recycle', status=400)
+        try:
+            path = Path(item.recycled_path)
+            if path.exists() and path.is_file():
+                path.unlink()
+            db.session.delete(item)
+            db.session.commit()
+            log_operation('recycle_deleted', 'RecycleItem', item_id, item.original_path, '永久删除回收站文件')
+            return _json_or_redirect(True, '回收站文件已永久删除', '/recycle')
+        except Exception as exc:
+            db.session.rollback()
+            return _json_or_redirect(False, f'删除失败: {exc}', '/recycle', status=400)
 
     @web_bp.route('/logs')
     def logs_list():
@@ -1262,19 +1511,25 @@ def init_web_routes(ctx: RouteDeps):
         if not (settings.get('dev_git_repo') or '').strip():
             settings['dev_git_repo'] = DEV_DEFAULT_GIT_REPO
         settings['dev_git_token_masked'] = '******' if (settings.get('dev_git_token') or '').strip() else ''
+        for secret_key in ('critical_action_passphrase', 'security_2fa_secret', 'webhook_secret', 'api_access_token'):
+            settings[secret_key + '_masked'] = '******' if (settings.get(secret_key) or '').strip() else ''
+            settings[secret_key] = ''
         release = get_release_info()
         snapshots = AppConfigSnapshot.query.order_by(AppConfigSnapshot.created_at.desc()).limit(10).all()
-        return settings, release, snapshots
+        admin_user = AdminUser.query.order_by(AdminUser.id.asc()).first()
+        return settings, release, snapshots, admin_user
 
     @web_bp.route('/settings')
     def settings_page():
-        settings, release, snapshots = _settings_page_payload()
-        return render_template('settings.html', settings=settings, release=release, snapshots=snapshots)
+        settings, release, snapshots, admin_user = _settings_page_payload()
+        return render_template('settings.html', settings=settings, release=release, snapshots=snapshots, admin_user=admin_user)
 
     @web_bp.route('/settings/devops')
     def settings_devops_page():
-        settings, release, snapshots = _settings_page_payload()
-        return render_template('settings_devops.html', settings=settings, release=release, snapshots=snapshots)
+        settings, release, snapshots, admin_user = _settings_page_payload()
+        return render_template('settings_devops.html', settings=settings, release=release, snapshots=snapshots, admin_user=admin_user)
+
+    secret_keep_keys = {'dev_git_token', 'critical_action_passphrase', 'security_2fa_secret', 'webhook_secret', 'api_access_token'}
 
     def _save_settings_from_form(form, allowed_keys=None, save_scope=''):
         changed = False
@@ -1282,33 +1537,24 @@ def init_web_routes(ctx: RouteDeps):
         for key in SETTINGS_SAVE_KEYS:
             if allowed_keys is not None and key not in allowed_keys:
                 continue
+            if key in secret_keep_keys and (form.get(key + '_clear') or '').strip() == 'true':
+                set_config(key, '', commit=False)
+                changed = True
+                changed_keys.append(key)
+                continue
             val = form.get(key)
             if val is None:
                 continue
             value = val.strip() if isinstance(val, str) else val
 
-            if key == 'dev_git_token':
-                clear_token = (form.get('dev_git_token_clear') or '').strip() == 'true'
-                if clear_token:
-                    set_config('dev_git_token', '', commit=False)
-                    changed = True
-                    changed_keys.append('dev_git_token')
-                    continue
-                if value == '':
-                    # Keep existing token when password field is left empty.
-                    continue
+            if key in secret_keep_keys and value == '':
+                continue
 
-            if key.startswith('backfill_'):
-                ok, checked = _validate_backfill_setting(key, value)
-                if not ok:
-                    return False, checked, changed_keys
-                value = checked
-
-            if key.startswith('dev_'):
-                ok, checked = _validate_dev_setting(key, value)
-                if not ok:
-                    return False, checked, changed_keys
-                value = checked
+            ok, checked = validate_setting_value(key, value)
+            if not ok:
+                db.session.rollback()
+                return False, f'{key} {checked}', changed_keys
+            value = checked
 
             set_config(key, value, commit=False)
             changed = True
@@ -1316,8 +1562,8 @@ def init_web_routes(ctx: RouteDeps):
         if changed:
             db.session.commit()
             # Keep entrypoint runtime config in sync with DB settings for next restart.
-            if allowed_keys is not None and 'dev_mode' in allowed_keys:
-                write_dev_runtime_env(get_config, Path('instance') / 'dev_runtime.env')
+            if any(str(key).startswith('dev_') for key in changed_keys):
+                _sync_dev_runtime()
             if save_scope in {'update', 'dev'}:
                 dispatch_webhook('settings_changed', {'scope': save_scope or 'all', 'changed_keys': changed_keys}, get_config, logger=current_app.logger)
         return True, '', changed_keys
@@ -1371,12 +1617,15 @@ def init_web_routes(ctx: RouteDeps):
     def settings_export():
         settings_data = {c.key: c.value for c in AppConfig.query.all()}
         for k in ('critical_action_passphrase', 'dev_git_token', 'security_2fa_secret', 'webhook_secret', 'api_access_token'):
-            if k in settings_data and settings_data[k]:
+            if settings_data.get(k):
                 settings_data[k] = '***'
+        for k, value in list(settings_data.items()):
+            if isinstance(value, str):
+                settings_data[k] = redact_url_credentials(value)
         data = {
             '__meta': {
                 'format_version': 1,
-                'exported_at': datetime.utcnow().isoformat() + 'Z',
+                'exported_at': datetime.now(UTC).isoformat(),
                 'app_version': (current_app.config.get('APP_VERSION') or 'dev'),
             },
             'settings': settings_data,
@@ -1398,10 +1647,13 @@ def init_web_routes(ctx: RouteDeps):
             flash('请上传配置文件', 'danger')
             return redirect('/settings')
         try:
-            payload = json.loads(f.read().decode('utf-8'))
+            raw = f.read(2 * 1024 * 1024 + 1)
+            if len(raw) > 2 * 1024 * 1024:
+                raise ValueError('config file too large')
+            payload = json.loads(raw.decode('utf-8'))
         except Exception:
             log_operation('settings_import_failed', 'AppConfig', None, 'settings_import', 'invalid_json', False)
-            flash('配置文件格式错误', 'danger')
+            flash('配置文件格式错误或超过 2MB', 'danger')
             return redirect('/settings')
         if isinstance(payload, dict) and isinstance(payload.get('settings'), dict):
             payload_settings = payload.get('settings') or {}
@@ -1417,23 +1669,17 @@ def init_web_routes(ctx: RouteDeps):
         for k, v in payload_settings.items():
             if k in allowed and v is not None and v != '***':
                 value = str(v)
-                if k.startswith('backfill_'):
-                    ok, checked = _validate_backfill_setting(k, value)
-                    if not ok:
-                        log_operation('settings_import_failed', 'AppConfig', None, 'settings_import', build_kv_message(key=k, error=checked), False)
-                        return _json_or_redirect(False, f'配置导入失败: {checked}', '/settings', status=400)
-                    value = checked
-                if k.startswith('dev_'):
-                    ok, checked = _validate_dev_setting(k, value)
-                    if not ok:
-                        log_operation('settings_import_failed', 'AppConfig', None, 'settings_import', build_kv_message(key=k, error=checked), False)
-                        return _json_or_redirect(False, f'配置导入失败: {checked}', '/settings', status=400)
-                    value = checked
-                set_config(k, value, commit=False)
+                ok, checked = validate_setting_value(k, value)
+                if not ok:
+                    db.session.rollback()
+                    log_operation('settings_import_failed', 'AppConfig', None, 'settings_import', build_kv_message(key=k, error=checked), False)
+                    return _json_or_redirect(False, f'配置导入失败: {k} {checked}', '/settings', status=400)
+                set_config(k, checked, commit=False)
                 changed = True
                 applied += 1
         if changed:
             db.session.commit()
+            _sync_dev_runtime()
             log_operation(
                 'settings_imported',
                 'AppConfig',
@@ -1457,6 +1703,8 @@ def init_web_routes(ctx: RouteDeps):
         if not row:
             return _json_or_redirect(False, '快照不存在', '/settings', status=404)
         ok, msg = restore_config_snapshot(row)
+        if ok:
+            _sync_dev_runtime()
         log_operation('settings_snapshot_rollback', 'AppConfigSnapshot', row.id, row.label, msg, ok)
         return _json_or_redirect(ok, msg, '/settings', status=200 if ok else 400)
 
@@ -1474,13 +1722,11 @@ def init_web_routes(ctx: RouteDeps):
     @web_bp.route('/diagnostics/backfill-metrics')
     def diagnostics_backfill_metrics():
         rows = OperationLog.query.filter_by(operation_type='backfill_metrics').order_by(OperationLog.created_at.desc()).limit(10).all()
-        items = []
-        for row in rows:
-            items.append({
-                'created_at': row.created_at.isoformat() if row.created_at else None,
-                'metrics': _parse_backfill_metrics_message(row.message),
-                'message': row.message or '',
-            })
+        items = [{
+            'created_at': row.created_at.isoformat() if row.created_at else None,
+            'metrics': _parse_backfill_metrics_message(row.message),
+            'message': row.message or '',
+        } for row in rows]
         return jsonify({'ok': True, 'items': items})
 
 
@@ -1522,19 +1768,55 @@ def init_web_routes(ctx: RouteDeps):
         except Exception:
             log_operation('db_backup_restore', 'System', None, backup_name, '备份路径越界', False)
             return _json_or_redirect(False, '备份路径非法', '/diagnostics', status=400)
+        if get_running_executions_snapshot():
+            return _json_or_redirect(False, '当前仍有任务在运行，请等待任务结束后再恢复数据库', '/diagnostics', status=400)
         db_file = Path(current_app.instance_path) / 'hardlink_manager.db'
         ok_check, msg_check = verify_backup_integrity(backup_path)
         if not ok_check:
             log_operation('db_backup_restore', 'System', None, backup_name, msg_check, False)
             return _json_or_redirect(False, f'恢复前检查失败: {msg_check}', '/diagnostics', status=400)
-        ok, msg = restore_sqlite_backup(
-            str(db_file),
-            str(backup_path),
-            create_fallback_backup=True,
-            fallback_backup_dir=str(backup_dir / 'restore-preflight'),
-            keep_last=int(get_config('backup_keep_last', '7') or '7'),
-        )
-        log_operation('db_backup_restore', 'System', None, backup_name, msg, ok)
+
+        paused = False
+        try:
+            if scheduler.running:
+                scheduler.pause()
+                paused = True
+        except Exception:
+            paused = False
+        try:
+            db.session.remove()
+            try:
+                db.engine.dispose()
+            except Exception:
+                pass
+            try:
+                keep_last = max(1, int(get_config('backup_keep_last', '7') or '7'))
+            except Exception:
+                keep_last = 7
+            ok, msg = restore_sqlite_backup(
+                str(db_file),
+                str(backup_path),
+                create_fallback_backup=True,
+                fallback_backup_dir=str(backup_dir / 'restore-preflight'),
+                keep_last=keep_last,
+            )
+        finally:
+            try:
+                db.session.remove()
+                db.engine.dispose()
+            except Exception:
+                pass
+            if paused:
+                try:
+                    scheduler.resume()
+                except Exception:
+                    pass
+        if ok:
+            msg = f'{msg}；请重启容器以确保全部连接与状态使用恢复后的数据库'
+        try:
+            log_operation('db_backup_restore', 'System', None, backup_name, msg, ok)
+        except Exception as exc:
+            current_app.logger.warning('restore audit log failed: %s', exc)
         return _json_or_redirect(ok, msg, '/diagnostics', status=200 if ok else 400)
 
     @web_bp.route('/diagnostics/backup/restore-preview/<path:backup_name>', methods=['GET', 'POST'])
@@ -1687,7 +1969,7 @@ def init_web_routes(ctx: RouteDeps):
         name = (request.form.get('name') or '').strip()
         task_type = (request.form.get('task_type') or c.task_type or '').strip()
         target_id = request.form.get('target_id', type=int)
-        cron_expression = (request.form.get('custom_cron') or '').strip()
+        cron_expression = (request.form.get('custom_cron') or request.form.get('cron_expression') or '').strip()
         if not name:
             return _json_or_redirect(False, '任务名称不能为空', '/cron', status=400)
         if not validate_cron_expression(cron_expression):
@@ -1729,14 +2011,26 @@ def init_web_routes(ctx: RouteDeps):
             report = run_preflight_checks('hardlink', task=task, get_config=get_config)
             if not report['ok']:
                 return _json_or_redirect(False, f'执行前检查失败: {_guard_message(report)}', '/cron', status=400)
-            ok, msg = run_hardlink_once(c.target_id)
+            row, queue_msg = _enqueue_if_worker('hardlink', target_id=c.target_id, job_name=c.name)
+            if row:
+                ok, msg = True, f'{queue_msg}，已提交后台执行（任务 #{row.id}）'
+            else:
+                ok, msg = run_hardlink_once(c.target_id)
         elif c.task_type == 'backfill_mapping':
-            ok, msg = run_backfill_once(c.target_id)
+            row, queue_msg = _enqueue_if_worker('backfill', target_id=c.target_id, job_name=c.name)
+            if row:
+                ok, msg = True, f'{queue_msg}，已提交后台执行（任务 #{row.id}）'
+            else:
+                ok, msg = run_backfill_once(c.target_id)
         elif c.task_type == 'db_backup':
             report = run_preflight_checks('backup', db_path=str(db_file))
             if not report['ok']:
                 return _json_or_redirect(False, f'备份前检查失败: {_guard_message(report)}', '/cron', status=400)
-            ok, msg = run_backup_once()
+            row, queue_msg = _enqueue_if_worker('backup', job_name=c.name)
+            if row:
+                ok, msg = True, f'{queue_msg}，已提交后台执行（任务 #{row.id}）'
+            else:
+                ok, msg = run_backup_once()
         else:
             run_cron_job(c.id)
             ok, msg = True, f'已触发任务: {c.name}'
@@ -1775,7 +2069,11 @@ def init_web_routes(ctx: RouteDeps):
         report = run_preflight_checks('backup', db_path=str(db_file))
         if not report['ok']:
             return _json_or_redirect(False, f'备份前检查失败: {_guard_message(report)}', '/cron', status=400)
-        ok, msg = run_backup_once()
+        row, queue_msg = _enqueue_if_worker('backup', job_name='手动数据库备份')
+        if row:
+            ok, msg = True, f'{queue_msg}，已提交后台执行（任务 #{row.id}）'
+        else:
+            ok, msg = run_backup_once()
         if _wants_json():
             payload = _cron_payload()
             html = render_template('_cron_jobs_panel.html', **payload)

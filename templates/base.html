@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Hardlink Manager{% endblock %}</title>
+  <script>(function(){try{var t=localStorage.getItem("hlm-theme");if(t){document.documentElement.dataset.theme=t;}}catch(e){}})();</script>
   <link href="/static/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
   <link href="/static/vendor/fontawesome/css/all.min.css" rel="stylesheet">
   <link href="/static/css/tokens.css" rel="stylesheet">
@@ -11,12 +12,14 @@
   <link href="/static/css/shell.css" rel="stylesheet">
   <link href="/static/css/app.css" rel="stylesheet">
   <link href="/static/css/page_features.css" rel="stylesheet">
+  <link href="/static/css/dark.css" rel="stylesheet">
   <link rel="icon" href="/static/favicon.ico" sizes="any">
   
 </head>
 <body>
+<a class="skip-link" href="#mainContent">跳到主内容</a>
 <div class="shell">
-  <aside class="side">
+  <aside class="side" aria-label="主导航">
     <div class="brand" aria-label="Hardlink Manager">
       <span class="brand-mark" aria-hidden="true"><i class="fa-solid fa-link"></i></span>
       <span class="brand-text">
@@ -33,10 +36,14 @@
       <a class="nav-link {% if request.path.startswith('/notifier') %}active{% endif %}" href="/notifier"><i class="fa-regular fa-bell"></i><span>通知器</span></a>
       <a class="nav-link {% if request.path.startswith('/logs') %}active{% endif %}" href="/logs"><i class="fa-solid fa-list-check"></i><span>日志与执行</span></a>
       <a class="nav-link {% if request.path.startswith('/mapping') %}active{% endif %}" href="/mapping"><i class="fa-solid fa-diagram-project"></i><span>映射与缓存</span></a>
+      <a class="nav-link {% if request.path.startswith('/recycle') %}active{% endif %}" href="/recycle"><i class="fa-solid fa-recycle"></i><span>回收站</span></a>
       <a class="nav-link {% if request.path=='/settings' %}active{% endif %}" href="/settings"><i class="fa-solid fa-gear"></i><span>系统设置</span></a>
       <a class="nav-link {% if request.path.startswith('/settings/devops') %}active{% endif %}" href="/settings/devops"><i class="fa-solid fa-code-branch"></i><span>开发与更新</span></a>
       <a class="nav-link {% if request.path.startswith('/diagnostics') %}active{% endif %}" href="/diagnostics"><i class="fa-solid fa-stethoscope"></i><span>系统诊断</span></a>
     </nav>
+    <button type="button" class="btn btn-sm btn-outline-light w-100 mt-3" id="themeToggle" aria-label="切换主题">
+      <i class="fa-solid fa-circle-half-stroke me-1"></i><span id="themeToggleLabel">切换主题</span>
+    </button>
     {% if auth_enabled and is_logged_in %}
     <form action="/logout" method="POST" class="mt-3">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -44,8 +51,8 @@
     </form>
     {% endif %}
   </aside>
-  <main class="main">
-    <div id="liveFeedback"></div>
+  <main class="main" id="mainContent" tabindex="-1">
+    <div id="liveFeedback" role="status" aria-live="polite"></div>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
@@ -57,6 +64,7 @@
   </main>
 </div>
 <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+<script src="/static/vendor/htmx/htmx.min.js" defer></script>
 
 <script>
 
@@ -66,7 +74,15 @@ window.HLMNotice=function(msg,level){
   const alert=document.createElement('div');
   alert.className=`alert alert-${level||'info'} alert-dismissible fade show`;
   alert.setAttribute('role','alert');
-  alert.innerHTML=`${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+  const text=document.createElement('span');
+  text.textContent=String(msg);
+  alert.appendChild(text);
+  const closeBtn=document.createElement('button');
+  closeBtn.type='button';
+  closeBtn.className='btn-close';
+  closeBtn.setAttribute('data-bs-dismiss','alert');
+  closeBtn.setAttribute('aria-label','关闭');
+  alert.appendChild(closeBtn);
   box.appendChild(alert);
   window.setTimeout(()=>{
     if(!alert || !box.contains(alert)) return;
@@ -219,7 +235,17 @@ window.HLMAjax.bindFilters=function(){
   });
 };
 
-window.addEventListener('DOMContentLoaded',()=>{window.HLMAjax.bind();window.HLMAjax.bindFilters();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();if(window.HLMCopyBind) window.HLMCopyBind();});
+window.HLMTheme={
+  current(){return document.documentElement.dataset.theme || 'light';},
+  apply(theme){document.documentElement.dataset.theme=theme;try{localStorage.setItem('hlm-theme',theme);}catch(e){} const label=document.getElementById('themeToggleLabel'); if(label) label.textContent=theme==='dark'?'浅色模式':'深色模式';},
+  toggle(){this.apply(this.current()==='dark'?'light':'dark');}
+};
+window.addEventListener('DOMContentLoaded',()=>{
+  window.HLMTheme.apply(window.HLMTheme.current());
+  const toggle=document.getElementById('themeToggle');
+  if(toggle) toggle.addEventListener('click',()=>window.HLMTheme.toggle());
+  window.HLMAjax.bind();window.HLMAjax.bindFilters();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();if(window.HLMCopyBind) window.HLMCopyBind();
+});
 window.addEventListener('DOMContentLoaded',()=>{
   const nodes=[].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
   nodes.forEach((el)=>new bootstrap.Tooltip(el));

@@ -27,4 +27,8 @@ def write_dev_runtime_env(get_config, runtime_file: str | Path):
     runtime_path = Path(runtime_file)
     runtime_path.parent.mkdir(parents=True, exist_ok=True)
     runtime_path.write_text(build_dev_runtime_env_text(get_config), encoding='utf-8')
+    try:
+        runtime_path.chmod(0o600)
+    except Exception:
+        pass
     return runtime_path

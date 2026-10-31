@@ -42,3 +42,7 @@ def test_registry_validation_for_backfill_and_dev_keys():
 
     ok4, _ = validate_setting_value('dev_git_branch', 'bad branch')
     assert ok4 is False
+
+    ok5, val5 = validate_setting_value('github_repo', 'marod1m/HLM-Demo')
+    assert ok5 is True
+    assert val5 == 'marod1m/HLM-Demo'

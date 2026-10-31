@@ -28,8 +28,19 @@ def run_preflight_checks(kind: str, task=None, get_config=None, db_path: str | N
             issues.append('源目录不存在')
         if not dst or not dst.exists():
             issues.append('目标目录不存在')
-        if src and dst and str(src) == str(dst):
-            issues.append('源目录与目标目录不能相同')
+        if src and dst:
+            try:
+                src_text = str(src)
+                dst_text = str(dst)
+                overlap = (
+                    src_text == dst_text
+                    or src_text.startswith(dst_text.rstrip('/') + '/')
+                    or dst_text.startswith(src_text.rstrip('/') + '/')
+                )
+            except Exception:
+                overlap = False
+            if overlap:
+                issues.append('源目录与目标目录不能相同或互相包含')
         if getattr(task, 'delete_dry_run', False):
             warnings.append('当前任务启用了仅记录模式')
 
@@ -82,19 +93,3 @@ def build_operation_preview(kind: str, task=None, get_config=None, db_path: str 
         preview['items'] = ['按选中项逐条执行确认或驳回', '该操作会逐条写入审计日志']
 
     return {**report, **preview}
-
-
-def apply_bulk_decision(items, action: str, decide_func):
-    action = str(action or '').strip()
-    if action not in {'confirm', 'reject'}:
-        return False, '无效的批量操作', 0, 0
-
-    done = 0
-    failed = 0
-    for item in items or []:
-        ok = bool(decide_func(item, action))
-        if ok:
-            done += 1
-        else:
-            failed += 1
-    return failed == 0, f'批量处理完成：成功 {done}，失败 {failed}', done, failed

@@ -46,6 +46,10 @@
           </label>
           <select class="form-select" name="delete_match_strict_mode"><option value="true" {% if settings.get('delete_match_strict_mode','true')=='true' %}selected{% endif %}>严格</option><option value="false" {% if settings.get('delete_match_strict_mode')=='false' %}selected{% endif %}>宽松</option></select>
         </div>
+        <div class="col-md-4 section-subcard"><label class="form-label">Cross-seed 保护</label><select class="form-select" name="delete_protect_cross_seed"><option value="true" {% if settings.get('delete_protect_cross_seed','true')=='true' %}selected{% endif %}>开启（推荐）</option><option value="false" {% if settings.get('delete_protect_cross_seed')=='false' %}selected{% endif %}>关闭</option></select><div class="form-text">检测到同一内容被其他种子复用时，不自动删种，转为待确认。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">删除对侧文件时使用回收站</label><select class="form-select" name="delete_recycle_bin_enabled"><option value="false" {% if settings.get('delete_recycle_bin_enabled','false')=='false' %}selected{% endif %}>否（直接删除）</option><option value="true" {% if settings.get('delete_recycle_bin_enabled')=='true' %}selected{% endif %}>是（推荐）</option></select><div class="form-text">开启后移入回收目录，避免不可逆误删。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">回收站目录</label><input class="form-control" name="delete_recycle_bin_dir" value="{{ settings.get('delete_recycle_bin_dir','/app/data/recycle') }}"><div class="form-text">容器路径，建议挂载到宿主机。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">回收站保留天数</label><input class="form-control" type="number" min="1" max="3650" name="delete_recycle_retention_days" value="{{ settings.get('delete_recycle_retention_days',30) }}"></div>
         <div class="col-md-4 section-subcard"><label class="form-label">待判定来源保护</label><select class="form-select" name="pending_source_guard_enabled"><option value="true" {% if settings.get('pending_source_guard_enabled','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('pending_source_guard_enabled')=='false' %}selected{% endif %}>关闭</option></select></div>
         <div class="col-md-4 section-subcard">
           <label class="form-label">待判定窗口(秒)
@@ -60,6 +64,9 @@
           </label>
           <select class="form-select" name="pending_source_log_mode"><option value="aggregate" {% if settings.get('pending_source_log_mode','aggregate')=='aggregate' %}selected{% endif %}>聚合</option><option value="detail" {% if settings.get('pending_source_log_mode')=='detail' %}selected{% endif %}>明细</option></select>
         </div>
+        <div class="col-md-4 section-subcard"><label class="form-label">批量异常熔断</label><select class="form-select" name="delete_anomaly_guard_enabled"><option value="true" {% if settings.get('delete_anomaly_guard_enabled','true')=='true' %}selected{% endif %}>开启（推荐）</option><option value="false" {% if settings.get('delete_anomaly_guard_enabled')=='false' %}selected{% endif %}>关闭</option></select><div class="form-text">命中数超过阈值且比例过高时中止本轮删除，避免挂载异常导致批量误删。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">熔断最小命中数</label><input class="form-control" type="number" min="1" name="delete_anomaly_min_candidates" value="{{ settings.get('delete_anomaly_min_candidates', 50) }}"></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">熔断缺失比例(%)</label><input class="form-control" type="number" min="1" max="100" name="delete_anomaly_max_ratio" value="{{ settings.get('delete_anomaly_max_ratio', 50) }}"><div class="form-text">默认 50%，仅在同时达到最小命中数时生效。</div></div>
       </div>
       <div class="settings-actions mt-3"><button class="btn btn-outline-primary" type="submit" name="save_scope" value="delete_notify">保存删除联动与通知</button></div>
     </div>
@@ -81,7 +88,7 @@
       <div class="section-title mb-2">网络与通知</div>
       <div class="row g-3">
         <div class="col-md-4 section-subcard"><label class="form-label">路径白名单根目录</label><input class="form-control" name="allowed_roots" value="{{ settings.get('allowed_roots','') }}" placeholder="/downloads,/media"><div class="form-text">多个目录用英文逗号分隔。</div></div>
-        <div class="col-md-4 section-subcard"><label class="form-label">统一外网代理地址</label><input class="form-control" name="proxy_url" value="{{ settings.get('proxy_url','') }}" placeholder="http://127.0.0.1:7890"><div class="form-text">留空表示直连；任务单独设置代理时优先使用任务代理。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">统一外网代理地址</label><input class="form-control" name="proxy_url" value="{{ settings.get('proxy_url','') }}" placeholder="http://host.docker.internal:7890"><div class="form-text">留空表示直连；容器内不要写 127.0.0.1。任务单独设置代理时优先使用任务代理。</div></div>
         <div class="col-md-4 section-subcard"><label class="form-label">Telegram API Base</label><input class="form-control" name="tg_api_base" value="{{ settings.get('tg_api_base','https://api.telegram.org') }}"></div>
       </div>
       <div class="settings-actions mt-3"><button class="btn btn-outline-primary" type="submit" name="save_scope" value="network_notify">保存网络与通知</button></div>

@@ -1,6 +1,43 @@
 # Changelog
 
-## [Unreleased]
+## [v0.4.0] - 2026-10-31
+
+### Added
+- 独立 scheduler 进程与 Compose scheduler 服务；web 生产模式关闭进程内 cron。
+- JobQueue 增加优先级、重试次数、30 分钟租约、worker 心跳与跨进程 run_key 文件锁。
+- 回收站管理页：恢复、永久删除、过期清理和数据库记录追踪。
+- 初始化令牌保护，避免首次暴露时被抢占管理员。
+- 手动硬链接、备份、执行重试、cron 手动执行在 worker 活跃时自动入队。
+- `make coverage` 与 pytest-cov；测试数量提升到 109。
+- 数据库 schema v16。
+
+### Changed
+- 版本提升到 v0.4.0；Docker 镜像标签同步。
+- 文档补充 worker/scheduler、回收站、初始化令牌、部署与测试说明。
+
+## [v0.3.7] - 2026-10-31
+
+### Security / Safety
+- 修复试运行仍会删除对侧文件并消费记录的问题；dry-run 现在完全不产生删除。
+- 删除联动增加根目录存在性检查与批量异常熔断，降低挂载异常导致的批量误删风险。
+- 修改硬链接任务路径时自动清理旧映射与缓存，避免旧目标缺失触发反向误删。
+- 下载器密码与通知器令牌改用 Fernet 认证加密，兼容旧 XOR 数据并自动迁移。
+- 自动生成并持久化 `SECRET_KEY`，修复开放重定向、XFF 伪造、只读模式覆盖不全与登录 CSRF 问题。
+- 日志与支持包增加令牌/代理凭据脱敏；新增 `.dockerignore` 防止本地敏感文件进入镜像。
+- 开发模式 instance 路径统一到 `/app/instance`，避免开发/生产数据分裂。
+- 增加系统关键路径与文件系统根目录禁用规则，降低误配置导致的破坏性操作。
+- 硬链接已存在时自动补录缺失的映射/缓存，并在源文件替换后清理旧种子关联。
+- `/api/health` 增加数据库连通性检查；补充安全响应头与静态/动态缓存策略。
+- 新增 Ruff 代码检查、开发依赖拆分和 CI lint 步骤；补充键盘焦点样式。
+- 数据库结构版本提升到 v12，补充执行历史状态/定时任务查询索引；升级前备份按“版本+目标 schema”去重。
+- 生产 Compose 备份服务改为调用 WAL 安全的 SQLite 备份脚本，并生成校验 manifest。
+- P0：新增数据库管理员首次初始化、页面改密、TOTP 2FA；cross-seed 保护、可选回收站、qB 分类过滤。
+- P1：新增 JobQueue、worker 服务、`/api/v1/jobs`、gunicorn/wsgi 生产入口；数据库结构升级到 v16。
+- worker 心跳检测：活跃 worker 存在时，硬链接手动执行自动进入队列；无 worker 时保持同步兼容模式。
+- 同一任务增加跨进程 run_key 文件锁，降低 web/worker 并发重复执行风险。
+- 新增独立 `scheduler.py` 与 Compose scheduler 服务；生产 web 不再内置 cron 调度。
+- P2：新增 Apprise 通知、Sentry 可选接入、Prometheus 指标、OpenAPI 概览、请求 ID 与 JSON 日志选项。
+- P3：新增 htmx 后台任务面板、暗色主题、首次使用向导、回收站管理页、跳转主内容与键盘焦点等可访问性改进。
 
 ### Added
 - 新增配置注册中心与分区保存体系，统一运行时配置入口（页面/数据库）。

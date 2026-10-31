@@ -20,6 +20,24 @@
 <div id="pageHelp" class="section-card mb-3 d-none">
   <div class="section-muted">本页用于查看任务健康、近期执行和异常入口；建议先看“待判定来源健康”，再进入日志排查。</div>
 </div>
+<div class="section-card mb-3">
+  <div class="section-title mb-2">后台任务队列</div>
+  <div id="jobsPanel" hx-get="/partials/jobs" hx-trigger="load, every 5s" hx-swap="innerHTML">
+    <div class="section-muted">加载中…</div>
+  </div>
+</div>
+{% if total_tasks == 0 %}
+<div class="section-card mb-3">
+  <div class="section-title mb-2">首次使用向导</div>
+  <div class="section-muted mb-2">还没有硬链接任务。建议按顺序完成：配置下载器 → 创建测试任务 → 先用 dry-run 观察 → 再启用正式删除联动。</div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-sm btn-outline-primary" href="/downloader">1. 配置下载器</a>
+    <a class="btn btn-sm btn-outline-primary" href="/hardlink/new">2. 新建测试任务</a>
+    <a class="btn btn-sm btn-outline-secondary" href="/notifier">3. 配置通知器（可选）</a>
+    <a class="btn btn-sm btn-outline-secondary" href="/diagnostics">4. 系统诊断</a>
+  </div>
+</div>
+{% endif %}
 <div class="row g-3 mb-3">
   <div class="col-12"><div class="card p-3" style="background:linear-gradient(120deg,#0c4f66,#0b7a75);color:#fff"><div class="d-flex justify-content-between align-items-center"><div><div style="opacity:.9">今日概览</div><div class="h5 mb-0">稳定运行中，已完成 {{ success_runs }} 次任务</div></div><div><i class="fa-solid fa-bolt fa-2x"></i></div></div></div></div>
   <div class="col-md-3"><div class="card p-3 kpi-card"><div class="kpi-title">任务总数</div><div class="kpi-value">{{ total_tasks }}</div></div></div>

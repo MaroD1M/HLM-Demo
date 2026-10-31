@@ -34,6 +34,14 @@ services:
       REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-10}
 
       ACCESS_LOG_ENABLED: ${ACCESS_LOG_ENABLED:-true}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
+      HLM_ALLOW_NO_AUTH: ${HLM_ALLOW_NO_AUTH:-false}
+      HLM_DISABLE_SCHEDULER: "true"
+      HLM_SETUP_TOKEN: ${HLM_SETUP_TOKEN:-}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-1}
+      GUNICORN_THREADS: ${GUNICORN_THREADS:-8}
+      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-300}
 
       # 时区
       TZ: ${TZ:-Asia/Shanghai}
@@ -42,6 +50,10 @@ services:
 
       APP_LOG_MAX_MB: ${APP_LOG_MAX_MB:-10}
       APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
+      LOG_FORMAT: ${LOG_FORMAT:-text}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
 
       # 开发模式相关配置统一在“系统设置 -> 开发模式”页面维护，
       # 保存后写入 /app/instance/dev_runtime.env，并在容器重启后生效。
@@ -58,6 +70,7 @@ services:
       - ./data/backups:/app/data/backups
 
       - ./data/logs:/app/data/logs
+      - ./data/recycle:/app/data/recycle
 
       # 开发模式代码目录（用于保存自动拉取下来的源码）
       - ./data/devsrc:/app-devsrc
@@ -72,7 +85,7 @@ services:
 
     healthcheck:
       # 健康检查：访问 /api/health 返回200即为健康
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=3)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.build_opener(urllib.request.ProxyHandler({})).open('http://127.0.0.1:5000/api/health', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -83,3 +96,55 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  worker:
+    image: ghcr.io/marod1m/hlm-demo:latest
+    container_name: hlm-demo-worker
+    restart: unless-stopped
+    environment:
+      SECRET_KEY: ${SECRET_KEY}
+      HLM_INSTANCE_PATH: /app/instance
+      HLM_WORKER: "true"
+      TZ: ${TZ:-Asia/Shanghai}
+      PYTHONUNBUFFERED: "1"
+      APP_LOG_MAX_MB: ${APP_LOG_MAX_MB:-10}
+      APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
+      LOG_FORMAT: ${LOG_FORMAT:-text}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
+    volumes:
+      - ./data/instance:/app/instance
+      - ./data/backups:/app/data/backups
+      - ./data/logs:/app/data/logs
+      - ./data/recycle:/app/data/recycle
+      - ${MEDIA_ROOT:-./data/media}:/media
+    entrypoint: ["python", "-u", "/app/worker.py"]
+    depends_on:
+      hlm:
+        condition: service_healthy
+  scheduler:
+    image: ghcr.io/marod1m/hlm-demo:latest
+    container_name: hlm-demo-scheduler
+    restart: unless-stopped
+    environment:
+      SECRET_KEY: ${SECRET_KEY}
+      HLM_INSTANCE_PATH: /app/instance
+      TZ: ${TZ:-Asia/Shanghai}
+      PYTHONUNBUFFERED: "1"
+      APP_LOG_MAX_MB: ${APP_LOG_MAX_MB:-10}
+      APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
+      LOG_FORMAT: ${LOG_FORMAT:-text}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
+    volumes:
+      - ./data/instance:/app/instance
+      - ./data/backups:/app/data/backups
+      - ./data/logs:/app/data/logs
+      - ./data/recycle:/app/data/recycle
+      - ${MEDIA_ROOT:-./data/media}:/media
+    entrypoint: ["python", "-u", "/app/scheduler.py"]
+    depends_on:
+      hlm:
+        condition: service_healthy

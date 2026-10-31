@@ -3,6 +3,7 @@ set -euo pipefail
 
 APP_ROOT="/app"
 DEV_ROOT="/app-devsrc"
+export HLM_INSTANCE_PATH="${HLM_INSTANCE_PATH:-/app/instance}"
 REQ_MARK_FILE="/tmp/hlm_dev_requirements.sha256"
 RESULT_FILE="/app/instance/dev_apply_result.json"
 RUNTIME_ENV_FILE="/app/instance/dev_runtime.env"
@@ -42,9 +43,13 @@ log_dev_effective_config() {
   local proxy="${HLM_DEV_PROXY_URL:-}"
   if [[ -z "$repo" ]]; then
     repo='(empty)'
+  elif [[ "$repo" =~ ^https?://[^/@]+@ ]]; then
+    repo="***@${repo#*@}"
   fi
   if [[ -z "$proxy" ]]; then
     proxy='(none)'
+  elif [[ "$proxy" =~ ^[a-zA-Z][a-zA-Z0-9+.-]*://[^/@]+@ ]]; then
+    proxy="***@${proxy#*@}"
   fi
   log "开发模式生效配置: mode=${mode}, auto_pull=${auto_pull}, repo=${repo}, branch=${branch}, auto_pip_sync=${pip_sync}, pip_timeout=${timeout_s}, proxy=${proxy}"
 }
@@ -67,29 +72,42 @@ ensure_repo() {
     return 1
   fi
 
+  if [[ -n "${HLM_DEV_GIT_TOKEN:-}" && "$repo" =~ ^https:// ]]; then
+    export GIT_CONFIG_COUNT=1
+    export GIT_CONFIG_KEY_0='http.extraHeader'
+    export GIT_CONFIG_VALUE_0="Authorization: Bearer ${HLM_DEV_GIT_TOKEN}"
+  else
+    unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+  fi
+  export GIT_TERMINAL_PROMPT=0
+
   if [[ ! -d "$DEV_ROOT/.git" ]]; then
     rm -rf "$DEV_ROOT"
     mkdir -p "$DEV_ROOT"
     log "初始化开发仓库: $repo ($branch)"
-    if [[ -n "${HLM_DEV_GIT_TOKEN:-}" && "$repo" =~ ^https:// ]]; then
-      git -c "http.extraHeader=Authorization: Bearer ${HLM_DEV_GIT_TOKEN}" clone --depth 1 --branch "$branch" "$repo" "$DEV_ROOT"
-    else
-      git clone --depth 1 --branch "$branch" "$repo" "$DEV_ROOT"
+    if ! git clone --depth 1 --branch "$branch" "$repo" "$DEV_ROOT"; then
+      log "开发仓库克隆失败，将回退到镜像内代码。"
+      return 1
     fi
     return 0
   fi
 
   log "更新开发仓库到最新: $branch"
   git -C "$DEV_ROOT" remote set-url origin "$repo" >/dev/null 2>&1 || true
-  if [[ -n "${HLM_DEV_GIT_TOKEN:-}" && "$repo" =~ ^https:// ]]; then
-    git -C "$DEV_ROOT" -c "http.extraHeader=Authorization: Bearer ${HLM_DEV_GIT_TOKEN}" fetch --depth 1 origin "$branch"
-  else
-    git -C "$DEV_ROOT" fetch --depth 1 origin "$branch"
+  if ! git -C "$DEV_ROOT" fetch --depth 1 origin "$branch"; then
+    log "开发仓库拉取失败，将回退到镜像内代码。"
+    return 1
   fi
-  git -C "$DEV_ROOT" checkout -q "$branch"
-  git -C "$DEV_ROOT" reset --hard "origin/$branch"
+  if ! git -C "$DEV_ROOT" checkout -q "$branch"; then
+    log "开发仓库切换分支失败，将回退到镜像内代码。"
+    return 1
+  fi
+  if ! git -C "$DEV_ROOT" reset --hard "origin/$branch"; then
+    log "开发仓库重置失败，将回退到镜像内代码。"
+    return 1
+  fi
   # Keep devsrc identical to remote branch to avoid stale untracked files surviving restarts.
-  git -C "$DEV_ROOT" clean -fd
+  git -C "$DEV_ROOT" clean -fd || true
   return 0
 }
 
@@ -169,4 +187,4 @@ else
   write_result "skipped" "dev mode disabled"
 fi
 
-exec python -u "$APP_ROOT/app.py"
+exec gunicorn --workers "${GUNICORN_WORKERS:-1}" --threads "${GUNICORN_THREADS:-8}" --timeout "${GUNICORN_TIMEOUT:-300}" --graceful-timeout 30 --bind 0.0.0.0:5000 --error-logfile - wsgi:application

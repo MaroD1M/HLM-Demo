@@ -11,10 +11,15 @@ READ_ONLY_BLOCKED_PREFIXES = (
     'web_bp.mapping_',
     'web_bp.cron_',
     'web_bp.settings_',
+    'web_bp.execution_',
+    'web_bp.diagnostics_',
+    'web_bp.backup_',
 )
 
 READ_ONLY_BLOCKED_EXACT = {
     'logout',
+    'web_bp.logs_clear',
+    'api_bp.api_webhook_test',
 }
 
 

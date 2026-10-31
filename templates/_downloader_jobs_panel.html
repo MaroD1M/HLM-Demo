@@ -16,6 +16,7 @@
               <i class="fa-regular fa-copy"></i>
             </button>
           </div>
+          <div class="text-muted small mt-1">分类：{{ d.category or '全部' }}</div>
         </td>
         <td class="text-center" data-label="会话时长"><small>{{ d.session_ttl_seconds or 900 }}s</small></td>
         <td class="wrap-any" data-label="代理">
@@ -70,6 +71,7 @@
               <div class="col-md-6"><label class="form-label">密码（留空=不修改）</label><input class="form-control" type="password" name="password"></div>
               <div class="col-md-6"><label class="form-label">会话复用时长(秒)</label><input class="form-control" type="number" name="session_ttl_seconds" min="60" max="86400" value="{{ d.session_ttl_seconds or '' }}" placeholder="留空=系统默认(900)"><div class="form-text">建议 300-3600；留空时使用系统默认值。</div></div>
               <div class="col-md-6"><label class="form-label">任务代理(可选)</label><input class="form-control" name="proxy_url" value="{{ d.proxy_url or '' }}" placeholder="留空=使用系统设置中的统一代理"></div>
+              <div class="col-md-6"><label class="form-label">种子分类过滤(可选)</label><input class="form-control" name="category" value="{{ d.category or '' }}" placeholder="留空=全部；例如 movies"><div class="form-text">填写后回填/删除只处理该 qBittorrent 分类。</div></div>
             </div>
           </div>
         </div>

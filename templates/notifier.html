@@ -39,6 +39,7 @@
                 <label class="form-label">类型</label>
                 <select class="form-select" name="type">
                   <option value="telegram">Telegram</option>
+                  <option value="apprise">Apprise</option>
                 </select>
               </div>
             </div>
@@ -47,11 +48,11 @@
             <div class="section-title mb-2">连接配置</div>
             <div class="row g-3">
               <div class="col-12">
-                <label class="form-label">机器人令牌</label>
+                <label class="form-label">机器人令牌 / Apprise URL</label>
                 <input class="form-control" name="api_key" required>
               </div>
               <div class="col-md-6">
-                <label class="form-label">聊天编号</label>
+                <label class="form-label">聊天编号（Telegram）</label>
                 <input class="form-control" name="chat_id">
               </div>
               <div class="col-md-6">

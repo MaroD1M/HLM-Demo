@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -240,7 +241,7 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
 
             fail_count = int(getattr(row, 'backfill_fail_count', 0) or 0) + 1
             row.backfill_fail_count = fail_count
-            row.backfill_last_attempt_at = __import__('datetime').datetime.now(__import__('datetime').UTC)
+            row.backfill_last_attempt_at = datetime.now(UTC)
 
             if fail_count > max_failures:
                 skipped += 1

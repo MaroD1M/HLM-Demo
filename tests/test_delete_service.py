@@ -52,6 +52,7 @@ def _deps():
 
 def test_scan_delete_rows_only_marks_truncated_hits_deleted(tmp_path):
     task = _mk_task(tmp_path, max_per_run=2)
+    task.dry_run = False
     now = datetime.now(UTC) - timedelta(seconds=600)
     rows = []
     for i in range(4):

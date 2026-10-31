@@ -2,7 +2,15 @@ from datetime import datetime, UTC
 import base64
 import hashlib
 import os
+from pathlib import Path
+
+from cryptography.fernet import Fernet, InvalidToken
+
 from core.extensions import db
+
+ENCRYPTED_PREFIX = 'fernet:'
+LEGACY_ENCRYPTED_PREFIX = 'enc:'
+_KEY_CANDIDATE_CACHE = None
 
 
 class HardlinkTask(db.Model):
@@ -73,32 +81,73 @@ class Downloader(db.Model):
     username = db.Column(db.String(100))
     encrypted_password = db.Column(db.String(500))
     proxy_url = db.Column(db.String(300))
+    category = db.Column(db.String(100), default='')
     session_ttl_seconds = db.Column(db.Integer)
     enabled = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     @staticmethod
-    def _key_bytes():
-        seed = (os.environ.get('APP_ENCRYPTION_KEY') or os.environ.get('SECRET_KEY') or 'default-secret-key-for-dev-only').encode('utf-8')
-        return hashlib.sha256(seed).digest()
+    def _key_candidates():
+        global _KEY_CANDIDATE_CACHE
+        if _KEY_CANDIDATE_CACHE is not None:
+            return _KEY_CANDIDATE_CACHE
+        legacy = 'default-secret-key-for-dev-only'
+        seeds = []
+        file_secret = ''
+        try:
+            secret_file = Path(os.environ.get('HLM_INSTANCE_PATH') or 'instance') / 'secret_key'
+            if secret_file.exists():
+                file_secret = secret_file.read_text(encoding='utf-8').strip()
+        except Exception:
+            file_secret = ''
+        for value in (os.environ.get('APP_ENCRYPTION_KEY'), os.environ.get('SECRET_KEY'), file_secret, legacy):
+            text = (value or '').strip()
+            if text and text not in seeds:
+                seeds.append(text)
+        _KEY_CANDIDATE_CACHE = [hashlib.sha256(seed.encode('utf-8')).digest() for seed in seeds]
+        return _KEY_CANDIDATE_CACHE
+
+    @classmethod
+    def _key_bytes(cls):
+        return cls._key_candidates()[0]
+
+    @staticmethod
+    def _fernet_for(key_bytes):
+        return Fernet(base64.urlsafe_b64encode(key_bytes))
+
+    @classmethod
+    def _legacy_decrypt_text(cls, token, key_bytes=None):
+        payload = token[len(LEGACY_ENCRYPTED_PREFIX):]
+        data = base64.urlsafe_b64decode(payload.encode('utf-8'))
+        key = key_bytes or cls._key_bytes()
+        raw = bytes([b ^ key[i % len(key)] for i, b in enumerate(data)])
+        return raw.decode('utf-8')
 
     @classmethod
     def _encrypt_text(cls, raw):
-        data = raw.encode('utf-8')
-        key = cls._key_bytes()
-        xored = bytes([b ^ key[i % len(key)] for i, b in enumerate(data)])
-        return 'enc:' + base64.urlsafe_b64encode(xored).decode('utf-8')
+        token = cls._fernet_for(cls._key_bytes()).encrypt(raw.encode('utf-8')).decode('utf-8')
+        return ENCRYPTED_PREFIX + token
 
     @classmethod
     def _decrypt_text(cls, token):
-        if not token.startswith('enc:'):
-            return token
-        payload = token[4:]
-        data = base64.urlsafe_b64decode(payload.encode('utf-8'))
-        key = cls._key_bytes()
-        raw = bytes([b ^ key[i % len(key)] for i, b in enumerate(data)])
-        return raw.decode('utf-8')
+        if token.startswith(ENCRYPTED_PREFIX):
+            payload = token[len(ENCRYPTED_PREFIX):].encode('utf-8')
+            for key_bytes in cls._key_candidates():
+                try:
+                    return cls._fernet_for(key_bytes).decrypt(payload).decode('utf-8')
+                except (InvalidToken, ValueError):
+                    continue
+            raise ValueError('stored credential cannot be decrypted with the current key')
+        if token.startswith(LEGACY_ENCRYPTED_PREFIX):
+            last_error = None
+            for key_bytes in cls._key_candidates():
+                try:
+                    return cls._legacy_decrypt_text(token, key_bytes)
+                except Exception as exc:
+                    last_error = exc
+            raise ValueError('legacy credential cannot be decrypted') from last_error
+        return token
 
     def set_password(self, password):
         raw = (password or '').strip()
@@ -114,7 +163,8 @@ class Downloader(db.Model):
         try:
             return self._decrypt_text(value)
         except Exception:
-            # Backward compatibility for legacy plain-text values.
+            if value.startswith((ENCRYPTED_PREFIX, LEGACY_ENCRYPTED_PREFIX)):
+                return ''
             return value
 
 
@@ -128,6 +178,25 @@ class Notifier(db.Model):
     enabled = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    def set_api_key(self, api_key):
+        raw = (api_key or '').strip()
+        if not raw:
+            self.api_key = ''
+            return
+        if raw.startswith((ENCRYPTED_PREFIX, LEGACY_ENCRYPTED_PREFIX)):
+            self.api_key = raw
+            return
+        self.api_key = Downloader._encrypt_text(raw)
+
+    def get_api_key(self):
+        value = self.api_key or ''
+        if not value:
+            return ''
+        try:
+            return Downloader._decrypt_text(value)
+        except Exception:
+            return ''
 
 
 class HardlinkCache(db.Model):
@@ -194,6 +263,66 @@ class DeletePendingAction(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), index=True)
     confirmed_at = db.Column(db.DateTime)
 
+
+
+class JobQueue(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    run_key = db.Column(db.String(200), index=True, nullable=False)
+    job_name = db.Column(db.String(150), nullable=False)
+    job_type = db.Column(db.String(80), nullable=False)
+    target_id = db.Column(db.Integer)
+    source = db.Column(db.String(30), default='manual')
+    payload_json = db.Column(db.Text)
+    status = db.Column(db.String(20), default='queued', index=True)
+    priority = db.Column(db.Integer, default=0)
+    retry_count = db.Column(db.Integer, default=0)
+    max_retries = db.Column(db.Integer, default=0)
+    stop_requested = db.Column(db.Boolean, default=False)
+    worker_id = db.Column(db.String(100))
+    lease_owner = db.Column(db.String(100))
+    lease_expires_at = db.Column(db.DateTime)
+    message = db.Column(db.String(1000))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), index=True)
+    started_at = db.Column(db.DateTime)
+    finished_at = db.Column(db.DateTime)
+
+
+class RecycleItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    original_path = db.Column(db.String(1000), nullable=False)
+    recycled_path = db.Column(db.String(1000), nullable=False, unique=True)
+    size = db.Column(db.BigInteger, default=0)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), index=True)
+    restored_at = db.Column(db.DateTime)
+
+
+class AdminUser(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(100), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    totp_secret = db.Column(db.String(500))
+    totp_enabled = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    def set_totp_secret(self, secret):
+        raw = (secret or '').strip()
+        if not raw:
+            self.totp_secret = None
+            return
+        if raw.startswith((ENCRYPTED_PREFIX, LEGACY_ENCRYPTED_PREFIX)):
+            self.totp_secret = raw
+            return
+        self.totp_secret = Downloader._encrypt_text(raw)
+
+    def get_totp_secret(self):
+        value = self.totp_secret or ''
+        if not value:
+            return ''
+        try:
+            return Downloader._decrypt_text(value)
+        except Exception:
+            return ''
 
 
 class AppConfig(db.Model):

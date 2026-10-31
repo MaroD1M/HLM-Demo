@@ -1,0 +1,34 @@
+{% if jobs %}
+<div class="table-responsive">
+  <table class="table table-sm align-middle mb-0">
+    <thead><tr><th>任务</th><th>类型</th><th>状态</th><th>创建时间</th><th>消息</th><th></th></tr></thead>
+    <tbody>
+      {% for job in jobs %}
+      <tr>
+        <td class="wrap-any">{{ job.job_name }}<div class="text-muted small">#{{ job.id }} · {{ job.run_key }}</div></td>
+        <td>{{ job.job_type }}</td>
+        <td>
+          {% if job.status == 'queued' %}<span class="badge text-bg-secondary">排队</span>
+          {% elif job.status == 'running' %}<span class="badge text-bg-info">运行中</span>
+          {% elif job.status == 'success' %}<span class="badge text-bg-success">成功</span>
+          {% else %}<span class="badge text-bg-danger">{{ job.status }}</span>{% endif %}
+          {% if job.stop_requested %}<span class="badge text-bg-warning">停止中</span>{% endif %}
+        </td>
+        <td class="text-nowrap small">{{ fmt_dt(job.created_at) }}</td>
+        <td class="wrap-any small">{{ job.message or '-' }}</td>
+        <td class="text-end">
+          {% if job.status in ['queued', 'running'] and not job.stop_requested %}
+          <form hx-post="/partials/jobs/{{ job.id }}/stop" hx-target="#jobsPanel" hx-swap="innerHTML" class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-sm btn-outline-warning" type="submit">停止</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state"><i class="fa-regular fa-circle-check"></i>暂无后台任务</div>
+{% endif %}

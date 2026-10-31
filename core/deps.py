@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,9 @@ class RouteDeps:
     DeletePendingAction: Any
     AppConfig: Any
     AppConfigSnapshot: Any
+    AdminUser: Any
+    JobQueue: Any
+    RecycleItem: Any
     CronJob: Any
     db: Any
     scheduler: Any
@@ -32,6 +36,7 @@ class RouteDeps:
     scan_delete_task: Callable
     scan_backfill_task: Callable
     run_hardlink_once: Callable
+    enqueue_job: Callable
     run_delete_once: Callable
     run_backfill_once: Callable
     run_backfill_for_map_id: Callable
@@ -41,6 +46,7 @@ class RouteDeps:
     update_cron_job: Callable
     list_torrents: Callable
     send_telegram_notification: Callable
+    send_notification: Callable
     delete_torrent: Callable
     get_release_info: Callable
     request_stop_by_execution: Callable

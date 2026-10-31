@@ -1,0 +1,67 @@
+[data-theme="dark"] {
+  --ink: #e6edf3;
+  --muted: #9aa7b4;
+  --paper: #0d1117;
+  --panel: #161b22;
+  --line: #30363d;
+  --brand: #2dd4bf;
+  --brand2: #60a5fa;
+  --accent: #fbbf24;
+  --shadow-soft: 0 12px 30px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 20px 40px rgba(0, 0, 0, 0.45);
+  --bs-body-bg: #0d1117;
+  --bs-body-color: #e6edf3;
+  --bs-border-color: #30363d;
+  color-scheme: dark;
+}
+
+[data-theme="dark"] body {
+  background:
+    radial-gradient(980px 420px at -8% -10%, #123b38 0%, transparent 60%),
+    radial-gradient(760px 380px at 110% -4%, #132c46 0%, transparent 58%),
+    linear-gradient(180deg, #0d1117 0%, #0b1220 100%);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .card,
+[data-theme="dark"] .section-card,
+[data-theme="dark"] .modal-content,
+[data-theme="dark"] .dropdown-menu,
+[data-theme="dark"] .offcanvas,
+[data-theme="dark"] .list-group-item {
+  background: var(--panel) !important;
+  color: var(--ink) !important;
+  border-color: var(--line) !important;
+}
+
+[data-theme="dark"] .table {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--ink);
+  --bs-table-border-color: var(--line);
+  --bs-table-striped-bg: rgba(255, 255, 255, 0.035);
+  --bs-table-hover-bg: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .form-control,
+[data-theme="dark"] .form-select,
+[data-theme="dark"] textarea,
+[data-theme="dark"] .input-group-text {
+  background: #0b1220;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+[data-theme="dark"] .form-control::placeholder { color: #7d8998; }
+[data-theme="dark"] .text-muted,
+[data-theme="dark"] .section-muted,
+[data-theme="dark"] .form-text { color: var(--muted) !important; }
+[data-theme="dark"] .bg-light,
+[data-theme="dark"] .bg-white,
+[data-theme="dark"] .table-light { background: #0b1220 !important; color: var(--ink) !important; }
+[data-theme="dark"] .alert-secondary { background: #1a2330; color: var(--ink); border-color: var(--line); }
+[data-theme="dark"] .page-head,
+[data-theme="dark"] .section-title,
+[data-theme="dark"] .card-header { color: var(--ink); }
+[data-theme="dark"] .modal-header,
+[data-theme="dark"] .modal-footer { border-color: var(--line); }
+[data-theme="dark"] .btn-close { filter: invert(1) grayscale(1); }

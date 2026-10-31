@@ -16,17 +16,30 @@ services:
       # 可选：HTTP 请求超时（秒）
       REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-10}
       ACCESS_LOG_ENABLED: ${ACCESS_LOG_ENABLED:-true}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
+      HLM_ALLOW_NO_AUTH: ${HLM_ALLOW_NO_AUTH:-false}
+      HLM_DISABLE_SCHEDULER: "true"
+      HLM_SETUP_TOKEN: ${HLM_SETUP_TOKEN:-}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-1}
+      GUNICORN_THREADS: ${GUNICORN_THREADS:-8}
+      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-300}
       # 时区
       TZ: ${TZ:-Asia/Shanghai}
       PYTHONUNBUFFERED: "1"
       APP_LOG_MAX_MB: ${APP_LOG_MAX_MB:-10}
       APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
+      LOG_FORMAT: ${LOG_FORMAT:-text}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
     volumes:
       # 必须：数据库与运行状态
       - ./data/instance:/app/instance
       # 建议：数据库备份目录
       - ./data/backups:/app/data/backups
       - ./data/logs:/app/data/logs
+      - ./data/recycle:/app/data/recycle
       # 推荐：单目录映射，程序内自定义子目录
       - ${MEDIA_ROOT}:/media:rw
       # 可选（非必要）：如需双目录固定映射可取消注释
@@ -40,7 +53,7 @@ services:
     cap_drop:
       - ALL
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=3)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.build_opener(urllib.request.ProxyHandler({})).open('http://127.0.0.1:5000/api/health', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -51,18 +64,72 @@ services:
         max-size: "10m"
         max-file: "5"
 
+  worker:
+    image: ghcr.io/marod1m/hlm-demo:${IMAGE_TAG:-latest}
+    container_name: hlm-demo-worker
+    restart: unless-stopped
+    environment:
+      SECRET_KEY: ${SECRET_KEY}
+      HLM_INSTANCE_PATH: /app/instance
+      HLM_WORKER: "true"
+      TZ: ${TZ:-Asia/Shanghai}
+      PYTHONUNBUFFERED: "1"
+      APP_LOG_MAX_MB: ${APP_LOG_MAX_MB:-10}
+      APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
+      LOG_FORMAT: ${LOG_FORMAT:-text}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
+    volumes:
+      - ./data/instance:/app/instance:rw
+      - ./data/backups:/app/data/backups:rw
+      - ./data/logs:/app/data/logs:rw
+      - ./data/recycle:/app/data/recycle:rw
+      - ${MEDIA_ROOT}:/media:rw
+    entrypoint: ["python", "-u", "/app/worker.py"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      hlm:
+        condition: service_healthy
+
+  scheduler:
+    image: ghcr.io/marod1m/hlm-demo:${IMAGE_TAG:-latest}
+    container_name: hlm-demo-scheduler
+    restart: unless-stopped
+    environment:
+      SECRET_KEY: ${SECRET_KEY}
+      HLM_INSTANCE_PATH: /app/instance
+      TZ: ${TZ:-Asia/Shanghai}
+      PYTHONUNBUFFERED: "1"
+      APP_LOG_MAX_MB: ${APP_LOG_MAX_MB:-10}
+      APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
+      LOG_FORMAT: ${LOG_FORMAT:-text}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
+    volumes:
+      - ./data/instance:/app/instance:rw
+      - ./data/backups:/app/data/backups
+      - ./data/logs:/app/data/logs
+      - ./data/recycle:/app/data/recycle
+      - ${MEDIA_ROOT}:/media:rw
+    entrypoint: ["python", "-u", "/app/scheduler.py"]
+    depends_on:
+      hlm:
+        condition: service_healthy
+
   backup:
-    image: alpine:3.21
+    image: ghcr.io/marod1m/hlm-demo:${IMAGE_TAG:-latest}
     container_name: hlm-backup
     profiles: ["backup"]
     restart: "no"
+    environment:
+      HLM_DB_PATH: /data/instance/hardlink_manager.db
+      HLM_BACKUP_DIR: /data/backups
     volumes:
-      - ./data/instance:/data/instance:ro
+      - ./data/instance:/data/instance:rw
       - ./data/backups:/data/backups:rw
-    entrypoint: ["/bin/sh", "-c"]
-    command: |
-      set -e
-      TS=$(date +%Y%m%d-%H%M%S)
-      cp /data/instance/hardlink_manager.db /data/backups/hardlink_manager-${TS}.db
-      ls -1t /data/backups/hardlink_manager-*.db | tail -n +8 | xargs -r rm -f
-      echo "backup done: ${TS}"
+    entrypoint: ["bash", "/app/scripts/backup.sh"]

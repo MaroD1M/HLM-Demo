@@ -21,7 +21,8 @@
         <div class="col-md-6 section-subcard"><label class="form-label">GitHub 仓库（owner/repo）</label><input class="form-control" name="github_repo" value="{{ settings.get('github_repo','marod1m/HLM-Demo') }}"></div>
         <div class="col-md-6 section-subcard"><label class="form-label">GitHub API 地址</label><input class="form-control" name="github_api_base" value="{{ settings.get('github_api_base','https://api.github.com') }}"></div>
         <div class="col-md-3 section-subcard"><label class="form-label">版本检查缓存(分钟)</label><input class="form-control" type="number" min="1" name="version_check_cache_minutes" value="{{ settings.get('version_check_cache_minutes',720) }}"></div>
-        <div class="col-md-9 section-subcard"><label class="form-label">关键操作口令（可选）</label><input class="form-control" type="password" name="critical_action_passphrase" placeholder="留空=不启用"></div>
+        <div class="col-md-7 section-subcard"><label class="form-label">关键操作口令（可选）{% if settings.get('critical_action_passphrase_masked') %}（已配置）{% endif %}</label><input class="form-control" type="password" name="critical_action_passphrase" placeholder="留空=保持原值"><div class="form-text">留空保存不会清除已有口令；如需禁用请勾选右侧清除。</div></div>
+        <div class="col-md-2 section-subcard d-flex align-items-center"><div class="form-check"><input class="form-check-input" type="checkbox" name="critical_action_passphrase_clear" value="true" id="criticalPassphraseClear"><label class="form-check-label" for="criticalPassphraseClear">清除口令</label></div></div>
         <div class="col-12 section-subcard">
           <div class="alert {{ 'alert-warning' if release and release.get('has_update') else 'alert-secondary' }} py-2 mb-0 wrap-any">
             <div>本地版本：<code>{{ release.get('local_version','-') if release else '-' }}</code>；远程版本：<code>{{ release.get('remote_version','-') if release else '-' }}</code></div>
@@ -36,6 +37,52 @@
     </div>
 
     <div class="section-card mb-3">
+      <div class="section-title mb-2">管理员安全</div>
+      {% if is_logged_in and admin_user %}
+        <div class="section-muted mb-3">当前数据库管理员：<strong>{{ admin_user.username }}</strong>，2FA：{{ '已启用' if admin_user.totp_enabled else '未启用' }}</div>
+        <div class="row g-3">
+          <div class="col-md-6 section-subcard">
+            <div class="section-title mb-2" style="font-size:1rem;">修改密码</div>
+            <form action="/settings/admin/password" method="POST">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <div class="mb-2"><label class="form-label">当前密码</label><input class="form-control" type="password" name="current_password" required autocomplete="current-password"></div>
+              <div class="mb-2"><label class="form-label">新密码</label><input class="form-control" type="password" name="new_password" required minlength="8" maxlength="300" autocomplete="new-password"></div>
+              <div class="mb-2"><label class="form-label">确认新密码</label><input class="form-control" type="password" name="confirm_password" required minlength="8" maxlength="300" autocomplete="new-password"></div>
+              <button class="btn btn-outline-primary" type="submit">更新密码</button>
+            </form>
+          </div>
+          <div class="col-md-6 section-subcard">
+            <div class="section-title mb-2" style="font-size:1rem;">动态验证码 2FA</div>
+            {% if admin_user.totp_enabled %}
+              <div class="alert alert-success py-2">2FA 已启用。登录时需要输入验证器中的 6 位动态码。</div>
+              <form action="/settings/admin/2fa/disable" method="POST" onsubmit="return confirm('确认关闭 2FA？')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="mb-2"><label class="form-label">输入当前密码确认关闭</label><input class="form-control" type="password" name="current_password" required autocomplete="current-password"></div>
+                <button class="btn btn-outline-danger" type="submit">关闭 2FA</button>
+              </form>
+            {% elif admin_user.get_totp_secret() %}
+              <div class="alert alert-warning py-2">请将下面的密钥添加到验证器应用（TOTP），然后输入 6 位动态码确认启用。</div>
+              <div class="mb-2"><label class="form-label">2FA 密钥</label><input class="form-control font-monospace" value="{{ admin_user.get_totp_secret() }}" readonly></div>
+              <form action="/settings/admin/2fa/confirm" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="mb-2"><label class="form-label">动态验证码</label><input class="form-control" name="otp" inputmode="numeric" pattern="[0-9]*" maxlength="6" required autocomplete="one-time-code"></div>
+                <button class="btn btn-outline-primary" type="submit">确认启用 2FA</button>
+              </form>
+            {% else %}
+              <div class="section-muted mb-2">尚未生成 2FA 密钥。</div>
+              <form action="/settings/admin/2fa/start" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn btn-outline-primary" type="submit">生成 2FA 密钥</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      {% else %}
+        <div class="section-muted">当前未使用数据库管理员账号（环境变量登录或无认证模式）。密码请在部署环境变量中修改；如需应用内改密和 2FA，请通过首次初始化创建数据库管理员。</div>
+      {% endif %}
+    </div>
+
+    <div class="section-card mb-3">
       <details>
         <summary class="section-title mb-2" style="cursor:pointer;">安全与访问控制（高级可选，默认不展开）</summary>
         <div class="section-muted mb-3 mt-2">以下功能全部为可选项，默认关闭。未启用时不会改变现有登录与访问流程。建议先在局域网或测试环境验证，再用于生产环境。</div>
@@ -44,23 +91,19 @@
           <ul class="mb-0">
             <li><strong>只读模式：</strong>启用后会阻止新增、编辑、删除等写操作，适合排障/审计窗口。若忘记关闭，可能导致“保存无效”的误解。</li>
             <li><strong>IP 白名单：</strong>仅允许指定 IP 或网段访问。配置错误会造成自己被锁在系统外，建议先加入当前访问 IP 再保存。</li>
-            <li><strong>RBAC（预留）：</strong>当前为预留开关，未来用于角色权限模型；现阶段不建议普通用户启用。</li>
-            <li><strong>2FA（预留）：</strong>当前为预留配置，密钥仅保存，不会强制用户开启双因子。</li>
+            <li><strong>管理员 2FA：</strong>应用内管理员账号支持动态验证码，详见下方“管理员安全”。</li>
             <li><strong>Webhook：</strong>用于把系统事件推送到外部服务；建议配合密钥校验，仅在可信地址上启用。</li>
-            <li><strong>API 访问令牌：</strong>为 API POST 请求增加额外访问令牌校验。留空即关闭，不影响普通页面操作。</li>
+            <li><strong>API 访问令牌：</strong>为 API 请求增加额外访问令牌校验。留空即关闭，不影响普通页面操作。</li>
           </ul>
         </div>
         <div class="row g-3">
           <div class="col-md-3 section-subcard"><label class="form-label">启用只读模式</label><select class="form-select" name="security_read_only_enabled"><option value="false" {% if settings.get('security_read_only_enabled','false')=='false' %}selected{% endif %}>禁用</option><option value="true" {% if settings.get('security_read_only_enabled')=='true' %}selected{% endif %}>启用</option></select><div class="form-text">只影响写操作，不影响查看页面。</div></div>
           <div class="col-md-3 section-subcard"><label class="form-label">启用 IP 白名单</label><select class="form-select" name="security_ip_allowlist_enabled"><option value="false" {% if settings.get('security_ip_allowlist_enabled','false')=='false' %}selected{% endif %}>禁用</option><option value="true" {% if settings.get('security_ip_allowlist_enabled')=='true' %}selected{% endif %}>启用</option></select><div class="form-text">建议保存前先配置白名单内容。</div></div>
           <div class="col-md-6 section-subcard"><label class="form-label">IP 白名单列表</label><textarea class="form-control" name="security_ip_allowlist" rows="3" placeholder="例如：127.0.0.1,10.0.0.0/24">{{ settings.get('security_ip_allowlist','') }}</textarea><div class="form-text">支持逗号分隔与 CIDR。示例：<code>127.0.0.1,192.168.1.0/24</code>。</div></div>
-          <div class="col-md-3 section-subcard"><label class="form-label">启用 RBAC（预留）</label><select class="form-select" name="security_role_model_enabled"><option value="false" {% if settings.get('security_role_model_enabled','false')=='false' %}selected{% endif %}>禁用</option><option value="true" {% if settings.get('security_role_model_enabled')=='true' %}selected{% endif %}>启用</option></select><div class="form-text">预留能力，不影响当前基础流程。</div></div>
-          <div class="col-md-3 section-subcard"><label class="form-label">启用 2FA（预留）</label><select class="form-select" name="security_2fa_enabled"><option value="false" {% if settings.get('security_2fa_enabled','false')=='false' %}selected{% endif %}>禁用</option><option value="true" {% if settings.get('security_2fa_enabled')=='true' %}selected{% endif %}>启用</option></select><div class="form-text">预留能力，默认关闭且不强制。</div></div>
-          <div class="col-md-6 section-subcard"><label class="form-label">2FA 密钥（预留）</label><input class="form-control" type="password" name="security_2fa_secret" value="{{ settings.get('security_2fa_secret','') }}" placeholder="仅保存，不强制使用"><div class="form-text">建议使用随机高强度密钥。</div></div>
           <div class="col-md-3 section-subcard"><label class="form-label">启用 Webhook（可选）</label><select class="form-select" name="webhook_enabled"><option value="false" {% if settings.get('webhook_enabled','false')=='false' %}selected{% endif %}>禁用</option><option value="true" {% if settings.get('webhook_enabled')=='true' %}selected{% endif %}>启用</option></select><div class="form-text">关闭时不会对外发送请求。</div></div>
           <div class="col-md-6 section-subcard"><label class="form-label">Webhook 地址</label><input class="form-control" name="webhook_url" value="{{ settings.get('webhook_url','') }}" placeholder="https://example.com/hook"><div class="form-text">建议使用 HTTPS 且目标服务可鉴权。</div></div>
-          <div class="col-md-3 section-subcard"><label class="form-label">Webhook 密钥</label><input class="form-control" type="password" name="webhook_secret" value="{{ settings.get('webhook_secret','') }}" placeholder="可选"><div class="form-text">用于签名或共享密钥校验。</div></div>
-          <div class="col-md-6 section-subcard"><label class="form-label">API 访问令牌（可选）</label><input class="form-control" type="password" name="api_access_token" value="{{ settings.get('api_access_token','') }}" placeholder="留空=不启用"><div class="form-text">设置后，API POST 需在请求头提供 <code>X-API-Token</code>。</div></div>
+          <div class="col-md-3 section-subcard"><label class="form-label">Webhook 密钥{% if settings.get('webhook_secret_masked') %}（已配置）{% endif %}</label><input class="form-control" type="password" name="webhook_secret" value="" placeholder="{% if settings.get('webhook_secret_masked') %}已配置，留空保持{% else %}可选{% endif %}"><div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="webhook_secret_clear" value="true" id="webhookSecretClear"><label class="form-check-label" for="webhookSecretClear">清除密钥</label></div></div>
+          <div class="col-md-6 section-subcard"><label class="form-label">API 访问令牌（可选）{% if settings.get('api_access_token_masked') %}（已配置）{% endif %}</label><input class="form-control" type="password" name="api_access_token" value="" placeholder="{% if settings.get('api_access_token_masked') %}已配置，留空保持{% else %}留空=不启用{% endif %}"><div class="form-text">设置后，API 请求需在请求头提供 <code>X-API-Token</code>。</div><div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="api_access_token_clear" value="true" id="apiTokenClear"><label class="form-check-label" for="apiTokenClear">清除令牌</label></div></div>
         </div>
       </details>
     </div>

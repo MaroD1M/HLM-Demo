@@ -13,17 +13,26 @@ def is_file_stable(file_path: Path, min_age_seconds: int):
 def file_key_of(file_path: Path):
     stat = file_path.stat()
     seed = f"{file_path.name}|{stat.st_size}|{int(stat.st_mtime)}"
-    digest = hashlib.sha1(seed.encode()).hexdigest()
+    digest = hashlib.sha256(seed.encode()).hexdigest()
     inode = str(getattr(stat, 'st_ino', 0))
     mtime = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
     return digest, inode, stat.st_size, mtime
 
 
 def create_hardlink_for_file(task, file_path, cache_model, map_model, db, safe_unlink):
-    # When cache is enabled, treat source_path as processed until user clears cache manually.
+    # Cache is keyed by source path; verify the existing link before treating it as processed.
     cache = cache_model.query.filter_by(source_path=str(file_path)).first() if task.use_cache else None
     if task.use_cache and cache:
-        return False, '命中缓存，已跳过'
+        mapping = map_model.query.filter_by(source_path=str(file_path)).first()
+        if mapping:
+            try:
+                dest_path = Path(mapping.dest_path) if mapping.dest_path else None
+                if dest_path is None or not dest_path.exists():
+                    return False, '命中缓存，已跳过'
+                if dest_path.samefile(file_path):
+                    return False, '命中缓存，已跳过'
+            except Exception:
+                return False, '命中缓存，已跳过'
 
     exts = task.get_extensions_list()
     if file_path.suffix.lower() not in exts:
@@ -48,41 +57,64 @@ def create_hardlink_for_file(task, file_path, cache_model, map_model, db, safe_u
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest_file = dest_dir / file_path.name
 
+    existing_mapping = map_model.query.filter_by(source_path=str(file_path)).first()
+    if existing_mapping and existing_mapping.task_id != task.id:
+        return False, '源文件已被其他硬链接任务管理，已跳过'
+
+    key, inode, fsize, mtime = file_key_of(file_path)
+
+    def _persist_link(cache_obj, mapping_obj):
+        if cache_obj:
+            cache_obj.dest_path = str(dest_file)
+        else:
+            db.session.add(cache_model(source_path=str(file_path), dest_path=str(dest_file)))
+
+        is_new_mapping = mapping_obj is None
+        previous_inode = str(mapping_obj.source_inode) if mapping_obj and mapping_obj.source_inode else ''
+        if is_new_mapping:
+            mapping_obj = map_model(task_id=task.id, source_path=str(file_path), dest_path=str(dest_file))
+            db.session.add(mapping_obj)
+
+        mapping_obj.dest_path = str(dest_file)
+        mapping_obj.source_inode = inode
+        mapping_obj.file_size = fsize
+        mapping_obj.mtime = mtime
+        mapping_obj.file_key = key
+        mapping_obj.last_seen_at = datetime.now(UTC)
+        mapping_obj.deleted_at = None
+        if is_new_mapping:
+            mapping_obj.source_type = 'pending'
+        elif previous_inode and previous_inode != str(inode):
+            mapping_obj.source_type = 'pending'
+            mapping_obj.torrent_hash = None
+            mapping_obj.downloader_id = None
+            mapping_obj.backfill_fail_count = 0
+            mapping_obj.backfill_last_attempt_at = None
+        elif not (mapping_obj.source_type or '').strip():
+            mapping_obj.source_type = 'pending'
+        return mapping_obj
+
     if dest_file.exists():
         if dest_file.samefile(file_path):
-            return False, '硬链接已存在'
+            _persist_link(cache, existing_mapping)
+            return True, '硬链接已存在，已补录映射'
 
-        # Only replace destination files that are already managed by this app.
-        managed = (
-            cache_model.query.filter_by(dest_path=str(dest_file)).first() is not None
-            or map_model.query.filter_by(dest_path=str(dest_file)).first() is not None
+        # Only replace a destination that this task already owns; never overwrite another mapping's target.
+        owned_cache = cache_model.query.filter_by(source_path=str(file_path)).first()
+        managed = existing_mapping is not None and existing_mapping.dest_path == str(dest_file)
+        if not managed and owned_cache is not None and owned_cache.dest_path == str(dest_file):
+            managed = True
+        occupies_other = (
+            map_model.query.filter(map_model.dest_path == str(dest_file), map_model.source_path != str(file_path)).first() is not None
+            or cache_model.query.filter(cache_model.dest_path == str(dest_file), cache_model.source_path != str(file_path)).first() is not None
         )
+        if occupies_other and not managed:
+            return False, '目标路径已被其他映射占用，已跳过以防误删'
         if not managed:
             return False, '目标存在同名文件且非系统托管，已跳过以防误删'
 
         safe_unlink(dest_file)
 
     os.link(file_path, dest_file)
-    key, inode, fsize, mtime = file_key_of(file_path)
-
-    if cache:
-        cache.dest_path = str(dest_file)
-    else:
-        db.session.add(cache_model(source_path=str(file_path), dest_path=str(dest_file)))
-
-    mapping = map_model.query.filter_by(source_path=str(file_path)).first()
-    if not mapping:
-        mapping = map_model(task_id=task.id, source_path=str(file_path), dest_path=str(dest_file))
-        db.session.add(mapping)
-
-    mapping.dest_path = str(dest_file)
-    mapping.source_inode = inode
-    mapping.file_size = fsize
-    mapping.mtime = mtime
-    mapping.file_key = key
-    mapping.last_seen_at = datetime.now(UTC)
-    mapping.deleted_at = None
-    # New links start as pending to avoid misclassifying downloader files before backfill finishes.
-    mapping.source_type = 'pending'
-
+    _persist_link(cache, existing_mapping)
     return True, f'{file_path} -> {dest_file}'

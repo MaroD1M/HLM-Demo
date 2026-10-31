@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 import shutil
 import sqlite3
+from urllib.parse import quote
 
 
 BACKUP_PREFIX = 'hardlink_manager-'
@@ -66,6 +67,16 @@ def verify_backup_integrity(backup_file: str | Path):
     actual = _checksum_file(path_obj)
     if actual != recorded:
         return False, '备份校验失败'
+    try:
+        conn = sqlite3.connect(f'file:{quote(str(path_obj))}?mode=ro', uri=True)
+        try:
+            result = conn.execute('PRAGMA integrity_check').fetchone()
+        finally:
+            conn.close()
+        if not result or str(result[0]).lower() != 'ok':
+            return False, 'SQLite 完整性检查失败'
+    except Exception as exc:
+        return False, f'SQLite 完整性检查失败: {exc}'
     return True, '备份校验通过'
 
 
@@ -89,7 +100,13 @@ def run_sqlite_backup(db_path: str, backup_dir: str, keep_last: int = 7):
         src_conn.close()
 
     manifest = build_backup_manifest(str(src), backup_file, keep_last)
-    _backup_manifest_path(backup_file).write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+    manifest_path = _backup_manifest_path(backup_file)
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+    for protected in (backup_file, manifest_path):
+        try:
+            protected.chmod(0o600)
+        except Exception:
+            pass
 
     if keep_last > 0:
         backups = sorted(target_dir.glob(f'{BACKUP_PREFIX}*.db'), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -137,8 +154,12 @@ def restore_sqlite_backup(db_path: str, backup_file: str, *, create_fallback_bac
             fallback_dir = Path(fallback_backup_dir or (dst.parent / 'restore-preflight'))
             fallback_dir.mkdir(parents=True, exist_ok=True)
             run_sqlite_backup(str(dst), str(fallback_dir), keep_last=max(1, int(keep_last or 1)))
+        for suffix in ('-wal', '-shm'):
+            Path(str(dst) + suffix).unlink(missing_ok=True)
         shutil.copy2(src, temp_path)
         temp_path.replace(dst)
+        for suffix in ('-wal', '-shm'):
+            Path(str(dst) + suffix).unlink(missing_ok=True)
     finally:
         temp_path.unlink(missing_ok=True)
     return True, f'恢复完成: {src.name}'
