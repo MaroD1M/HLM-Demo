@@ -1,0 +1,95 @@
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h6 class="mb-0 text-warning">待确认（疑似误删） <span class="badge text-bg-warning">{{ pending_actions|length }}</span></h6>
+  <small class="text-muted">支持筛选、勾选与批量处理</small>
+</div>
+
+  <form class="row g-2 mb-3 js-ajax-filter" data-target="deleteJobsPanel" method="GET" action="/delete-monitor">
+    <div class="col-md-6"><input class="form-control" name="pending_q" value="{{ pending_q or '' }}" placeholder="按路径/种子/原因搜索"></div>
+    <div class="col-md-3">
+      <select class="form-select" name="pending_match">
+        <option value="all" {% if (pending_match or 'all')=='all' %}selected{% endif %}>全部匹配方式</option>
+        <option value="mapping_hash" {% if pending_match=='mapping_hash' %}selected{% endif %}>映射哈希</option>
+        <option value="name_match" {% if pending_match=='name_match' %}selected{% endif %}>名称匹配</option>
+        <option value="path_match" {% if pending_match=='path_match' %}selected{% endif %}>路径匹配</option>
+        <option value="no_match" {% if pending_match=='no_match' %}selected{% endif %}>未匹配</option>
+      </select>
+    </div>
+    <div class="col-md-3 d-flex gap-2">
+      <button class="btn btn-brand w-50" type="submit">筛选</button>
+      <a class="btn btn-outline-secondary w-50" href="/delete-monitor">重置</a>
+    </div>
+  </form>
+
+  {% if pending_actions %}
+  <form class="d-none js-ajax-form" action="/delete-monitor/pending/preview" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="critical_passphrase" value="">
+  </form>
+  <form class="js-ajax-form" action="/delete-monitor/pending/bulk" method="POST" data-target="deleteJobsPanel">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="mb-2"><input class="form-control form-control-sm" type="password" name="critical_passphrase" placeholder="关键操作口令（如已设置）"></div>
+    <div class="mb-2 d-flex gap-2">
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.togglePendingAll(true)">全选</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.togglePendingAll(false)">取消全选</button>
+      <input type="hidden" name="bulk_action" id="bulkActionInput">
+      <button type="button" class="btn btn-sm btn-outline-info" onclick="window.submitPendingPreview && window.submitPendingPreview()">执行前预览</button>
+      <button type="button" class="btn btn-sm btn-outline-danger" onclick="window.submitPendingBulk('confirm')">批量确认删除</button>
+      <button type="button" class="btn btn-sm btn-outline-warning" onclick="window.submitPendingBulk('reject')">批量驳回</button>
+    </div>
+
+    <div class="table-responsive table-shell">
+      <table class="table table-sm align-middle table-grid">
+        <thead><tr><th><input type="checkbox" onclick="window.togglePendingAll(this.checked)"></th><th>时间</th><th>任务编号</th><th>匹配方式</th><th>路径</th><th>种子</th><th>原因</th><th>操作</th></tr></thead>
+        <tbody>
+        {% for p in pending_actions %}
+        <tr>
+          <td><input class="form-check-input pending-check" type="checkbox" name="pending_ids" value="{{ p.id }}"></td>
+          <td>{{ fmt_dt(p.created_at) }}</td>
+          <td>{{ p.task_id }}</td>
+          <td><span class="badge text-bg-warning">{{ p.match_by }}</span></td>
+          <td class="wrap-any"><code>{{ p.deleted_path }}</code></td>
+          <td class="wrap-any"><code>{{ p.torrent_hash or '-' }}</code></td>
+          <td class="wrap-any">{{ p.reason or '-' }}</td>
+          <td>
+            <button class="btn btn-sm btn-outline-danger" type="submit" formaction="/delete-monitor/pending/confirm/{{ p.id }}" formmethod="post" onclick="return confirm('确认执行删种？该操作不可恢复。')">确认删除</button>
+            <button class="btn btn-sm btn-outline-secondary" type="submit" formaction="/delete-monitor/pending/reject/{{ p.id }}" formmethod="post">驳回</button>
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
+  {% else %}
+    <div class="text-muted">暂无待确认项</div>
+  {% endif %}
+
+<script>
+window.togglePendingAll=function(checked){
+  document.querySelectorAll('.pending-check').forEach((el)=>{el.checked=!!checked;});
+};
+window.submitPendingBulk=function(action){
+  const form=document.querySelector('form[action="/delete-monitor/pending/bulk"]');
+  if(!form) return;
+  const checked=document.querySelectorAll('.pending-check:checked').length;
+  if(checked===0){ window.HLMNotice && window.HLMNotice('请先勾选待确认项','warning'); return; }
+  window.HLMNotice && window.HLMNotice(`已选择 ${checked} 项，准备批量处理`,'info');
+  if(action==='confirm' && !window.confirm('确认批量执行删种？该操作不可恢复。')) return;
+  const input=document.getElementById('bulkActionInput');
+  if(input) input.value=action;
+  if (typeof form.requestSubmit === "function") {
+    form.requestSubmit();
+  } else {
+    form.submit();
+  }
+};
+window.submitPendingPreview=function(){
+  const form=document.querySelector('form[action="/delete-monitor/pending/preview"]');
+  if(!form) return;
+  if (typeof form.requestSubmit === "function") {
+    form.requestSubmit();
+  } else {
+    form.submit();
+  }
+};
+</script>

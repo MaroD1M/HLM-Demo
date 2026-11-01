@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}日志 - Hardlink Manager{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h3 class="mb-0">日志与执行历史</h3>
+  <div class="page-actions">
+    <button class="btn btn-outline-secondary" type="button" data-help-target="pageHelp" aria-expanded="false"><i class="fa-solid fa-circle-info me-1"></i><span class="help-toggle-label">页面说明</span></button>
+    <form action="/logs/clear" method="POST" onsubmit="return confirm('确认清空操作日志？该操作不可恢复。')" class="d-flex gap-2 align-items-center flex-wrap">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input class="form-control form-control-sm" style="width:180px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
+      <button class="btn btn-outline-danger">清空操作日志</button>
+    </form>
+  </div>
+</div>
+
+<div id="pageHelp" class="section-card mb-3 d-none">
+  <div class="section-muted">支持按类型、结果与关键字筛选，可切换“操作日志/任务执行历史”。</div>
+</div>
+
+<div class="section-card mb-3">
+  <div class="section-title mb-2">显示视图</div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-sm {{ 'btn-brand' if (panel_view or 'logs')=='logs' else 'btn-outline-secondary' }}" href="/logs?q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&per_page={{ per_page or 20 }}&panel_view=logs">操作日志</a>
+    <a class="btn btn-sm {{ 'btn-brand' if panel_view=='executions' else 'btn-outline-secondary' }}" href="/logs?q={{ q or '' }}&op={{ op or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&per_page={{ per_page or 20 }}&panel_view=executions">任务执行历史</a>
+  </div>
+</div>
+
+<div class="section-card mb-3">
+  <div class="section-title mb-2">筛选条件</div>
+  <form class="row g-2 js-ajax-filter" data-target="logsPanel" method="GET" action="/logs">
+    <input type="hidden" name="panel_view" value="{{ panel_view or 'logs' }}">
+    <div class="col-md-2"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索消息 / 目标 / 类型"></div>
+    <div class="col-md-2"><input class="form-control" name="execution_id" value="{{ execution_id or '' }}" placeholder="执行ID"></div>
+    <div class="col-md-2">
+      <select class="form-select" name="op">
+        <option value="">全部类型</option>
+        {% for item, label in operation_options or [] %}
+          <option value="{{ item }}" {% if op==item %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select class="form-select" name="success">
+        <option value="all" {% if success=='all' %}selected{% endif %}>全部结果</option>
+        <option value="ok" {% if success=='ok' %}selected{% endif %}>仅成功</option>
+        <option value="fail" {% if success=='fail' %}selected{% endif %}>仅失败</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select class="form-select" name="exec_status">
+        <option value="all" {% if (exec_status or 'all')=='all' %}selected{% endif %}>执行历史：全部状态</option>
+        <option value="running" {% if exec_status=='running' %}selected{% endif %}>执行历史：仅运行中</option>
+        <option value="failed" {% if exec_status=='failed' %}selected{% endif %}>执行历史：仅失败</option>
+        <option value="success" {% if exec_status=='success' %}selected{% endif %}>执行历史：仅成功</option>
+      </select>
+    </div>
+    <div class="col-md-1">
+      <select class="form-select" name="per_page" title="每页条数">
+        {% for n in per_page_options or [10,20,50,100] %}
+          <option value="{{ n }}" {% if (per_page or 20)==n %}selected{% endif %}>{{ n }}/页</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-1 d-flex gap-2"><button class="btn btn-brand w-100" type="submit">筛选</button></div>
+    <div class="col-md-1 d-flex gap-2"><a class="btn btn-outline-secondary w-100" href="/logs?panel_view={{ panel_view or 'logs' }}">重置</a></div>
+    <div class="col-12 d-flex gap-2 flex-wrap">
+      <a class="btn btn-sm btn-outline-warning" href="/logs?panel_view=logs&op=delete_pending_source&per_page={{ per_page or 20 }}&execution_id={{ execution_id or '' }}">待判定来源事件</a>
+      <a class="btn btn-sm btn-outline-danger" href="/logs?panel_view=logs&success=fail&per_page={{ per_page or 20 }}&execution_id={{ execution_id or '' }}">仅失败日志</a>
+      <a class="btn btn-sm btn-outline-secondary" href="/logs?panel_view=executions&exec_status=running&per_page={{ per_page or 20 }}&execution_id={{ execution_id or '' }}">仅运行中任务</a>
+    </div>
+  </form>
+</div>
+
+<div id="logsPanel" class="section-card">
+  {% if (panel_view or 'logs') == 'logs' %}
+  <div class="section-title mb-2">操作日志<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="失败不一定是系统异常，也可能是保护策略生效（例如待判定来源阶段暂不删种）。"></i></div>
+  <div class="table-responsive table-shell">
+    <table class="table align-middle table-grid logs-op-table">
+      <thead>
+        <tr><th class="col-time">时间</th><th class="col-type">类型</th><th class="col-target">目标</th><th class="col-result">结果</th><th class="col-message">消息</th></tr>
+      </thead>
+      <tbody>
+        {% if logs %}
+          {% for log in logs %}
+          <tr>
+            <td><span title="{{ log.created_at }}">{{ fmt_dt(log.created_at) }}</span></td>
+            <td class="wrap-any"><span title="{{ log.operation_type }}">{{ operation_type_labeler(log.operation_type) }}</span></td>
+            <td class="wrap-any">{{ log.target_name or '-' }}</td>
+            <td>{% if log.success %}<span class="badge text-bg-success">成功</span>{% else %}<span class="badge text-bg-danger">失败</span>{% endif %}</td>
+            <td class="wrap-any">
+              {% set log_msg = (log.message or '-') %}
+              {% if log_msg|length > 120 %}
+                <small class="log-msg" data-msg-id="logmsg-{{ log.id }}">{{ log_msg[:120] }}...</small>
+                <button
+                  class="btn btn-sm btn-link p-0 ms-1 js-log-toggle"
+                  type="button"
+                  data-target-id="logmsg-{{ log.id }}"
+                  data-full-text="{{ log_msg|e }}"
+                  data-short-text="{{ log_msg[:120]|e }}"
+                >展开</button>
+              {% else %}
+                <small>{{ log_msg }}</small>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="5" class="text-muted">暂无操作日志</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  <div class="panel-pagination">
+    <small class="text-muted">第 {{ page }} / {{ total_pages }} 页</small>
+    <div>
+      {% if page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page-1 }}&exec_page={{ exec_page or 1 }}&q={{ q or '' }}&op={{ op or '' }}&execution_id={{ execution_id or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&per_page={{ per_page or 20 }}&panel_view={{ panel_view or 'logs' }}">上一页</a>{% endif %}
+      {% if page<total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page+1 }}&exec_page={{ exec_page or 1 }}&q={{ q or '' }}&op={{ op or '' }}&execution_id={{ execution_id or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&per_page={{ per_page or 20 }}&panel_view={{ panel_view or 'logs' }}">下一页</a>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if (panel_view or 'logs') == 'executions' %}
+  <div class="section-title mb-2">任务执行历史<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="记录每次任务的执行结果和耗时，便于判断是否需要调整任务频率或阈值。"></i></div>
+  <div class="table-responsive table-shell">
+    <table class="table align-middle table-grid">
+      <thead>
+        <tr><th>开始时间</th><th>任务</th><th>来源</th><th>状态</th><th>耗时</th><th>消息</th></tr>
+      </thead>
+      <tbody>
+        {% if executions %}
+          {% for e in executions %}
+          <tr>
+            <td><span title="{{ e.started_at }}">{{ fmt_dt(e.started_at) }}</span></td>
+            <td class="wrap-any">{{ e.job_name }}</td>
+            <td>{{ "手动" if e.source=="manual" else ("定时任务" if e.source=="cron" else "系统") }}</td>
+            <td>{% if e.status=='success' %}<span class="badge text-bg-success">成功</span>{% elif e.status=='failed' %}<span class="badge text-bg-danger">失败</span>{% else %}<span class="badge text-bg-secondary">运行中</span>{% endif %}</td>
+            <td>{% set d = e.duration_ms or 0 %}{% if d >= 1000 %}{{ '%.1fs'|format(d / 1000) }}{% elif d > 0 %}{{ d }}ms{% else %}<span class="text-muted">-</span>{% endif %}</td>
+            <td class="wrap-any">
+              {% set exec_msg = (e.message or '-') %}
+              {% if exec_msg|length > 120 %}
+                <small class="log-msg" data-msg-id="execmsg-{{ e.id }}">{{ exec_msg[:120] }}...</small>
+                <button
+                  class="btn btn-sm btn-link p-0 ms-1 js-log-toggle"
+                  type="button"
+                  data-target-id="execmsg-{{ e.id }}"
+                  data-full-text="{{ exec_msg|e }}"
+                  data-short-text="{{ exec_msg[:120]|e }}"
+                >展开</button>
+              {% else %}
+                <small>{{ exec_msg }}</small>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="6" class="text-muted">暂无任务执行历史</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  <div class="panel-pagination">
+    <small class="text-muted">第 {{ exec_page or 1 }} / {{ exec_total_pages or 1 }} 页</small>
+    <div>
+      {% if (exec_page or 1)>1 %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page or 1 }}&exec_page={{ (exec_page or 1)-1 }}&q={{ q or '' }}&op={{ op or '' }}&execution_id={{ execution_id or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&per_page={{ per_page or 20 }}&panel_view=executions">上一页</a>{% endif %}
+      {% if (exec_page or 1)<(exec_total_pages or 1) %}<a class="btn btn-sm btn-outline-secondary" href="/logs?page={{ page or 1 }}&exec_page={{ (exec_page or 1)+1 }}&q={{ q or '' }}&op={{ op or '' }}&execution_id={{ execution_id or '' }}&success={{ success or 'all' }}&exec_status={{ exec_status or 'all' }}&per_page={{ per_page or 20 }}&panel_view=executions">下一页</a>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleLogMsg(targetId, btn, fullText, shortText){
+  const el = document.querySelector('[data-msg-id="' + targetId + '"]');
+  if(!el || !btn) return;
+  const expanded = btn.dataset.expanded === '1';
+  if(expanded){
+    el.textContent = shortText + '...';
+    btn.textContent = '展开';
+    btn.dataset.expanded = '0';
+  }else{
+    el.textContent = fullText;
+    btn.textContent = '收起';
+    btn.dataset.expanded = '1';
+  }
+}
+
+window.bindLogMsgToggles = function(){
+  document.querySelectorAll('.js-log-toggle').forEach((btn)=>{
+    if(btn.dataset.toggleBound === '1') return;
+    btn.dataset.toggleBound = '1';
+    btn.addEventListener('click', ()=>{
+      toggleLogMsg(
+        btn.dataset.targetId || '',
+        btn,
+        btn.dataset.fullText || '',
+        btn.dataset.shortText || ''
+      );
+    });
+  });
+};
+
+window.addEventListener('DOMContentLoaded', ()=>{
+  if(window.bindLogMsgToggles) window.bindLogMsgToggles();
+});
+</script>
+{% endblock %}

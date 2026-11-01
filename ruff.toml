@@ -1,0 +1,6 @@
+target-version = "py311"
+line-length = 160
+extend-exclude = [".venv", "tests"]
+
+[lint]
+select = ["E9", "F", "B", "C4", "RET", "PERF", "RUF019", "RUF059"]

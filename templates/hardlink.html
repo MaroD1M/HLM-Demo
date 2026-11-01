@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}硬链接任务 - Hardlink Manager{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h3 class="mb-0">硬链接任务</h3>
+  <div class="page-actions">
+    <button class="btn btn-outline-secondary" type="button" data-help-target="pageHelp" aria-expanded="false"><i class="fa-solid fa-circle-info me-1"></i><span class="help-toggle-label">页面说明</span></button>
+    <a class="btn btn-brand" href="/hardlink/new"><i class="fa-solid fa-plus"></i> 新建任务</a>
+  </div>
+</div>
+
+<div id="pageHelp" class="section-card mb-3 d-none">
+  <div class="section-muted">本页仅展示任务清单与执行操作；新建/修改已拆分为独立页面。</div>
+</div>
+
+<div class="section-card mb-3">
+  <div class="section-title mb-2">筛选条件</div>
+  <form class="row g-2" method="GET" action="/hardlink">
+    <div class="col-md-6"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="按任务名称搜索"></div>
+    <div class="col-md-3"><select class="form-select" name="enabled"><option value="all" {% if (enabled or 'all')=='all' %}selected{% endif %}>全部状态</option><option value="enabled" {% if enabled=='enabled' %}selected{% endif %}>仅启用</option><option value="disabled" {% if enabled=='disabled' %}selected{% endif %}>仅禁用</option></select></div>
+    <div class="col-md-3 d-flex gap-2"><button class="btn btn-brand w-50" type="submit">筛选</button><a class="btn btn-outline-secondary w-50" href="/hardlink">重置</a></div>
+  </form>
+</div>
+
+<div class="section-card">
+  <div class="section-title mb-2">任务列表</div>
+  <div id="hardlinkJobsPanel">{% include "_hardlink_jobs_panel.html" %}</div>
+</div>
+{% endblock %}

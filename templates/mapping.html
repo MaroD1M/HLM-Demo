@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}映射与缓存 - Hardlink Manager{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h3 class="mb-0">文件映射与缓存管理</h3>
+  <div class="page-actions">
+    <button class="btn btn-outline-secondary" type="button" data-help-target="pageHelp" aria-expanded="false"><i class="fa-solid fa-circle-info me-1"></i><span class="help-toggle-label">页面说明</span></button>
+  </div>
+</div>
+
+<div id="pageHelp" class="section-card mb-3 d-none">
+  <div class="section-muted">映射是源文件与目标文件的对应关系；缓存是“已处理”标记。清理只影响记录，不会删除真实文件。</div>
+</div>
+
+<div class="section-card mb-3">
+  <div class="section-title mb-2">显示视图</div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-sm {{ 'btn-brand' if panel_view=='mapping' else 'btn-outline-secondary' }}" href="/mapping?page={{ map_page }}&cache_page={{ cache_page }}&q={{ (q or '')|urlencode }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&per_page={{ per_page or 20 }}&panel_view=mapping">文件映射</a>
+    <a class="btn btn-sm {{ 'btn-brand' if panel_view=='cache' else 'btn-outline-secondary' }}" href="/mapping?page={{ map_page }}&cache_page={{ cache_page }}&q={{ (q or '')|urlencode }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&per_page={{ per_page or 20 }}&panel_view=cache">缓存管理</a>
+  </div>
+  <div class="mapping-danger-zone">
+    <div class="section-muted small mb-2"><i class="fa-solid fa-triangle-exclamation me-1"></i>清理记录（只删除数据库记录，不删除真实文件）</div>
+    <form action="/mapping/link/clear" method="POST" class="js-ajax-form d-flex gap-2 flex-wrap align-items-center" data-target="mappingPanel">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input class="form-control form-control-sm" style="width:160px" type="password" name="critical_passphrase" placeholder="关键口令(可选)">
+      <button class="btn btn-sm btn-outline-warning" type="submit" formaction="/mapping/link/clear" formmethod="post" onclick="return confirm('确认清空全部映射记录？仅删除数据库映射，不删除真实文件。')" data-bs-toggle="tooltip" title="仅清理文件映射记录，不删除真实文件">清空全部映射</button>
+      <button class="btn btn-sm btn-outline-danger" type="submit" formaction="/mapping/cache/clear" formmethod="post" onclick="return confirm('确认清空全部缓存记录？删除后源文件可再次参与硬链接。')" data-bs-toggle="tooltip" title="仅清理硬链接缓存，不删除真实文件">清空全部缓存</button>
+    </form>
+  </div>
+</div>
+
+<div class="section-card mb-3">
+  <div class="section-title mb-2">筛选条件</div>
+  <form class="row g-2 js-ajax-filter" data-target="mappingPanel" method="GET" action="/mapping">
+    <input type="hidden" name="panel_view" value="{{ panel_view or 'mapping' }}">
+    <div class="col-md-4"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索路径 / 文件关键字 / 哈希"></div>
+    <div class="col-md-2">
+      <select class="form-select" name="hash_state">
+        <option value="all" {% if hash_state=='all' %}selected{% endif %}>全部关联状态</option>
+        <option value="linked" {% if hash_state=='linked' %}selected{% endif %}>已关联种子</option>
+        <option value="unlinked" {% if hash_state=='unlinked' %}selected{% endif %}>未关联种子</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select class="form-select" name="source_type" data-bs-toggle="tooltip" title="“待判定”表示来源仍在自动关联确认窗口内，删除联动会先保护，不会立即执行高风险操作。">
+        <option value="all" {% if (source_type or 'all')=='all' %}selected{% endif %}>全部来源</option>
+        <option value="manual" {% if source_type=='manual' %}selected{% endif %}>手动文件</option>
+        <option value="downloader" {% if source_type=='downloader' %}selected{% endif %}>下载器文件</option>
+        <option value="pending" {% if source_type=='pending' %}selected{% endif %}>待判定</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select class="form-select" name="per_page" title="每页条数">
+        {% for n in per_page_options or [10,20,50,100] %}
+          <option value="{{ n }}" {% if (per_page or 20)==n %}selected{% endif %}>{{ n }}/页</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2 d-flex gap-2">
+      <button class="btn btn-brand flex-fill" type="submit">筛选</button>
+      <a class="btn btn-outline-secondary flex-fill" href="/mapping?panel_view={{ panel_view or 'mapping' }}">重置</a>
+    </div>
+  </form>
+</div>
+
+<div id="mappingPanel" class="section-card">
+  {% include "_mapping_panel.html" %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.updateSelectionTips = function(){
+  const mapCount=document.querySelectorAll('.map-check:checked').length;
+  const cacheCount=document.querySelectorAll('.cache-check:checked').length;
+  const mapTip=document.getElementById('mapSelectionTip');
+  const cacheTip=document.getElementById('cacheSelectionTip');
+  if(mapTip) mapTip.textContent=`已选 ${mapCount} 项`;
+  if(cacheTip) cacheTip.textContent=`已选 ${cacheCount} 项`;
+};
+window.toggleAllByClass = function(cls, checked){
+  document.querySelectorAll('.' + cls).forEach((el)=>{el.checked=!!checked;});
+  window.updateSelectionTips();
+  window.HLMNotice && window.HLMNotice(`已${checked ? '全选' : '取消全选'} ${document.querySelectorAll('.'+cls+':checked').length} 项`,'info');
+};
+window.invertByClass = function(cls){
+  document.querySelectorAll('.' + cls).forEach((el)=>{el.checked=!el.checked;});
+  window.updateSelectionTips();
+  window.HLMNotice && window.HLMNotice(`反选后已选 ${document.querySelectorAll('.'+cls+':checked').length} 项`,'info');
+};
+window.submitBulkSelection = function(formId, checkboxClass, fieldName, confirmText){
+  const form=document.getElementById(formId);
+  if(!form) return;
+  form.querySelectorAll(`input[name="${fieldName}"]`).forEach((el)=>el.remove());
+  const checked=document.querySelectorAll('.' + checkboxClass + ':checked');
+  if(!checked.length){
+    window.HLMNotice && window.HLMNotice('请先勾选要删除的记录','warning');
+    return;
+  }
+  const count = checked.length;
+  window.HLMNotice && window.HLMNotice(`准备处理 ${count} 项，请确认`,'info');
+  if(confirmText && !window.confirm(`${confirmText}\n\n当前选中：${count} 项`)) return;
+  checked.forEach((el)=>{
+    const input=document.createElement('input');
+    input.type='hidden';
+    input.name=fieldName;
+    input.value=el.value;
+    form.appendChild(input);
+  });
+  if(typeof form.requestSubmit === 'function'){
+    form.requestSubmit();
+  }else{
+    form.dispatchEvent(new Event('submit', {cancelable:true, bubbles:true}));
+  }
+};
+window.bindMappingPanel = function(){
+  document.querySelectorAll('.map-check,.cache-check').forEach((el)=>{
+    if(el.dataset.tipBound==='1') return;
+    el.dataset.tipBound='1';
+    el.addEventListener('change', window.updateSelectionTips);
+  });
+  window.updateSelectionTips();
+};
+window.addEventListener('DOMContentLoaded',()=>{ window.bindMappingPanel(); });
+</script>
+{% endblock %}

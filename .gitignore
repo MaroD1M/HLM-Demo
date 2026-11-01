@@ -1,0 +1,82 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test caches
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local databases and runtime artifacts
+*.db
+*.sqlite
+*.sqlite3
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local env
+.env
+*.env.local
+*.local
+
+# Runtime data (keep structure only)
+data/instance/*
+!data/instance/.gitkeep
+data/backups/*
+!data/backups/.gitkeep
+
+# Runtime logs
+data/logs/*
+!data/logs/.gitkeep
+data/recycle/*
+!data/recycle/.gitkeep
+
+# Local runtime instance (root)
+instance/*
+!instance/.gitkeep
+
+# Local planning/agent docs and state
+docs/
+.taskmaster/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+
+# Temporary artifacts
+*.tmp
+*.bak
+
+# Dependency directories
+node_modules/
+
+# Environment variables
+# Editor directories and files
+.idea
+.vscode
+# OS specific
+
+# Task files
+# tasks.json
+# tasks/ 

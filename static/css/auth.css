@@ -1,0 +1,35 @@
+/*
+  Auth (login) page styling.
+  Extracted from templates/login.html inline <style> to keep UI consistent and maintainable.
+*/
+
+body {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  background:
+    radial-gradient(900px 380px at -8% -10%, #d8f5ef 0%, transparent 60%),
+    radial-gradient(700px 360px at 108% 0%, #d9eefe 0%, transparent 58%),
+    linear-gradient(180deg, #f6fbff 0%, #eef5fb 100%);
+}
+
+.card {
+  width: min(92vw, 460px);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 16px 42px rgba(8, 30, 52, 0.14);
+  backdrop-filter: blur(2px);
+}
+
+.btn-brand {
+  background: linear-gradient(120deg, var(--brand2), var(--brand));
+  border: 0;
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(19, 86, 137, 0.24);
+}
+
+.btn-brand:hover {
+  filter: brightness(1.03);
+  color: #ffffff;
+}

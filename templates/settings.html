@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}设置 - Hardlink Manager{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h3 class="mb-0">系统设置</h3>
+  <div class="page-actions">
+    <button class="btn btn-outline-secondary" type="button" data-help-target="pageHelp" aria-expanded="false"><i class="fa-solid fa-circle-info me-1"></i><span class="help-toggle-label">页面说明</span></button>
+  </div>
+</div>
+
+<div id="pageHelp" class="section-card mb-3 d-none"><div class="section-muted">本页按功能分区保存；修改后可按分区保存或保存全部设置。</div></div>
+
+<div class="section-card" id="settingsPagePanel">
+  <form class="js-ajax-form settings-grid" data-target="settingsPagePanel" action="/settings/save" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="section-card mb-3">
+      <div class="section-title mb-2">通用模板（新建任务默认值）</div>
+      <div class="row g-3">
+        <div class="col-md-6 section-subcard"><label class="form-label">默认扩展名</label><input class="form-control" name="default_extensions" value="{{ settings.get('default_extensions', '.mkv,.mp4,.avi,.mov') }}"></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">默认排除目录</label><input class="form-control" name="default_exclude_dirs" value="{{ settings.get('default_exclude_dirs', 'sample,subs') }}"></div>
+      </div>
+      <div class="settings-actions mt-3"><button class="btn btn-outline-primary" type="submit" name="save_scope" value="general_template">保存通用模板</button></div>
+    </div>
+
+    <div class="section-card mb-3">
+      <div class="section-title mb-2">日志与清理</div>
+      <div class="row g-3">
+        <div class="col-md-3 section-subcard"><label class="form-label">日志保留天数</label><input class="form-control" type="number" name="log_retention_days" value="{{ settings.get('log_retention_days', 30) }}"><div class="form-text">推荐 30-90 天，排障期可临时调高。</div></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">自动清理日志</label><select class="form-select" name="auto_clean_logs"><option value="true" {% if settings.get('auto_clean_logs')=='true' %}selected{% endif %}>启用</option><option value="false" {% if settings.get('auto_clean_logs')=='false' %}selected{% endif %}>禁用</option></select></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">应用日志单文件(MB)</label><input class="form-control" type="number" min="1" name="app_log_max_mb" value="{{ settings.get('app_log_max_mb', 10) }}"><div class="form-text">推荐 10-50MB。</div></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">应用日志保留文件数</label><input class="form-control" type="number" min="1" name="app_log_backup_count" value="{{ settings.get('app_log_backup_count', 5) }}"><div class="form-text">推荐 5-10 份。</div></div>
+      </div>
+      <div class="settings-actions mt-3"><button class="btn btn-outline-primary" type="submit" name="save_scope" value="log_cleanup">保存日志与清理</button></div>
+    </div>
+
+    <div class="section-card mb-3">
+      <div class="section-title mb-2">删除联动与通知</div>
+      <div class="row g-3">
+        <div class="col-md-4 section-subcard"><label class="form-label">删种同时删文件</label><select class="form-select" name="delete_files_with_torrent"><option value="true" {% if settings.get('delete_files_with_torrent')=='true' %}selected{% endif %}>是</option><option value="false" {% if settings.get('delete_files_with_torrent')=='false' %}selected{% endif %}>否</option></select></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">删除通知</label><select class="form-select" name="notify_on_delete"><option value="true" {% if settings.get('notify_on_delete')=='true' %}selected{% endif %}>开</option><option value="false" {% if settings.get('notify_on_delete')=='false' %}selected{% endif %}>关</option></select></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">疑似误删通知</label><select class="form-select" name="notify_on_risky_delete"><option value="true" {% if settings.get('notify_on_risky_delete','true')=='true' %}selected{% endif %}>开（推荐）</option><option value="false" {% if settings.get('notify_on_risky_delete')=='false' %}selected{% endif %}>关</option></select></div>
+        <div class="col-md-4 section-subcard">
+          <label class="form-label">自动删种匹配策略
+            <i class="fa-solid fa-circle-info hint-icon ms-1" data-bs-toggle="tooltip" title="严格：仅在高置信度匹配时执行；宽松：匹配范围更大，误判风险也更高。"></i>
+          </label>
+          <select class="form-select" name="delete_match_strict_mode"><option value="true" {% if settings.get('delete_match_strict_mode','true')=='true' %}selected{% endif %}>严格</option><option value="false" {% if settings.get('delete_match_strict_mode')=='false' %}selected{% endif %}>宽松</option></select>
+        </div>
+        <div class="col-md-4 section-subcard"><label class="form-label">Cross-seed 保护</label><select class="form-select" name="delete_protect_cross_seed"><option value="true" {% if settings.get('delete_protect_cross_seed','true')=='true' %}selected{% endif %}>开启（推荐）</option><option value="false" {% if settings.get('delete_protect_cross_seed')=='false' %}selected{% endif %}>关闭</option></select><div class="form-text">检测到同一内容被其他种子复用时，不自动删种，转为待确认。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">删除对侧文件时使用回收站</label><select class="form-select" name="delete_recycle_bin_enabled"><option value="false" {% if settings.get('delete_recycle_bin_enabled','false')=='false' %}selected{% endif %}>否（直接删除）</option><option value="true" {% if settings.get('delete_recycle_bin_enabled')=='true' %}selected{% endif %}>是（推荐）</option></select><div class="form-text">开启后移入回收目录，避免不可逆误删。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">回收站目录</label><input class="form-control" name="delete_recycle_bin_dir" value="{{ settings.get('delete_recycle_bin_dir','/app/data/recycle') }}"><div class="form-text">容器路径，建议挂载到宿主机。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">回收站保留天数</label><input class="form-control" type="number" min="1" max="3650" name="delete_recycle_retention_days" value="{{ settings.get('delete_recycle_retention_days',30) }}"></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">待判定来源保护</label><select class="form-select" name="pending_source_guard_enabled"><option value="true" {% if settings.get('pending_source_guard_enabled','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('pending_source_guard_enabled')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-4 section-subcard">
+          <label class="form-label">待判定窗口(秒)
+            <i class="fa-solid fa-circle-info hint-icon ms-1" data-bs-toggle="tooltip" title="在窗口期内，系统会更保守处理来源未确认的删除事件。默认 900 秒（15 分钟）。"></i>
+          </label>
+          <input class="form-control" type="number" min="0" name="pending_source_guard_seconds" value="{{ settings.get('pending_source_guard_seconds', 900) }}">
+        </div>
+        <div class="col-md-4 section-subcard"><label class="form-label">待判定告警阈值</label><input class="form-control" type="number" min="1" name="pending_source_warn_threshold" value="{{ settings.get('pending_source_warn_threshold', 200) }}"><div class="form-text">推荐 100-300，长期偏高建议排查路径映射与下载器连通。</div></div>
+        <div class="col-md-4 section-subcard">
+          <label class="form-label">待判定日志模式
+            <i class="fa-solid fa-circle-info hint-icon ms-1" data-bs-toggle="tooltip" title="聚合：同类事件合并记录，日志更简洁；明细：每次都记录，便于排查。"></i>
+          </label>
+          <select class="form-select" name="pending_source_log_mode"><option value="aggregate" {% if settings.get('pending_source_log_mode','aggregate')=='aggregate' %}selected{% endif %}>聚合</option><option value="detail" {% if settings.get('pending_source_log_mode')=='detail' %}selected{% endif %}>明细</option></select>
+        </div>
+        <div class="col-md-4 section-subcard"><label class="form-label">批量异常熔断</label><select class="form-select" name="delete_anomaly_guard_enabled"><option value="true" {% if settings.get('delete_anomaly_guard_enabled','true')=='true' %}selected{% endif %}>开启（推荐）</option><option value="false" {% if settings.get('delete_anomaly_guard_enabled')=='false' %}selected{% endif %}>关闭</option></select><div class="form-text">命中数超过阈值且比例过高时中止本轮删除，避免挂载异常导致批量误删。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">熔断最小命中数</label><input class="form-control" type="number" min="1" name="delete_anomaly_min_candidates" value="{{ settings.get('delete_anomaly_min_candidates', 50) }}"></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">熔断缺失比例(%)</label><input class="form-control" type="number" min="1" max="100" name="delete_anomaly_max_ratio" value="{{ settings.get('delete_anomaly_max_ratio', 50) }}"><div class="form-text">默认 50%，仅在同时达到最小命中数时生效。</div></div>
+      </div>
+      <div class="settings-actions mt-3"><button class="btn btn-outline-primary" type="submit" name="save_scope" value="delete_notify">保存删除联动与通知</button></div>
+    </div>
+
+    <div class="section-card mb-3">
+      <div class="section-title mb-2">来源感知联动策略</div>
+      <div class="row g-3">
+        <div class="col-md-6 section-subcard"><label class="form-label">手动文件：删除目标后删除源文件</label><select class="form-select" name="manual_dest_delete_delete_source"><option value="true" {% if settings.get('manual_dest_delete_delete_source','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('manual_dest_delete_delete_source')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">手动文件：删除源文件后删除目标</label><select class="form-select" name="manual_source_delete_delete_dest"><option value="true" {% if settings.get('manual_source_delete_delete_dest','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('manual_source_delete_delete_dest')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">下载器文件：删除目标后删除源文件</label><select class="form-select" name="downloader_dest_delete_delete_source"><option value="true" {% if settings.get('downloader_dest_delete_delete_source','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_dest_delete_delete_source')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">下载器文件：删除源文件后删除目标</label><select class="form-select" name="downloader_source_delete_delete_dest"><option value="true" {% if settings.get('downloader_source_delete_delete_dest','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_source_delete_delete_dest')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">下载器文件：删除目标后删除种子</label><select class="form-select" name="downloader_dest_delete_delete_torrent"><option value="true" {% if settings.get('downloader_dest_delete_delete_torrent','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_dest_delete_delete_torrent')=='false' %}selected{% endif %}>关闭</option></select></div>
+        <div class="col-md-6 section-subcard"><label class="form-label">下载器文件：删除源文件后删除种子</label><select class="form-select" name="downloader_source_delete_delete_torrent"><option value="true" {% if settings.get('downloader_source_delete_delete_torrent','true')=='true' %}selected{% endif %}>开启</option><option value="false" {% if settings.get('downloader_source_delete_delete_torrent')=='false' %}selected{% endif %}>关闭</option></select></div>
+      </div>
+      <div class="settings-actions mt-3"><button class="btn btn-outline-primary" type="submit" name="save_scope" value="source_policy">保存来源感知策略</button></div>
+    </div>
+
+    <div class="section-card mb-3">
+      <div class="section-title mb-2">网络与通知</div>
+      <div class="row g-3">
+        <div class="col-md-4 section-subcard"><label class="form-label">路径白名单根目录</label><input class="form-control" name="allowed_roots" value="{{ settings.get('allowed_roots','') }}" placeholder="/downloads,/media"><div class="form-text">多个目录用英文逗号分隔。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">统一外网代理地址</label><input class="form-control" name="proxy_url" value="{{ settings.get('proxy_url','') }}" placeholder="http://host.docker.internal:7890"><div class="form-text">留空表示直连；容器内不要写 127.0.0.1。任务单独设置代理时优先使用任务代理。</div></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">Telegram API Base</label><input class="form-control" name="tg_api_base" value="{{ settings.get('tg_api_base','https://api.telegram.org') }}"></div>
+      </div>
+      <div class="settings-actions mt-3"><button class="btn btn-outline-primary" type="submit" name="save_scope" value="network_notify">保存网络与通知</button></div>
+    </div>
+
+    <div class="section-card mb-3">
+      <div class="section-title mb-2">自动关联性能与匹配</div>
+      <div class="row g-3">
+        <div class="col-md-3 section-subcard"><label class="form-label">自动关联批次大小</label><input class="form-control" type="number" min="50" max="3000" name="backfill_batch_limit" value="{{ settings.get('backfill_batch_limit', 500) }}"><div class="form-text">推荐 300-800。</div></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">候选上限</label><input class="form-control" type="number" min="20" max="500" name="backfill_max_candidates" value="{{ settings.get('backfill_max_candidates', 120) }}"><div class="form-text">推荐 80-150。</div></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">文件列表并发数</label><input class="form-control" type="number" min="1" max="16" name="backfill_file_fetch_workers" value="{{ settings.get('backfill_file_fetch_workers', 4) }}"><div class="form-text">推荐 2-6，过高会增加下载器压力。</div></div>
+        <div class="col-md-3 section-subcard"><label class="form-label">失败跳过阈值</label><input class="form-control" type="number" min="0" max="10" name="backfill_max_failures" value="{{ settings.get('backfill_max_failures', 2) }}"><div class="form-text">推荐 1-3。</div></div>
+        <div class="col-12 section-subcard">
+          <label class="form-label">路径映射规则
+            <i class="fa-solid fa-circle-info hint-icon ms-1" data-bs-toggle="tooltip" title="用于把本机路径转换为下载器看到的路径。格式：源路径=>目标路径；多条规则用分号分隔。"></i>
+          </label>
+          <input class="form-control" name="backfill_path_mappings" value="{{ settings.get('backfill_path_mappings','') }}" placeholder="/host/path=>/container/path;/a=>/b">
+          <div class="form-text mt-1">
+            示例：<code>/volume1/downloads=>/downloads;/mnt/media=>/media</code>
+          </div>
+          <details class="mt-2">
+            <summary class="small text-muted">使用说明（点击展开）</summary>
+            <div class="small text-muted mt-1">
+              1) 左侧写应用侧真实路径，右侧写下载器返回的路径；2) 匹配按前缀进行，建议写到目录层级；3) 多条规则用分号分隔；4) 不确定时先保留空值并在映射页观察待判定记录。
+            </div>
+          </details>
+        </div>
+      </div>
+      <div class="settings-actions mt-3"><button class="btn btn-outline-primary" type="submit" name="save_scope" value="backfill">保存自动关联配置</button></div>
+    </div>
+
+    <div class="section-card mb-2">
+      <div class="section-title mb-2">备份</div>
+      <div class="row g-3">
+        <div class="col-md-8 section-subcard"><label class="form-label">数据库备份目录</label><input class="form-control" name="backup_dir" value="{{ settings.get('backup_dir','/app/data/backups') }}"></div>
+        <div class="col-md-4 section-subcard"><label class="form-label">备份保留份数</label><input class="form-control" type="number" min="1" name="backup_keep_last" value="{{ settings.get('backup_keep_last', 7) }}"><div class="form-text">推荐 7-14 份。</div></div>
+      </div>
+      <div class="settings-actions mt-3"><button class="btn btn-outline-primary" type="submit" name="save_scope" value="backup">保存备份配置</button></div>
+    </div>
+
+    <div class="section-card mb-2">
+      <div class="section-title mb-2">配置快照</div>
+      <div class="alert alert-secondary py-2 mb-3">
+        <div><strong>功能说明：</strong>配置快照会保存“当前可导入配置”的完整副本，便于后续快速回滚。</div>
+        <ul class="mb-0 mt-1">
+          <li><strong>保存快照：</strong>记录当前设置状态，不会立即变更系统行为。</li>
+          <li><strong>回滚快照：</strong>将当前设置覆盖为快照内容，建议回滚后检查关键配置。</li>
+          <li><strong>删除快照：</strong>仅删除历史记录，不影响当前生效配置。</li>
+          <li><strong>保留策略：</strong>页面默认展示最近 10 条快照，可按需手动清理。</li>
+        </ul>
+      </div>
+      <div class="row g-3">
+        <div class="col-md-4 section-subcard"><label class="form-label">快照名称</label><input class="form-control" name="snapshot_label" placeholder="例如：release-20260523"></div>
+        <div class="col-md-8 section-subcard"><label class="form-label">备注</label><input class="form-control" name="snapshot_note" placeholder="可选备注"></div>
+      </div>
+      <div class="settings-actions mt-3">
+        <button class="btn btn-outline-primary" type="submit" formaction="/settings/snapshot/save" formmethod="post" data-refresh-on-success="true">保存当前配置快照</button>
+      </div>
+      <div class="table-responsive table-shell mt-3">
+        <table class="table table-sm align-middle table-grid">
+          <thead><tr><th>名称</th><th>时间</th><th>备注</th><th>操作</th></tr></thead>
+          <tbody>
+            {% if snapshots %}
+              {% for s in snapshots %}
+              <tr>
+                <td>{{ s.label }}</td>
+                <td>{{ fmt_dt(s.created_at) }}</td>
+                <td class="wrap-any">{{ s.note or '-' }}</td>
+                <td>
+                  <form class="d-inline js-ajax-form" action="/settings/snapshot/rollback/{{ s.id }}" method="POST" data-refresh-on-success="true" onsubmit="return confirm('确认回滚到该快照？当前配置将被覆盖。')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn-sm btn-outline-warning">回滚</button>
+                  </form>
+                  <form class="d-inline js-ajax-form" action="/settings/snapshot/delete/{{ s.id }}" method="POST" data-refresh-on-success="true" onsubmit="return confirm('确认删除该快照？删除后不可恢复。')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn-sm btn-outline-danger">删除</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="4" class="text-muted">暂无快照</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="mt-3 settings-actions">
+      <button class="btn btn-brand" type="submit">保存全部设置</button>
+      <a class="btn btn-outline-secondary" href="/settings/devops#version">安全与版本</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

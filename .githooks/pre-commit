@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Scan staged changes for common secret patterns before commit.
+PATTERN='ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[0-9A-Za-z-]{10,}|-----BEGIN (RSA|OPENSSH|EC|DSA|PGP) PRIVATE KEY-----|Authorization:[[:space:]]*Bearer[[:space:]]+[A-Za-z0-9._~+/=-]{20,}'
+WHITELIST_FILE=".githooks/secret-whitelist.txt"
+
+staged_files="$(git diff --cached --name-only --diff-filter=ACMR)"
+if [ -z "$staged_files" ]; then
+  exit 0
+fi
+
+# Check only added lines in staged diff to reduce false positives.
+tmp_hits_file="$(mktemp)"
+tmp_filtered_file="$(mktemp)"
+trap 'rm -f "$tmp_hits_file" "$tmp_filtered_file"' EXIT
+
+if git diff --cached --unified=0 --no-color | rg -n -S "^\+.*($PATTERN)" >"$tmp_hits_file"; then
+  cp "$tmp_hits_file" "$tmp_filtered_file"
+
+  # Allow intentional patterns by exact regex lines listed in the whitelist file.
+  if [ -f "$WHITELIST_FILE" ]; then
+    while IFS= read -r allow_pattern; do
+      if [ -z "$allow_pattern" ] || [[ "$allow_pattern" == \#* ]]; then
+        continue
+      fi
+      rg -v -N -e "$allow_pattern" "$tmp_filtered_file" >"${tmp_filtered_file}.next" || true
+      mv "${tmp_filtered_file}.next" "$tmp_filtered_file"
+    done <"$WHITELIST_FILE"
+  fi
+
+  if [ -s "$tmp_filtered_file" ]; then
+    echo "[BLOCKED] Potential secret detected in staged changes:"
+    sed -n '1,120p' "$tmp_filtered_file"
+    echo
+    echo "If this is intentional, add a precise allow regex to $WHITELIST_FILE."
+    echo "Use comments with # and keep patterns narrow."
+    exit 1
+  fi
+fi
+
+exit 0

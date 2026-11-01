@@ -1,0 +1,548 @@
+:root {
+  --fs-12: 12px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+  --lh-tight: 1.25;
+  --lh-normal: 1.5;
+  --lh-relaxed: 1.7;
+}
+
+html, body {
+  font-size: var(--fs-16);
+  line-height: var(--lh-normal);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  line-height: var(--lh-tight);
+  font-weight: 700;
+}
+
+h3 { font-size: var(--fs-24); }
+h5 { font-size: var(--fs-20); }
+
+.form-label {
+  font-size: var(--fs-14);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.form-text {
+  font-size: var(--fs-12);
+  line-height: var(--lh-normal);
+}
+
+.form-control,
+.form-select,
+
+.table {
+  font-size: var(--fs-14);
+  border-color: var(--line-soft);
+}
+
+
+
+/* Layout consistency */
+
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.page-head h3 {
+  margin: 0;
+  font-size: var(--fs-24);
+  font-weight: 700;
+}
+
+.page-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.page-actions > form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.page-actions .form-control.form-control-sm {
+  min-width: 140px;
+}
+
+@media (max-width: 768px) {
+  .page-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .page-actions .form-control.form-control-sm {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+
+
+
+.card {
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--line-soft);
+  overflow: hidden;
+}
+
+
+
+.modal .modal-header {
+  padding: 14px 18px;
+}
+
+.modal .modal-body {
+  padding: 14px 18px;
+}
+
+.modal .modal-footer {
+  padding: 12px 18px;
+}
+
+.modal .row.g-3 > [class*="col-"] {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.card h5 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 768px) {
+  .page-head h3 { font-size: var(--fs-20); }
+}
+
+
+
+.col-actions {
+  min-width: 260px;
+}
+
+.table-fixed {
+  table-layout: fixed;
+}
+
+.table-fixed th,
+.table-fixed td {
+  vertical-align: middle;
+}
+
+.table-fixed .col-wide {
+  width: 28%;
+}
+
+.table-fixed .col-mid {
+  width: 14%;
+}
+
+.table-fixed .col-narrow {
+  width: 10%;
+}
+
+.empty-state {
+  text-align: center;
+  color: #5e7383;
+  padding: 24px 8px;
+}
+
+.empty-state i {
+  font-size: 20px;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.btn {
+  border-radius: var(--radius-control);
+  font-weight: 600;
+  transition: transform .16s ease, box-shadow .16s ease, background-color .16s ease, border-color .16s ease;
+  padding: 0.5rem 0.8rem;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-primary,
+.btn-brand {
+  box-shadow: 0 8px 18px rgba(29, 78, 137, 0.24);
+}
+
+.form-control,
+.form-select {
+  border-radius: var(--radius-control);
+  border-color: var(--line-soft);
+  min-height: 38px;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: #7cb7d3;
+  box-shadow: 0 0 0 0.2rem rgba(16, 163, 127, 0.15);
+}
+
+.table > :not(caption) > * > * {
+  border-bottom-color: #e4edf5;
+  padding: 0.62rem 0.75rem;
+}
+
+.table-hover tbody tr:hover {
+  background: #f3f8ff;
+}
+
+.modal-content {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-pop);
+}
+
+.modal-header {
+  background: linear-gradient(180deg, #fbfdff, #f3f8ff);
+}
+/* Global readability */
+body {
+  font-size: 15px;
+}
+
+/* Sidebar readability */
+.side .brand {
+  font-size: 1.08rem;
+}
+
+
+.side .nav-link span {
+  line-height: 1.35;
+}
+
+.badge {
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+}
+
+
+.alert {
+  border-width: 1px;
+  border-color: rgba(15, 31, 43, 0.10);
+}
+
+.section-card {
+  border-radius: 14px;
+  border: 1px solid #dce8f2;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+  padding: 12px;
+}
+
+/* Common table action usability */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.actions-row form {
+  margin: 0;
+}
+
+.actions-row .btn {
+  white-space: nowrap;
+}
+
+/* ---- Fine tuning round 2 (readability + layout ergonomics) ---- */
+.side {
+  width: 272px;
+}
+
+.side .nav-link {
+  white-space: normal;
+  align-items: flex-start;
+  line-height: 1.4;
+}
+
+.side .nav-link i {
+  margin-top: 2px;
+}
+
+/* Hardlink task operation column: stable two-column action layout */
+.hardlink-table .actions-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(118px, 1fr));
+  gap: 8px;
+}
+
+.hardlink-table .actions-row form,
+.hardlink-table .actions-row .btn {
+  width: 100%;
+}
+
+.hardlink-table .actions-row .btn {
+  text-align: center;
+}
+
+/* Mapping table: keep key operations visible with less horizontal drag */
+.mapping-table .col-wide {
+  width: 23%;
+}
+
+.mapping-table .col-mid {
+  width: 10%;
+}
+
+.mapping-table .col-narrow {
+  width: 7%;
+}
+
+.mapping-table .wrap-any {
+  max-width: 240px;
+}
+
+.mapping-table .actions-row {
+  justify-content: flex-start;
+}
+
+.cache-table td:last-child,
+.cache-table th:last-child {
+  min-width: 130px;
+}
+
+@media (max-width: 1200px) {
+  .hardlink-table .actions-row {
+    grid-template-columns: 1fr;
+  }
+
+  .hardlink-table .col-actions {
+    min-width: 280px;
+  }
+}
+
+@media (max-width: 960px) {
+  .side {
+    width: auto;
+  }
+
+  .side .nav-link {
+    align-items: center;
+  }
+
+  .page-head h3 {
+    font-size: 1.35rem;
+  }
+}
+
+
+/* Content typography scale (page body, not sidebar) */
+.main {
+  font-size: 1rem;
+}
+
+.main h3 {
+  font-size: 1.7rem;
+}
+
+.main .card,
+.main .table,
+.main .form-control,
+.main .form-select,
+.main .btn,
+.main .alert,
+.main .form-label {
+  font-size: 0.95rem;
+}
+
+.main .form-text,
+.main small,
+.main .text-muted {
+  font-size: 0.86rem;
+}
+
+.main .btn-sm {
+  font-size: 0.88rem;
+}
+
+@media (max-width: 960px) {
+  .main {
+    font-size: 0.98rem;
+  }
+
+  .main h3 {
+    font-size: 1.45rem;
+  }
+}
+
+
+/* Unified page zoning */
+.section-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.page-intro {
+  border: 1px solid #d7e6f2;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f7fbff, #eef6ff);
+  padding: 10px 12px;
+  color: #2b4456;
+}
+
+.page-intro strong {
+  color: #0d4f67;
+}
+
+.settings-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.section-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.section-muted {
+  font-size: 0.86rem;
+  color: #5e7383;
+}
+
+@media (max-width: 992px) {
+  .settings-actions .btn {
+    flex: 1 1 auto;
+  }
+}
+
+
+/* Final page polish: toolbars / pagination / empty state */
+
+.panel-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.panel-pagination .btn {
+  min-width: 76px;
+}
+
+.section-card .empty-state {
+  border: 1px dashed #d7e4ef;
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+@media (max-width: 992px) {
+  .page-actions .btn,
+  .page-actions .form-control {
+    flex: 1 1 auto;
+  }
+}
+
+
+/* ---- Global refinement: density + action semantics (low risk) ---- */
+
+/* Inputs/buttons: slightly roomier, more modern */
+.form-control,
+.form-select {
+  padding: 0.5rem 0.75rem;
+}
+
+
+
+/* Tables: modern spacing + clearer headers */
+
+.table thead th {
+  font-size: 0.9rem;
+  letter-spacing: 0.2px;
+}
+
+/* Action buttons: make danger clearly distinct without being loud */
+.btn-outline-danger {
+  border-color: rgba(220, 53, 69, 0.45);
+}
+
+.btn-outline-danger:hover {
+  background: rgba(220, 53, 69, 0.08);
+  border-color: rgba(220, 53, 69, 0.6);
+}
+
+.btn-danger,
+.btn-outline-danger {
+  box-shadow: none;
+}
+
+/* Secondary buttons look less flat */
+.btn-outline-secondary {
+  border-color: rgba(108, 117, 125, 0.35);
+}
+
+.btn-outline-secondary:hover {
+  background: rgba(108, 117, 125, 0.08);
+  border-color: rgba(108, 117, 125, 0.55);
+}
+
+/* Alerts: a touch more polish */
+
+/* Reduce visual noise in cards */
+.card .card-header {
+  padding: 0.85rem 1rem;
+}
+
+.card .card-body {
+  padding: 1rem;
+}
+
+/* Keep page toolbars from overflowing on long titles/forms */
+.page-head h3 {
+  min-width: 0;
+}
+
+.page-actions {
+  flex: 1 1 420px;
+  min-width: 0;
+}
+
+.page-actions > form {
+  min-width: 0;
+}

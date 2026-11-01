@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}定时任务 - Hardlink Manager{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h3 class="mb-0">定时任务</h3>
+  <div class="page-actions">
+    <button class="btn btn-outline-secondary" type="button" data-help-target="pageHelp" aria-expanded="false"><i class="fa-solid fa-circle-info me-1"></i><span class="help-toggle-label">页面说明</span></button>
+    <form class="js-ajax-form" action="/cron/backup-now" method="POST" data-target="cronJobsPanel">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-outline-primary">立即备份数据库</button>
+    </form>
+    <button class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#addCronModal">
+      <i class="fa-solid fa-plus"></i> 新建计划
+    </button>
+  </div>
+</div>
+
+<div id="pageHelp" class="section-card mb-3 d-none">
+  <div class="section-muted mb-1">系统任务说明：“系统缓存清理（高风险）”会清理缓存追踪记录（不会删除真实文件），建议仅在排查问题时手动执行。</div>
+  <div class="section-muted"><strong>计划表达式（Cron）快速帮助：</strong> <code>分 时 日 月 周</code>（24小时制），例如 <code>0 3 * * *</code> = 每天 <strong>03:00</strong> 执行。</div>
+</div>
+
+<div id="cronJobsPanel">
+  {% include "_cron_jobs_panel.html" %}
+</div>
+
+
+<div class="section-card mb-3">
+  <div class="section-title mb-2">常用计划表达式示例（24小时制）</div>
+  <ul class="mb-0">
+    <li><code>0 3 * * *</code>：每天 03:00 执行</li>
+    <li><code>30 3 * * *</code>：每天 03:30 执行</li>
+    <li><code>*/10 * * * *</code>：每 10 分钟执行一次</li>
+    <li><code>0 */6 * * *</code>：每 6 小时整点执行（00:00 / 06:00 / 12:00 / 18:00）</li>
+  </ul>
+</div>
+
+<div class="modal fade" id="addCronModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form class="js-ajax-form" data-target="cronJobsPanel" action="/cron/add" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="modal-header">
+          <h5 class="modal-title">新建定时任务</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="section-card mb-3">
+            <div class="section-title mb-2">任务信息</div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">任务名称</label>
+                <input class="form-control" name="name" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">任务类型<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="不同类型需要的目标不同：硬链接任务需选择目标任务，系统维护类无需目标。"></i></label>
+                <select class="form-select" name="task_type" id="task_type" onchange="updateTargetField()">
+                  <option value="batch_hardlink">批量创建硬链接</option>
+                  <option value="backfill_mapping">映射自动关联任务</option>
+                  <option value="clean_logs">清理日志</option>
+                  <option value="clean_cache">清理缓存（高风险）</option>
+                  <option value="clean_backfill_failures">重置长期失败自动关联</option>
+                  <option value="db_backup">数据库备份</option>
+                </select>
+              </div>
+              <div class="col-12" id="target_wrap">
+                <label id="target_label" class="form-label">关联任务</label>
+                <select class="form-select" name="target_id" id="target_id"></select>
+              </div>
+            </div>
+          </div>
+          <div class="section-card">
+            <div class="section-title mb-2">执行计划</div>
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label">计划表达式（Cron）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="格式是 分 时 日 月 周；建议避开下载高峰时段。"></i></label>
+                <input class="form-control cron-input" name="custom_cron" placeholder="*/10 * * * *" required data-preview-target="cronPreviewAdd">
+                <div class="form-text">格式：分 时 日 月 周（24小时制）</div>
+              </div>
+              <div class="col-12 alert alert-secondary py-2" id="cronPreviewAdd">请输入计划表达式查看解释</div>
+              <div class="col-12">
+                <label class="form-label">说明</label>
+                <textarea class="form-control" name="description"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">取消</button>
+          <button class="btn btn-brand" type="submit">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateTargetField(){
+  const typeEl=document.getElementById('task_type');
+  const wrap=document.getElementById('target_wrap');
+  const label=document.getElementById('target_label');
+  const select=document.getElementById('target_id');
+  if(!typeEl || !wrap || !label || !select) return;
+
+  const prev=String(select.value || '');
+  const t=String(typeEl.value || '');
+
+  const hardlinkOptions=[{v:'',l:'选择硬链接任务'},{% for task in hardlink_tasks %}{v:'{{ task.id }}',l:'{{ task.name|e }}'},{% endfor %}];
+
+  let options=[];
+  if(t==='batch_hardlink'){
+    wrap.style.display='block';
+    label.innerText='关联硬链接任务';
+    options=hardlinkOptions;
+    select.required=true;
+  }else{
+    wrap.style.display='none';
+    label.innerText='关联任务';
+    options=[{v:'',l:'无'}];
+    select.required=false;
+  }
+
+  select.innerHTML=options.map(o=>`<option value="${o.v}">${o.l}</option>`).join('');
+  const canKeep=options.some(o=>o.v===prev);
+  select.value=canKeep?prev:'';
+}
+
+function explainCron(expr){
+  const parts=(expr||'').trim().split(/\s+/);
+  if(parts.length!==5){
+    return '格式错误：请使用 5 段（分 时 日 月 周）';
+  }
+  const [minute,hour,day,month,dow]=parts;
+  if(day==='*' && month==='*' && dow==='*'){
+    if(/^\d+$/.test(minute) && /^\d+$/.test(hour)){
+      const mm=Number(minute), hh=Number(hour);
+      if(mm>=0 && mm<=59 && hh>=0 && hh<=23){
+        return `每天 ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} 执行（24小时制）`;
+      }
+    }
+    if(minute.startsWith('*/') && hour==='*'){
+      const step=Number(minute.slice(2));
+      if(step>0){
+        return `每 ${step} 分钟执行一次`;
+      }
+    }
+    if(hour.startsWith('*/') && /^\d+$/.test(minute)){
+      const step=Number(hour.slice(2));
+      const mm=Number(minute);
+      if(step>0 && mm>=0 && mm<=59){
+        return `每 ${step} 小时在 ${String(mm).padStart(2,'0')} 分执行（24小时制）`;
+      }
+    }
+  }
+  return '自定义计划表达式（可参考下方示例）';
+}
+
+function bindCronPreview(){
+  document.querySelectorAll('.cron-input').forEach((el)=>{
+    const targetId=el.getAttribute('data-preview-target');
+    const target=document.getElementById(targetId);
+    if(!target) return;
+    const update=()=>{ target.textContent=explainCron(el.value); };
+    if(!el.dataset.cronBound){
+      el.addEventListener('input', update);
+      el.dataset.cronBound='1';
+    }
+    update();
+  });
+}
+
+function initCronAddModal(){
+  const modalEl=document.getElementById('addCronModal');
+  const form=modalEl ? modalEl.querySelector('form') : null;
+  const typeEl=document.getElementById('task_type');
+  if(typeEl && !typeEl.dataset.bound){
+    typeEl.addEventListener('change', updateTargetField);
+    typeEl.dataset.bound='1';
+  }
+
+  if(modalEl && window.bootstrap){
+    modalEl.addEventListener('show.bs.modal', ()=>{
+      if(form){
+        form.reset();
+      }
+      updateTargetField();
+      bindCronPreview();
+    });
+  }
+
+  updateTargetField();
+  bindCronPreview();
+}
+
+window.addEventListener('DOMContentLoaded', initCronAddModal);
+</script>
+{% endblock %}

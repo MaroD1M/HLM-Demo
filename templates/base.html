@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Hardlink Manager{% endblock %}</title>
+  <script>(function(){try{var t=localStorage.getItem("hlm-theme");if(t){document.documentElement.dataset.theme=t;}}catch(e){}})();</script>
+  <link href="/static/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/vendor/fontawesome/css/all.min.css" rel="stylesheet">
+  <link href="/static/css/tokens.css" rel="stylesheet">
+  <link href="/static/css/fonts.css" rel="stylesheet">
+  <link href="/static/css/shell.css" rel="stylesheet">
+  <link href="/static/css/app.css" rel="stylesheet">
+  <link href="/static/css/page_features.css" rel="stylesheet">
+  <link href="/static/css/dark.css" rel="stylesheet">
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  
+</head>
+<body>
+<a class="skip-link" href="#mainContent">跳到主内容</a>
+<div class="shell">
+  <aside class="side" aria-label="主导航">
+    <div class="brand" aria-label="Hardlink Manager">
+      <span class="brand-mark" aria-hidden="true"><i class="fa-solid fa-link"></i></span>
+      <span class="brand-text">
+        <strong>Hardlink Manager</strong>
+        <small>Media Link Orchestrator</small>
+      </span>
+    </div>
+    <nav class="nav flex-column">
+      <a class="nav-link {% if request.path=='/' %}active{% endif %}" href="/"><i class="fa-solid fa-gauge"></i><span>仪表盘</span></a>
+      <a class="nav-link {% if request.path.startswith('/hardlink') %}active{% endif %}" href="/hardlink"><i class="fa-solid fa-link"></i><span>硬链接任务</span></a>
+      <a class="nav-link {% if request.path.startswith('/delete-monitor') %}active{% endif %}" href="/delete-monitor"><i class="fa-solid fa-shield-halved"></i><span>疑似误删处理</span></a>
+      <a class="nav-link {% if request.path.startswith('/cron') %}active{% endif %}" href="/cron"><i class="fa-regular fa-clock"></i><span>定时任务</span></a>
+      <a class="nav-link {% if request.path.startswith('/downloader') %}active{% endif %}" href="/downloader"><i class="fa-solid fa-download"></i><span>下载器</span></a>
+      <a class="nav-link {% if request.path.startswith('/notifier') %}active{% endif %}" href="/notifier"><i class="fa-regular fa-bell"></i><span>通知器</span></a>
+      <a class="nav-link {% if request.path.startswith('/logs') %}active{% endif %}" href="/logs"><i class="fa-solid fa-list-check"></i><span>日志与执行</span></a>
+      <a class="nav-link {% if request.path.startswith('/mapping') %}active{% endif %}" href="/mapping"><i class="fa-solid fa-diagram-project"></i><span>映射与缓存</span></a>
+      <a class="nav-link {% if request.path.startswith('/recycle') %}active{% endif %}" href="/recycle"><i class="fa-solid fa-recycle"></i><span>回收站</span></a>
+      <a class="nav-link {% if request.path=='/settings' %}active{% endif %}" href="/settings"><i class="fa-solid fa-gear"></i><span>系统设置</span></a>
+      <a class="nav-link {% if request.path.startswith('/settings/devops') %}active{% endif %}" href="/settings/devops#version"><i class="fa-solid fa-shield-halved"></i><span>安全与版本</span></a>
+      <a class="nav-link {% if request.path.startswith('/diagnostics') %}active{% endif %}" href="/diagnostics"><i class="fa-solid fa-stethoscope"></i><span>系统诊断</span></a>
+    </nav>
+    <div class="side-version">
+      <a class="version-pill" href="/settings/devops#version" title="查看版本与更新">
+        <i class="fa-solid fa-code-branch" aria-hidden="true"></i>
+        <span>版本 {{ app_version }}</span>
+        <span id="versionUpdateDot" class="version-dot d-none" aria-label="发现新版本"></span>
+      </a>
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-light w-100 mt-3" id="themeToggle" aria-label="切换主题">
+      <i class="fa-solid fa-circle-half-stroke me-1"></i><span id="themeToggleLabel">切换主题</span>
+    </button>
+    {% if auth_enabled and is_logged_in %}
+    <form action="/logout" method="POST" class="mt-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-sm btn-outline-light w-100">退出登录</button>
+    </form>
+    {% endif %}
+  </aside>
+  <main class="main" id="mainContent" tabindex="-1">
+    <div id="liveFeedback" role="status" aria-live="polite"></div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+<script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+<script src="/static/vendor/htmx/htmx.min.js" defer></script>
+
+<script>
+
+window.HLMNotice=function(msg,level){
+  const box=document.getElementById('liveFeedback');
+  if(!box||!msg) return;
+  const alert=document.createElement('div');
+  alert.className=`alert alert-${level||'info'} alert-dismissible fade show`;
+  alert.setAttribute('role','alert');
+  const text=document.createElement('span');
+  text.textContent=String(msg);
+  alert.appendChild(text);
+  const closeBtn=document.createElement('button');
+  closeBtn.type='button';
+  closeBtn.className='btn-close';
+  closeBtn.setAttribute('data-bs-dismiss','alert');
+  closeBtn.setAttribute('aria-label','关闭');
+  alert.appendChild(closeBtn);
+  box.appendChild(alert);
+  window.setTimeout(()=>{
+    if(!alert || !box.contains(alert)) return;
+    alert.classList.remove('show');
+    setTimeout(()=>{if(box.contains(alert)) alert.remove();},280);
+  },5000);
+};
+
+
+window.HLMHelpToggleBind=function(){
+  document.querySelectorAll('[data-help-target]').forEach((btn)=>{
+    if(btn.dataset.helpBound==='1') return;
+    btn.dataset.helpBound='1';
+    btn.addEventListener('click', ()=>{
+      const id=btn.getAttribute('data-help-target');
+      const panel=id?document.getElementById(id):null;
+      if(!panel) return;
+      const hidden=panel.classList.toggle('d-none');
+      btn.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+      const label=btn.querySelector('.help-toggle-label');
+      if(label) label.textContent = hidden ? '页面说明' : '收起说明';
+    });
+  });
+};
+
+window.HLMCopyBind=function(){
+  document.querySelectorAll('.js-copy-btn').forEach((btn)=>{
+    if(btn.dataset.copyBound==='1') return;
+    btn.dataset.copyBound='1';
+    btn.addEventListener('click', async ()=>{
+      const text=btn.getAttribute('data-copy-text') || '';
+      if(!text) return;
+      try{
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          await navigator.clipboard.writeText(text);
+        }else{
+          const ta=document.createElement('textarea');
+          ta.value=text;
+          ta.setAttribute('readonly','readonly');
+          ta.style.position='fixed';
+          ta.style.left='-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+        }
+        window.HLMNotice && window.HLMNotice('已复制到剪贴板','success');
+      }catch(_){
+        window.HLMNotice && window.HLMNotice('复制失败，请手动复制','warning');
+      }
+    });
+  });
+};
+
+window.HLMAjax={
+  withState(action){
+    try{
+      const url=new URL(action, window.location.origin);
+      if(url.origin!==window.location.origin) return action;
+      const current=new URLSearchParams(window.location.search);
+      current.forEach((value,key)=>{ if(!url.searchParams.has(key)) url.searchParams.set(key,value); });
+      return url.pathname + (url.search || '') + (url.hash || '');
+    }catch(_){ return action; }
+  },
+  bind(){
+
+    document.querySelectorAll('form.js-ajax-form button[type="submit"],form.js-ajax-form button:not([type])').forEach((btn)=>{
+      if(btn.dataset.boundClick==='1') return;
+      btn.dataset.boundClick='1';
+      btn.addEventListener('click', ()=>{ if(btn.form){ btn.form.__lastSubmitter = btn; } });
+    });
+
+    document.querySelectorAll('.js-ajax-form').forEach((form)=>{
+      if(form.dataset.bound==='1') return;
+      form.dataset.bound='1';
+      form.addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        const submitter=e.submitter || form.__lastSubmitter || form.querySelector('button[type="submit"],button:not([type])');
+        const formActionAttr=(typeof form.getAttribute==='function' ? form.getAttribute('action') : '') || '';
+        const formMethodAttr=(typeof form.getAttribute==='function' ? form.getAttribute('method') : '') || '';
+        const rawAction=(submitter && submitter.getAttribute('formaction')) || formActionAttr || (typeof form.action==='string' ? form.action : window.location.pathname);
+        const action=form.getAttribute('data-preserve-state')==='false' ? rawAction : window.HLMAjax.withState(rawAction);
+        const method=((submitter && submitter.getAttribute('formmethod')) || formMethodAttr || (typeof form.method==='string' ? form.method : 'POST') || 'POST').toUpperCase();
+        const confirmMsg=form.getAttribute('data-confirm') || (submitter && submitter.getAttribute('data-confirm'));
+        if(confirmMsg && !window.confirm(confirmMsg)) return;
+        const btn=submitter;
+        const old=btn?btn.textContent:'';
+        if(btn){btn.disabled=true;btn.textContent='处理中...';}
+        try{
+          const res=await fetch(action,{method:method,headers:{'X-Requested-With':'XMLHttpRequest'},body:new FormData(form)});
+          const ctype=(res.headers.get('content-type')||'').toLowerCase();
+          let data=null;
+          if(ctype.includes('application/json')){
+            data=await res.json();
+          }else{
+            const text=await res.text();
+            const short=text ? text.slice(0,120).replace(/\s+/g,' ') : '';
+            throw new Error(`NON_JSON_${res.status}:${short}`);
+          }
+          window.HLMNotice(data.message|| (data.ok ? '操作已完成' : '操作未完成，请检查后重试'), data.ok ? 'success' : 'danger');
+          if(!res.ok||!data.ok){return;}
+          if(data.target&&data.html){
+            const panel=document.getElementById(data.target);
+            if(panel){panel.innerHTML=data.html;}
+            document.querySelectorAll('.modal.show').forEach((m)=>{const inst=bootstrap.Modal.getInstance(m);if(inst){inst.hide();}});
+            document.querySelectorAll('.modal-backdrop').forEach((b)=>b.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.removeProperty('padding-right');
+            document.querySelectorAll('.modal form.js-ajax-form').forEach((f)=>{ if(f.hasAttribute('data-keep-values')) return; try{f.reset&&f.reset();}catch(_){}});
+            window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();if(window.initCronEditModal) window.initCronEditModal();if(window.bindMappingPanel) window.bindMappingPanel();if(window.bindLogMsgToggles) window.bindLogMsgToggles();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();if(window.HLMCopyBind) window.HLMCopyBind();if(window.HLMInitTooltips) window.HLMInitTooltips();
+          } else {
+            const refreshOnSuccess = (submitter && submitter.getAttribute('data-refresh-on-success')) || form.getAttribute('data-refresh-on-success');
+            if (String(refreshOnSuccess || '').toLowerCase() === 'true') {
+              window.location.reload();
+            }
+          }
+        }catch(err){
+          const msg=(err&&err.message&&String(err.message).startsWith('NON_JSON_'))
+            ? '请求失败：服务器返回异常响应，请稍后重试或查看系统日志'
+            : '网络异常：请检查网络连接后重试';
+          window.HLMNotice(msg,'danger');
+        }
+        finally{if(btn){btn.disabled=false;btn.textContent=old;}}
+      });
+    });
+  }
+};
+
+window.HLMAjax.bindFilters=function(){
+  document.querySelectorAll('form.js-ajax-filter').forEach((form)=>{
+    if(form.dataset.filterBound==='1') return;
+    form.dataset.filterBound='1';
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const targetId=form.getAttribute('data-target');
+      const target=document.getElementById(targetId||'');
+      if(!target) return form.submit();
+      const btn=form.querySelector('button[type="submit"],button:not([type])');
+      const old=btn?btn.textContent:'';
+      if(btn){btn.disabled=true;btn.textContent='筛选中...';}
+      try{
+        const qs=new URLSearchParams(new FormData(form)).toString();
+        const filterAction=(typeof form.getAttribute==='function' ? form.getAttribute('action') : '') || (typeof form.action==='string' ? form.action : window.location.pathname);
+        const nextUrl=filterAction + (qs ? ('?' + qs) : '');
+        const res=await fetch(nextUrl, {headers:{'X-Requested-With':'XMLHttpRequest'}});
+        const text=await res.text();
+        const doc=new DOMParser().parseFromString(text,'text/html');
+        const newer=doc.getElementById(targetId);
+        if(newer){
+          target.innerHTML=newer.innerHTML;
+          try{ window.history.replaceState(null,'',nextUrl); }catch(_){ }
+          window.HLMAjax.bind();
+          window.HLMAjax.bindFilters();
+          if(window.bindCronPreview) window.bindCronPreview();
+          if(window.initCronEditModal) window.initCronEditModal();
+          if(window.bindMappingPanel) window.bindMappingPanel();if(window.bindLogMsgToggles) window.bindLogMsgToggles();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();if(window.HLMCopyBind) window.HLMCopyBind();if(window.HLMInitTooltips) window.HLMInitTooltips();
+          window.HLMNotice && window.HLMNotice('筛选已更新','success');
+        }
+      }catch(_){window.HLMNotice && window.HLMNotice('筛选失败，请稍后重试','danger');}
+      finally{if(btn){btn.disabled=false;btn.textContent=old;}}
+    });
+  });
+};
+
+window.HLMTheme={
+  current(){return document.documentElement.dataset.theme || 'light';},
+  apply(theme){document.documentElement.dataset.theme=theme;try{localStorage.setItem('hlm-theme',theme);}catch(e){} const label=document.getElementById('themeToggleLabel'); if(label) label.textContent=theme==='dark'?'浅色模式':'深色模式';},
+  toggle(){this.apply(this.current()==='dark'?'light':'dark');}
+};
+window.HLMVersion={
+  refresh(){
+    fetch('/api/runtime/summary',{headers:{'X-Requested-With':'XMLHttpRequest'}})
+      .then((res)=>res.ok?res.json():null)
+      .then((data)=>{
+        const release=data&&data.release;
+        if(!release) return;
+        const dot=document.getElementById('versionUpdateDot');
+        if(dot){
+          dot.classList.toggle('d-none',!release.has_update);
+          if(release.has_update) dot.title=`发现新版本 ${release.remote_version}`;
+        }
+        if(release.has_update){
+          const key=`hlm-update-notified:${release.remote_version}`;
+          try{
+            if(!sessionStorage.getItem(key)){
+              sessionStorage.setItem(key,'1');
+              window.HLMNotice && window.HLMNotice(`发现新版本 ${release.local_version} → ${release.remote_version}，可在“安全与版本”查看`,'warning');
+            }
+          }catch(_){}
+        }
+      })
+      .catch(()=>{});
+  }
+};
+window.addEventListener('DOMContentLoaded',()=>{
+  window.HLMTheme.apply(window.HLMTheme.current());
+  const toggle=document.getElementById('themeToggle');
+  if(toggle) toggle.addEventListener('click',()=>window.HLMTheme.toggle());
+  window.HLMAjax.bind();window.HLMAjax.bindFilters();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();if(window.HLMCopyBind) window.HLMCopyBind();
+  window.HLMVersion.refresh();
+});
+window.HLMInitTooltips=function(){
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el)=>{
+    if(el.dataset.tooltipBound==='1') return;
+    el.dataset.tooltipBound='1';
+    try{ new bootstrap.Tooltip(el); }catch(_){}
+  });
+};
+window.addEventListener('DOMContentLoaded',()=>{ window.HLMInitTooltips(); });
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

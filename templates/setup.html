@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>(function(){try{var t=localStorage.getItem("hlm-theme");if(t){document.documentElement.dataset.theme=t;}}catch(e){}})();</script>
+  <title>首次初始化 - Hardlink Manager</title>
+  <link href="/static/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/vendor/fontawesome/css/all.min.css" rel="stylesheet">
+  <link href="/static/css/auth.css" rel="stylesheet">
+  <link href="/static/css/tokens.css" rel="stylesheet">
+  <link href="/static/css/fonts.css" rel="stylesheet">
+  <link href="/static/css/app.css" rel="stylesheet">
+  <link href="/static/css/dark.css" rel="stylesheet">
+</head>
+<body>
+  <div class="card p-4" style="max-width: 560px; width: 100%;">
+    <h4 class="mb-1">首次初始化</h4>
+    <div class="text-muted mb-3">创建唯一管理员账号后才能继续使用。账号密码只保存哈希，不保存明文。初始化令牌位于容器 <code>instance/setup_token.txt</code>（或通过 <code>HLM_SETUP_TOKEN</code> 配置）。</div>
+    <div class="alert alert-secondary py-2" role="alert">
+      <i class="fa-solid fa-circle-info"></i> 如需保持无认证模式，可在部署环境设置 <code>HLM_ALLOW_NO_AUTH=true</code>。不建议在局域网/公网暴露无认证实例。
+    </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} py-2">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    <form method="POST" action="/setup">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="mb-3">
+        <label class="form-label" for="setupToken">初始化令牌</label>
+        <input class="form-control" id="setupToken" name="setup_token" required autocomplete="off">
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="setupUsername">管理员用户名</label>
+        <input class="form-control" id="setupUsername" name="username" autocomplete="username" required maxlength="100">
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="setupPassword">密码</label>
+        <input class="form-control" id="setupPassword" type="password" name="password" autocomplete="new-password" required minlength="8" maxlength="300">
+        <div class="form-text">至少 8 个字符。</div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="setupConfirm">确认密码</label>
+        <input class="form-control" id="setupConfirm" type="password" name="confirm_password" autocomplete="new-password" required minlength="8" maxlength="300">
+      </div>
+      <button class="btn btn-brand w-100" type="submit">创建管理员并进入</button>
+    </form>
+  </div>
+</body>
+</html>

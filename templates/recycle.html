@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}回收站 - Hardlink Manager{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h3 class="mb-0">回收站 <i class="fa-solid fa-recycle text-success"></i></h3>
+  <div class="page-actions"><a class="btn btn-outline-secondary" href="/settings">回收站设置</a></div>
+</div>
+<div class="section-card">
+  <div class="section-muted mb-2">回收站用于降低误删风险。恢复会移动到原路径；永久删除不可恢复。</div>
+  {% if settings_passphrase_required %}
+  <div class="alert alert-warning py-2">当前已启用关键操作口令，永久删除需要在下方输入口令。</div>
+  {% endif %}
+  {% if items %}
+  <div class="table-responsive">
+    <table class="table align-middle">
+      <thead><tr><th>原路径</th><th>回收路径</th><th>大小</th><th>时间</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for item in items %}
+      <tr>
+        <td class="wrap-any">{{ item.original_path }}</td>
+        <td class="wrap-any small">{{ item.recycled_path }}</td>
+        <td class="text-nowrap">{{ item.size }} B</td>
+        <td class="text-nowrap small">{{ fmt_dt(item.created_at) }}</td>
+        <td>{% if item.restored_at %}<span class="badge text-bg-secondary">已恢复</span>{% else %}<span class="badge text-bg-success">在回收站</span>{% endif %}</td>
+        <td>
+          {% if not item.restored_at %}
+          <form action="/recycle/restore/{{ item.id }}" method="POST" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-sm btn-outline-primary" type="submit">恢复</button>
+          </form>
+          <form action="/recycle/delete/{{ item.id }}" method="POST" class="d-inline" onsubmit="return confirm('确认永久删除？不可恢复。')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input class="form-control form-control-sm d-inline-block" style="width:150px" type="password" name="critical_passphrase" placeholder="关键口令（如启用）">
+            <button class="btn btn-sm btn-outline-danger" type="submit">永久删除</button>
+          </form>
+          {% else %}
+          <form action="/recycle/delete/{{ item.id }}" method="POST" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-sm btn-outline-secondary" type="submit">移除记录</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><i class="fa-solid fa-recycle"></i>回收站为空</div>
+  {% endif %}
+</div>
+{% endblock %}
