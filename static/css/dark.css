@@ -179,3 +179,38 @@
 [data-theme="dark"] .mapping-table thead th.col-actions {
   background: #1b2430 !important;
 }
+
+[data-theme="dark"] .cron-table .col-actions {
+  background: var(--panel) !important;
+  box-shadow: -10px 0 10px -12px rgba(0, 0, 0, 0.7);
+}
+
+[data-theme="dark"] .cron-table thead .col-actions,
+[data-theme="dark"] .cron-table thead th.col-actions {
+  background: #1b2430 !important;
+}
+
+[data-theme="dark"] .modal-header {
+  background: #161b22 !important;
+  border-color: var(--line) !important;
+}
+
+[data-theme="dark"] .modal-footer {
+  background: var(--panel) !important;
+  border-color: var(--line) !important;
+}
+
+[data-theme="dark"] .field-title {
+  background: #1b2a3a !important;
+  border-color: var(--line) !important;
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .mapping-table .col-actions {
+  box-shadow: none !important;
+}
+
+[data-theme="dark"] .cron-table .col-actions {
+  background: transparent !important;
+  box-shadow: none !important;
+}

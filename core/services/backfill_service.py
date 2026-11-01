@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
+import time
 
 
 def _norm(v):
@@ -71,27 +72,49 @@ def _candidate_hashes(candidate_torrents):
     return hashes
 
 
-def _prefetch_torrent_files(downloader, candidate_torrents, list_torrent_files, files_cache, max_workers=4):
+def _prefetch_torrent_files(downloader, candidate_torrents, list_torrent_files, files_cache, max_workers=4, deadline=None):
     all_hashes = _candidate_hashes(candidate_torrents)
     missing = [th for th in all_hashes if th not in files_cache]
     if not missing:
-        return {'requested': 0, 'cache_hits': len(all_hashes)}
+        return {'requested': 0, 'cache_hits': len(all_hashes), 'timed_out': False}
 
     workers = max(1, min(int(max_workers or 1), len(missing)))
     if workers <= 1:
+        requested = 0
+        timed_out = False
         for th in missing:
+            if deadline is not None and time.monotonic() >= deadline:
+                timed_out = True
+                break
             files_cache[th] = list_torrent_files(downloader, th)
-        return {'requested': len(missing), 'cache_hits': len(all_hashes) - len(missing)}
+            requested += 1
+        return {'requested': requested, 'cache_hits': len(all_hashes) - len(missing), 'timed_out': timed_out}
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        future_map = {pool.submit(list_torrent_files, downloader, th): th for th in missing}
-        for fut in as_completed(future_map):
-            th = future_map[fut]
-            try:
-                files_cache[th] = fut.result()
-            except Exception:
-                files_cache[th] = None
-    return {'requested': len(missing), 'cache_hits': len(all_hashes) - len(missing)}
+    requested = 0
+    timed_out = False
+    pending = list(missing)
+    batch_size = max(1, workers * 4)
+    while pending:
+        if deadline is not None and time.monotonic() >= deadline:
+            timed_out = True
+            break
+        batch = pending[:batch_size]
+        pending = pending[batch_size:]
+        with ThreadPoolExecutor(max_workers=min(workers, len(batch))) as pool:
+            future_map = {pool.submit(list_torrent_files, downloader, th): th for th in batch}
+            for fut in as_completed(future_map):
+                th = future_map[fut]
+                try:
+                    files_cache[th] = fut.result()
+                except Exception:
+                    files_cache[th] = None
+                requested += 1
+                if deadline is not None and time.monotonic() >= deadline:
+                    timed_out = True
+                    break
+        if timed_out:
+            break
+    return {'requested': requested, 'cache_hits': len(all_hashes) - len(missing), 'timed_out': timed_out}
 
 
 def _match_by_filelist(row, downloader, candidate_torrents, list_torrent_files, files_cache=None, exact_cache=None):
@@ -148,7 +171,7 @@ def _match_by_filelist(row, downloader, candidate_torrents, list_torrent_files, 
     return result
 
 
-def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_files, log_operation, should_stop=None, max_failures=2, allow_global_fallback=True, max_candidates=120, file_fetch_workers=4, normalize_path=None):
+def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_files, log_operation, should_stop=None, max_failures=2, allow_global_fallback=True, max_candidates=120, file_fetch_workers=4, normalize_path=None, budget_seconds=None):
     """Backfill torrent hashes using path/name scoring and exact file matching."""
     """Backfill torrent hash for mapping rows.
 
@@ -163,6 +186,7 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
     total_candidates = 0
     total_filelist_requested = 0
     total_filelist_cache_hits = 0
+    deadline = time.monotonic() + float(budget_seconds) if budget_seconds else None
 
     groups = {}
     for row in rows:
@@ -182,6 +206,11 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
             continue
 
         for row in items:
+            if deadline is not None and time.monotonic() >= deadline:
+                skipped += 1
+                log_operation('backfill_skipped', 'FileLinkMap', row.id, row.source_path, 'deep_retry_timeout;budget_exhausted', False)
+                continue
+
             if should_stop and should_stop():
                 log_operation('backfill_stopped', 'FileLinkMap', None, '映射回填', '收到停止指令，已中止本轮回填', False)
                 total_rows = len(rows or [])
@@ -236,11 +265,19 @@ def scan_backfill_rows(rows, downloader_resolver, list_torrents, list_torrent_fi
 
             if candidates:
                 total_candidates += len(candidates)
-                fetch_stats = _prefetch_torrent_files(downloader, candidates, list_torrent_files, files_cache, max_workers=file_fetch_workers) or {}
+                fetch_stats = _prefetch_torrent_files(downloader, candidates, list_torrent_files, files_cache, max_workers=file_fetch_workers, deadline=deadline) or {}
                 total_filelist_requested += int(fetch_stats.get('requested', 0) or 0)
                 total_filelist_cache_hits += int(fetch_stats.get('cache_hits', 0) or 0)
-                matched_hash, reason = _match_by_filelist(row, downloader, candidates, list_torrent_files, files_cache=files_cache, exact_cache=exact_cache)
+                if fetch_stats.get('timed_out'):
+                    matched_hash = None
+                    reason = 'deep_retry_timeout'
+                else:
+                    matched_hash, reason = _match_by_filelist(row, downloader, candidates, list_torrent_files, files_cache=files_cache, exact_cache=exact_cache)
 
+            if reason == 'deep_retry_timeout':
+                skipped += 1
+                log_operation('backfill_skipped', 'FileLinkMap', row.id, probe.name, 'deep_retry_timeout;budget_exhausted', False)
+                continue
             if fallback_mode and reason == 'filelist_no_match':
                 reason = 'candidate_empty_fallback_no_match'
             if matched_hash:

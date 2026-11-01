@@ -25,7 +25,6 @@ def test_api_runtime_summary_get():
     client = _client()
     with app.app_context():
         from app import set_config
-        set_config('dev_mode', 'true')
         set_config('security_read_only_enabled', 'true')
         set_config('security_ip_allowlist_enabled', 'false')
         set_config('webhook_enabled', 'true')
@@ -34,7 +33,6 @@ def test_api_runtime_summary_get():
     data = resp.get_json()
     assert data['ok'] is True
     assert 'release' in data
-    assert data['settings']['dev_mode'] == 'true'
     assert data['settings']['read_only'] == 'true'
     assert data['settings']['webhook_enabled'] == 'true'
 
@@ -309,70 +307,6 @@ def test_settings_save_backfill_invalid_range_rejected():
     assert 'backfill_file_fetch_workers' in data['message']
 
 
-def test_settings_save_dev_mode_keys_and_token_keep_clear():
-    client = _client()
-    with app.app_context():
-        from app import set_config
-        set_config('dev_mode', 'false')
-        set_config('dev_auto_pull', 'false')
-        set_config('dev_git_repo', '')
-        set_config('dev_git_branch', 'master')
-        set_config('dev_auto_pip_sync', 'true')
-        set_config('dev_pip_sync_timeout', '120')
-        set_config('dev_git_token', 'old_token')
-
-    token = _get_csrf_token(client, '/settings')
-
-    # keep token when input is empty
-    resp = client.post('/settings/save', data={
-        'csrf_token': token,
-        'dev_mode': 'true',
-        'dev_auto_pull': 'true',
-        'dev_git_repo': 'https://github.com/MaroD1M/HLM-Demo.git',
-        'dev_git_branch': 'master',
-        'dev_auto_pip_sync': 'false',
-        'dev_pip_sync_timeout': '180',
-        'dev_git_token': '',
-        'dev_git_token_clear': 'false',
-    })
-    assert resp.status_code in (200, 302)
-
-    with app.app_context():
-        from app import get_config
-        assert get_config('dev_mode') == 'true'
-        assert get_config('dev_auto_pull') == 'true'
-        assert get_config('dev_git_repo') == 'https://github.com/MaroD1M/HLM-Demo.git'
-        assert get_config('dev_auto_pip_sync') == 'false'
-        assert get_config('dev_pip_sync_timeout') == '180'
-        assert get_config('dev_git_token') == 'old_token'
-
-    token2 = _get_csrf_token(client, '/settings')
-    resp2 = client.post('/settings/save', data={
-        'csrf_token': token2,
-        'dev_git_token': '',
-        'dev_git_token_clear': 'true',
-    })
-    assert resp2.status_code in (200, 302)
-    with app.app_context():
-        from app import get_config
-        assert get_config('dev_git_token') == ''
-
-
-def test_settings_save_dev_mode_invalid_rejected():
-    client = _client()
-    token = _get_csrf_token(client, '/settings')
-
-    resp = client.post('/settings/save', data={
-        'csrf_token': token,
-        'dev_git_branch': 'bad branch name',
-    }, headers={'X-Requested-With': 'XMLHttpRequest'})
-
-    assert resp.status_code == 400
-    data = resp.get_json()
-    assert data['ok'] is False
-    assert 'dev_git_branch' in data['message']
-
-
 def test_settings_import_backfill_invalid_value_rejected():
     client = _client()
     token = _get_csrf_token(client, '/settings')
@@ -413,7 +347,7 @@ def test_settings_save_writes_audit_log():
 def test_settings_import_failure_writes_audit_log():
     client = _client()
     token = _get_csrf_token(client, '/settings')
-    bad_payload = '{"dev_git_branch":"bad branch name"}'.encode('utf-8')
+    bad_payload = '{"backfill_batch_limit":"10"}'.encode('utf-8')
     resp = client.post(
         '/settings/import',
         data={
@@ -435,7 +369,6 @@ def test_settings_export_includes_meta_and_settings_wrapper():
     with app.app_context():
         from app import set_config
         set_config('critical_action_passphrase', 'secret')
-        set_config('dev_git_token', 'tok-1')
         set_config('security_2fa_secret', '2fa')
         set_config('webhook_secret', 'wh-secret')
         set_config('api_access_token', 'api-token')
@@ -446,7 +379,6 @@ def test_settings_export_includes_meta_and_settings_wrapper():
     assert 'settings' in payload
     assert isinstance(payload['settings'], dict)
     assert payload['settings'].get('critical_action_passphrase') == '***'
-    assert payload['settings'].get('dev_git_token') == '***'
     assert payload['settings'].get('security_2fa_secret') == '***'
     assert payload['settings'].get('webhook_secret') == '***'
     assert payload['settings'].get('api_access_token') == '***'
@@ -620,21 +552,8 @@ def test_cron_page_contains_next_run_and_last_exec_columns():
     resp = client.get('/cron')
     assert resp.status_code == 200
     text = resp.get_data(as_text=True)
-    assert '下次执行（本地）' in text
+    assert '下次执行' in text
     assert '最近执行' in text
-
-def test_settings_dev_restart_disabled():
-    client = _client()
-    token = _get_csrf_token(client, '/settings/devops')
-    resp = client.post('/settings/dev-restart', data={
-        'csrf_token': token,
-    }, headers={'X-Requested-With': 'XMLHttpRequest'})
-    assert resp.status_code == 400
-    payload = resp.get_json()
-    assert payload['ok'] is False
-    assert '已禁用应用内自动重启' in payload['message']
-
-
 
 def test_settings_devops_page_has_no_inapp_restart_controls():
     client = _client()
@@ -871,3 +790,53 @@ def test_dashboard_contains_new_kpi_blocks():
     assert '最近20次成功率' in text
     assert '最近20次平均耗时' in text
     assert '最近200条失败类型' in text
+
+
+def test_api_version_endpoint_uses_cached_release():
+    client = _client()
+    resp = client.get('/api/version')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['ok'] is True
+    assert 'local_version' in data
+    assert 'release' in data
+
+
+def test_settings_devops_page_no_longer_exposes_dev_mode():
+    client = _client()
+    resp = client.get('/settings/devops')
+    assert resp.status_code == 200
+    text = resp.get_data(as_text=True)
+    assert '开发模式（页面配置）' not in text
+    assert 'dev_git_repo' not in text
+    assert '安全与版本' in text
+
+
+def test_settings_save_new_backfill_performance_keys():
+    client = _client()
+    with app.app_context():
+        from app import get_config, set_config
+        old_budget = get_config('backfill_deep_budget_seconds', '120')
+        old_retention = get_config('backfill_failure_retention_days', '7')
+        old_cooldown = get_config('mapping_reset_cooldown_seconds', '60')
+    token = _get_csrf_token(client, '/settings')
+    try:
+        resp = client.post('/settings/save', data={
+            'csrf_token': token,
+            'save_scope': 'backfill',
+            'backfill_deep_budget_seconds': '150',
+            'backfill_failure_retention_days': '14',
+            'mapping_reset_cooldown_seconds': '90',
+        }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        with app.app_context():
+            from app import get_config
+            assert get_config('backfill_deep_budget_seconds') == '150'
+            assert get_config('backfill_failure_retention_days') == '14'
+            assert get_config('mapping_reset_cooldown_seconds') == '90'
+    finally:
+        with app.app_context():
+            from app import set_config
+            set_config('backfill_deep_budget_seconds', old_budget)
+            set_config('backfill_failure_retention_days', old_retention)
+            set_config('mapping_reset_cooldown_seconds', old_cooldown)

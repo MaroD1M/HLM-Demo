@@ -4,12 +4,16 @@
             <form id="mapBulkForm" action="/mapping/link/bulk-delete" method="POST" class="d-none js-ajax-form" data-target="mappingPanel">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       </form>
+      <form id="mapResetForm" action="/mapping/link/reset-fail-bulk" method="POST" class="d-none js-ajax-form" data-target="mappingPanel">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      </form>
       <div class="mb-2 d-flex gap-2 flex-wrap">
         <span id="mapSelectionTip" class="badge text-bg-secondary align-self-center">已选 0 项</span>
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleAllByClass('map-check', true)">全选</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleAllByClass('map-check', false)">取消全选</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="invertByClass('map-check')">反选</button>
         <button type="button" class="btn btn-sm btn-outline-danger" onclick="submitBulkSelection('mapBulkForm','map-check','map_ids','确认批量删除选中的映射记录？仅删除数据库映射，不删除真实文件。')">批量删除映射</button>
+        <button type="button" class="btn btn-sm btn-outline-warning" onclick="submitBulkSelection('mapResetForm','map-check','map_ids','确认批量重置选中的映射失败计数？')">批量重置失败计数</button>
       </div>
 
       <div class="table-responsive table-shell">
@@ -49,7 +53,10 @@
                 </td>
                 <td class="wrap-any col-hash">
                   <small class="text-muted">#{{ m.downloader_id or '-' }}</small>
-                  <code class="hash-ellipsis" title="{{ m.torrent_hash or '-' }}">{{ m.torrent_hash or '-' }}</code>
+                  <div class="d-flex align-items-center gap-1 mapping-seed-row">
+                    <code class="hash-ellipsis" title="{{ m.torrent_hash or '-' }}">{% if m.torrent_hash and m.torrent_hash|length > 10 %}{{ m.torrent_hash[:10] }}…{% else %}{{ m.torrent_hash or '-' }}{% endif %}</code>
+                    {% if m.torrent_hash %}<button type="button" class="btn btn-sm btn-link p-0 js-copy-btn flex-shrink-0" data-copy-text="{{ m.torrent_hash }}" data-bs-toggle="tooltip" title="复制种子哈希"><i class="fa-regular fa-copy"></i></button>{% endif %}
+                  </div>
                 </td>
                 <td class="col-actions"><div class="actions-row">
                   {% if not m.torrent_hash %}
@@ -66,7 +73,7 @@
                     <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="深度重试：忽略分类过滤，全量扫描种子文件并允许全量回退，可能增加下载器负载">深度重试</button>
                   </form>
                   {% endif %}
-                  <form action="/mapping/link/reset-fail/{{ m.id }}" method="POST" class="m-0 js-ajax-form" data-target="mappingPanel">
+                  <form action="/mapping/link/reset-fail/{{ m.id }}" method="POST" class="m-0 js-ajax-form" data-target="mappingPanel" data-confirm="确认将该映射的失败计数清零？">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="将该记录失败计数清零并清空上次失败时间">重置失败计数</button>
                   </form>
@@ -87,8 +94,8 @@
       <div class="panel-pagination">
         <small class="text-muted">第 {{ map_page }} / {{ map_total_pages }} 页</small>
         <div>
-          {% if map_page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page-1 }}&cache_page={{ cache_page }}&q={{ (q or '')|urlencode }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&per_page={{ per_page or 20 }}&panel_view={{ panel_view or 'mapping' }}">上一页</a>{% endif %}
-          {% if map_page<map_total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page+1 }}&cache_page={{ cache_page }}&q={{ (q or '')|urlencode }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&per_page={{ per_page or 20 }}&panel_view={{ panel_view or 'mapping' }}">下一页</a>{% endif %}
+          {% if map_page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page-1 }}&cache_page={{ cache_page }}&q={{ (q or '')|urlencode }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&fail_state={{ fail_state or 'all' }}&per_page={{ per_page or 20 }}&panel_view={{ panel_view or 'mapping' }}">上一页</a>{% endif %}
+          {% if map_page<map_total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page+1 }}&cache_page={{ cache_page }}&q={{ (q or '')|urlencode }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&fail_state={{ fail_state or 'all' }}&per_page={{ per_page or 20 }}&panel_view={{ panel_view or 'mapping' }}">下一页</a>{% endif %}
         </div>
       </div>
     {% endif %}
@@ -135,8 +142,8 @@
       <div class="panel-pagination">
         <small class="text-muted">第 {{ cache_page }} / {{ cache_total_pages }} 页</small>
         <div>
-          {% if cache_page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page }}&cache_page={{ cache_page-1 }}&q={{ (q or '')|urlencode }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&per_page={{ per_page or 20 }}&panel_view={{ panel_view or 'mapping' }}">上一页</a>{% endif %}
-          {% if cache_page<cache_total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page }}&cache_page={{ cache_page+1 }}&q={{ (q or '')|urlencode }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&per_page={{ per_page or 20 }}&panel_view={{ panel_view or 'mapping' }}">下一页</a>{% endif %}
+          {% if cache_page>1 %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page }}&cache_page={{ cache_page-1 }}&q={{ (q or '')|urlencode }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&fail_state={{ fail_state or 'all' }}&per_page={{ per_page or 20 }}&panel_view={{ panel_view or 'mapping' }}">上一页</a>{% endif %}
+          {% if cache_page<cache_total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/mapping?page={{ map_page }}&cache_page={{ cache_page+1 }}&q={{ (q or '')|urlencode }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&fail_state={{ fail_state or 'all' }}&per_page={{ per_page or 20 }}&panel_view={{ panel_view or 'mapping' }}">下一页</a>{% endif %}
         </div>
       </div>
     {% endif %}

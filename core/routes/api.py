@@ -103,6 +103,21 @@ def init_api_routes(HardlinkTask, DeleteMonitorTask, AppConfig=None, OperationLo
         }
         return jsonify(spec)
 
+    @api_bp.get('/api/version')
+    def api_version():
+        if not get_release_info:
+            return jsonify({'ok': False, 'message': 'version info unavailable'}), 503
+        release = get_release_info(allow_network=False)
+        return jsonify({
+            'ok': True,
+            'local_version': release.get('local_version', '-'),
+            'remote_version': release.get('remote_version', '-'),
+            'has_update': bool(release.get('has_update')),
+            'message': release.get('message', '-'),
+            'checked_at': release.get('checked_at', '-'),
+            'release': release,
+        })
+
     @api_bp.get('/api/health')
     def api_health():
         db_ok = True
@@ -135,14 +150,13 @@ def init_api_routes(HardlinkTask, DeleteMonitorTask, AppConfig=None, OperationLo
         if not AppConfig or not OperationLog or not get_config or not get_release_info or not get_running_executions_snapshot:
             return jsonify({'ok': False, 'message': 'runtime summary unavailable'}), 503
         settings = {c.key: c.value for c in AppConfig.query.all()}
-        release = get_release_info()
+        release = get_release_info(allow_network=False)
         running = get_running_executions_snapshot()
         recent_logs = OperationLog.query.order_by(OperationLog.created_at.desc()).limit(10).all()
         return jsonify({
             'ok': True,
             'release': release,
             'settings': {
-                'dev_mode': settings.get('dev_mode', 'false'),
                 'read_only': settings.get('security_read_only_enabled', 'false'),
                 'ip_allowlist': settings.get('security_ip_allowlist_enabled', 'false'),
                 'webhook_enabled': settings.get('webhook_enabled', 'false'),

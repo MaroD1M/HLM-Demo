@@ -66,22 +66,11 @@ SETTING_SPECS = {
     'backfill_max_failures': {'default': '2', 'desc': '映射回填失败跳过阈值', 'type': 'int', 'min': 0, 'max': 10, 'scopes': ('backfill',)},
     'backfill_path_mappings': {'default': '', 'desc': '回填路径映射，格式 /host/path=>/container/path;...', 'type': 'text', 'max_length': 4000, 'scopes': ('backfill',)},
     'backfill_failure_retention_days': {'default': '7', 'desc': '长期失败回填记录重置阈值（天）', 'type': 'int', 'min': 1, 'scopes': ('backfill',)},
-
-    'dev_mode': {'default': 'false', 'desc': '开发模式开关（页面配置）', 'type': 'bool', 'scopes': ('dev',)},
-    'dev_auto_pull': {'default': 'false', 'desc': '开发模式：启动自动拉取', 'type': 'bool', 'scopes': ('dev',)},
-    'dev_git_repo': {'default': 'https://github.com/MaroD1M/HLM-Demo.git', 'desc': '开发模式：Git 仓库地址', 'type': 'repo', 'max_length': 300, 'scopes': ('dev',)},
-    'dev_git_branch': {'default': 'master', 'desc': '开发模式：Git 分支', 'type': 'branch', 'scopes': ('dev',)},
-    'dev_auto_pip_sync': {'default': 'true', 'desc': '开发模式：依赖自动同步', 'type': 'bool', 'scopes': ('dev',)},
-    'dev_pip_sync_timeout': {'default': '120', 'desc': '开发模式：pip 同步超时（秒）', 'type': 'int', 'min': 30, 'max': 1800, 'scopes': ('dev',)},
-    'dev_git_token': {'default': '', 'desc': '开发模式：Git 访问令牌（敏感）', 'type': 'text', 'max_length': 300, 'scopes': ('dev',)},
-    'dev_proxy_url': {'default': '', 'desc': '开发模式：代理地址', 'type': 'proxy_url', 'scopes': ('dev',)},
-    'dev_no_proxy': {'default': 'localhost,127.0.0.1,::1', 'desc': '开发模式：NO_PROXY', 'type': 'text', 'max_length': 500, 'scopes': ('dev',)},
+    'backfill_deep_budget_seconds': {'default': '120', 'desc': '深度重试时间预算（秒）', 'type': 'int', 'min': 30, 'max': 600, 'scopes': ('backfill',)},
+    'mapping_reset_cooldown_seconds': {'default': '60', 'desc': '手动重置失败计数冷却（秒）', 'type': 'int', 'min': 0, 'max': 3600, 'scopes': ('backfill',)},
 
     'version_check_cached_remote': {'default': '', 'desc': '版本检查缓存远端版本'},
     'version_check_cached_at': {'default': '', 'desc': '版本检查缓存检查时间'},
-    'last_dev_apply_status': {'default': '', 'desc': '开发模式最近应用状态'},
-    'last_dev_apply_message': {'default': '', 'desc': '开发模式最近应用消息'},
-    'last_dev_apply_at': {'default': '', 'desc': '开发模式最近应用时间'},
     'worker_last_seen_at': {'default': '', 'desc': 'worker 最近心跳时间'},
     'worker_heartbeat_ttl_seconds': {'default': '45', 'desc': 'worker 心跳有效秒数', 'type': 'int', 'min': 5, 'max': 3600},
 }
@@ -153,8 +142,6 @@ def validate_setting_value(key: str, raw):
     if typ == 'repo':
         is_url = text.startswith(('http://', 'https://'))
         is_slug = bool(re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', text))
-        if key == 'dev_git_repo' and text and not is_url:
-            return False, 'must start with http:// or https://'
         if text and not (is_url or is_slug):
             return False, 'must be a URL or owner/repo slug'
         if len(text) > spec.get('max_length', 10**9):

@@ -15,8 +15,8 @@
 <div class="section-card mb-3">
   <div class="section-title mb-2">显示视图</div>
   <div class="d-flex gap-2 flex-wrap">
-    <a class="btn btn-sm {{ 'btn-brand' if panel_view=='mapping' else 'btn-outline-secondary' }}" href="/mapping?page={{ map_page }}&cache_page={{ cache_page }}&q={{ (q or '')|urlencode }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&per_page={{ per_page or 20 }}&panel_view=mapping">文件映射</a>
-    <a class="btn btn-sm {{ 'btn-brand' if panel_view=='cache' else 'btn-outline-secondary' }}" href="/mapping?page={{ map_page }}&cache_page={{ cache_page }}&q={{ (q or '')|urlencode }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&per_page={{ per_page or 20 }}&panel_view=cache">缓存管理</a>
+    <a class="btn btn-sm {{ 'btn-brand' if panel_view=='mapping' else 'btn-outline-secondary' }}" href="/mapping?page={{ map_page }}&cache_page={{ cache_page }}&q={{ (q or '')|urlencode }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&fail_state={{ fail_state or 'all' }}&per_page={{ per_page or 20 }}&panel_view=mapping">文件映射</a>
+    <a class="btn btn-sm {{ 'btn-brand' if panel_view=='cache' else 'btn-outline-secondary' }}" href="/mapping?page={{ map_page }}&cache_page={{ cache_page }}&q={{ (q or '')|urlencode }}&hash_state={{ hash_state }}&source_type={{ source_type or 'all' }}&fail_state={{ fail_state or 'all' }}&per_page={{ per_page or 20 }}&panel_view=cache">缓存管理</a>
   </div>
   <div class="mapping-danger-zone">
     <div class="section-muted small mb-2"><i class="fa-solid fa-triangle-exclamation me-1"></i>清理记录（只删除数据库记录，不删除真实文件）</div>
@@ -33,7 +33,7 @@
   <div class="section-title mb-2">筛选条件</div>
   <form class="row g-2 js-ajax-filter" data-target="mappingPanel" method="GET" action="/mapping">
     <input type="hidden" name="panel_view" value="{{ panel_view or 'mapping' }}">
-    <div class="col-md-4"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索路径 / 文件关键字 / 哈希"></div>
+    <div class="col-md-3"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索路径 / 文件关键字 / 哈希"></div>
     <div class="col-md-2">
       <select class="form-select" name="hash_state">
         <option value="all" {% if hash_state=='all' %}selected{% endif %}>全部关联状态</option>
@@ -50,6 +50,13 @@
       </select>
     </div>
     <div class="col-md-2">
+      <select class="form-select" name="fail_state" data-bs-toggle="tooltip" title="按回填失败次数筛选；超过阈值的记录不会再自动回填。">
+        <option value="all" {% if (fail_state or 'all')=='all' %}selected{% endif %}>全部失败状态</option>
+        <option value="failed" {% if fail_state=='failed' %}selected{% endif %}>有失败</option>
+        <option value="permanent" {% if fail_state=='permanent' %}selected{% endif %}>超过阈值</option>
+      </select>
+    </div>
+    <div class="col-md-1">
       <select class="form-select" name="per_page" title="每页条数">
         {% for n in per_page_options or [10,20,50,100] %}
           <option value="{{ n }}" {% if (per_page or 20)==n %}selected{% endif %}>{{ n }}/页</option>

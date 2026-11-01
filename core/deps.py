@@ -51,6 +51,7 @@ class RouteDeps:
     delete_torrent: Callable
     get_release_info: Callable
     request_stop_by_execution: Callable
+    is_run_key_active: Callable
     get_running_executions_snapshot: Callable
     save_config_snapshot: Callable
     restore_config_snapshot: Callable

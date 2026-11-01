@@ -55,8 +55,7 @@ services:
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
 
-      # v0.5.0 起已移除“开发与更新”页面；旧版 /app/instance/dev_runtime.env
-      # 仍会被启动脚本兼容读取，普通部署无需配置。
+      # v0.5.1 起已彻底移除应用内开发模式；无需配置自动拉取或依赖同步。
 
     volumes:
       # =========================
@@ -71,9 +70,6 @@ services:
 
       - ./data/logs:/app/data/logs
       - ./data/recycle:/app/data/recycle
-
-      # 旧版开发模式代码目录（仅兼容旧配置，可删除）
-      - ./data/devsrc:/app-devsrc
 
       # 媒体根目录映射（推荐单目录映射）
       # 例如：容器内统一使用 /media/downloads 与 /media/library

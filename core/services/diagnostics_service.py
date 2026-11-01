@@ -26,7 +26,6 @@ SENSITIVE_KEY_EXACT = {
     'APP_PASSWORD',
     'SECRET_KEY',
     'critical_action_passphrase',
-    'dev_git_token',
     'security_2fa_secret',
     'webhook_secret',
     'api_access_token',

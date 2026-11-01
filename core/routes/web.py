@@ -20,13 +20,11 @@ from core.services.config_service import (
     validate_setting_value,
 )
 from core.services.operation_guard_service import build_operation_preview, run_preflight_checks
-from core.services.runtime_config_service import write_dev_runtime_env
 from core.services.webhook_service import dispatch_webhook
 
 web_bp = Blueprint('web_bp', __name__)
 
 
-DEV_DEFAULT_GIT_REPO = 'https://github.com/MaroD1M/HLM-Demo.git'
 OPERATION_TYPE_LABELS = {
     'hardlink_created': '创建硬链接',
     'hardlink_skipped': '跳过硬链接',
@@ -158,6 +156,7 @@ def init_web_routes(ctx: RouteDeps):
     delete_torrent_func = ctx.delete_torrent
     get_release_info = ctx.get_release_info
     request_stop_by_execution = ctx.request_stop_by_execution
+    is_run_key_active = ctx.is_run_key_active
     get_running_executions_snapshot = ctx.get_running_executions_snapshot
     save_config_snapshot = ctx.save_config_snapshot
     restore_config_snapshot = ctx.restore_config_snapshot
@@ -180,9 +179,12 @@ def init_web_routes(ctx: RouteDeps):
             path = f'{path}?{parsed.query}'
         return path
 
-    def _json_or_redirect(ok, message, redirect_path, html=None, target=None, status=200):
+    def _json_or_redirect(ok, message, redirect_path, html=None, target=None, status=200, extra=None):
         if _wants_json():
-            return jsonify({'ok': ok, 'message': message, 'html': html, 'target': target}), status
+            payload = {'ok': ok, 'message': message, 'html': html, 'target': target}
+            if extra:
+                payload.update(extra)
+            return jsonify(payload), status
         flash(message, 'success' if ok else 'danger')
         return redirect(redirect_path)
 
@@ -217,11 +219,43 @@ def init_web_routes(ctx: RouteDeps):
             log_operation('job_enqueued', 'JobQueue', row.id, job_name or job_type, message)
         return row, message
 
-    def _sync_dev_runtime():
+    def _mapping_reset_cooldown_remaining(map_id):
         try:
-            write_dev_runtime_env(get_config, Path(current_app.instance_path) / 'dev_runtime.env')
-        except Exception as exc:
-            current_app.logger.warning('write dev runtime env failed: %s', exc)
+            cooldown = int(get_config('mapping_reset_cooldown_seconds', '60') or '60')
+        except Exception:
+            cooldown = 60
+        cooldown = max(0, min(3600, cooldown))
+        if cooldown <= 0:
+            return 0
+        last = OperationLog.query.filter_by(
+            operation_type='mapping_backfill_fail_reset',
+            target_id=map_id,
+        ).order_by(OperationLog.created_at.desc()).first()
+        if not last or not last.created_at:
+            return 0
+        created = last.created_at if last.created_at.tzinfo else last.created_at.replace(tzinfo=UTC)
+        remaining = cooldown - (datetime.now(UTC) - created.astimezone(UTC)).total_seconds()
+        return max(0, int(remaining))
+
+    def _mapping_backfill_running(row):
+        keys = [f'backfill:single:{row.id}', f'backfill_single:{row.id}']
+        downloader_id = row.downloader_id
+        if not downloader_id:
+            fallback = Downloader.query.filter_by(enabled=True, type='qbittorrent').order_by(Downloader.id.asc()).first()
+            downloader_id = fallback.id if fallback else None
+        if downloader_id:
+            keys.append(f'backfill:{downloader_id}')
+        for key in keys:
+            if is_run_key_active(key):
+                return True
+        if JobQueue is not None:
+            queued = JobQueue.query.filter(
+                JobQueue.status.in_(('queued', 'running')),
+                JobQueue.run_key.in_(keys),
+            ).first()
+            if queued:
+                return True
+        return False
 
     def _critical_guard():
         expected = (get_config('critical_action_passphrase', '') or '').strip()
@@ -1135,61 +1169,85 @@ def init_web_routes(ctx: RouteDeps):
         return _json_or_redirect(True, '通知器已删除', '/notifier', html=html, target='notifierJobsPanel')
 
 
-    def _mapping_payload(page=None, cache_page=None, q=None, hash_state=None, source_type=None, panel_view=None, per_page=None):
+    def _mapping_payload(page=None, cache_page=None, q=None, hash_state=None, source_type=None, panel_view=None, per_page=None, fail_state=None):
         page = max(page if page is not None else request.args.get('page', 1, type=int), 1)
         cache_page = max(cache_page if cache_page is not None else request.args.get('cache_page', 1, type=int), 1)
         q = (q if q is not None else request.args.get('q') or '').strip()
         hash_state = (hash_state if hash_state is not None else request.args.get('hash_state') or 'all').strip()
         source_type = (source_type if source_type is not None else request.args.get('source_type') or 'all').strip()
+        fail_state = (fail_state if fail_state is not None else request.args.get('fail_state') or 'all').strip()
         panel_view = (panel_view if panel_view is not None else request.args.get('panel_view') or 'mapping').strip().lower()
         if panel_view not in {'mapping', 'cache'}:
             panel_view = 'mapping'
+        if fail_state not in {'all', 'failed', 'permanent'}:
+            fail_state = 'all'
         allowed_per_page = {10, 20, 50, 100}
         per_page_val = per_page if per_page is not None else request.args.get('per_page', 20, type=int)
         if per_page_val not in allowed_per_page:
             per_page_val = 20
 
-        mapping_q = FileLinkMap.query
-        if q:
-            like = f"%{q}%"
-            mapping_q = mapping_q.filter(
-                (FileLinkMap.source_path.like(like)) |
-                (FileLinkMap.dest_path.like(like)) |
-                (FileLinkMap.torrent_hash.like(like))
-            )
-        if hash_state in {'linked', 'unlinked'}:
-            mapping_q = mapping_q.filter(FileLinkMap.deleted_at.is_(None))
-        if hash_state == 'linked':
-            mapping_q = mapping_q.filter(FileLinkMap.torrent_hash.isnot(None))
-        elif hash_state == 'unlinked':
-            mapping_q = mapping_q.filter(FileLinkMap.torrent_hash.is_(None))
-        if source_type == 'manual':
-            mapping_q = mapping_q.filter(FileLinkMap.source_type == 'manual')
-        elif source_type == 'downloader':
-            mapping_q = mapping_q.filter(FileLinkMap.source_type == 'downloader')
-        elif source_type == 'pending':
-            mapping_q = mapping_q.filter(FileLinkMap.source_type == 'pending')
+        mappings = []
+        map_total_pages = 1
+        caches = []
+        cache_total_pages = 1
 
-        mapping_q = mapping_q.order_by(FileLinkMap.created_at.desc())
-        mapping_pg = mapping_q.paginate(page=page, per_page=per_page_val, error_out=False)
+        if panel_view == 'mapping':
+            mapping_q = FileLinkMap.query
+            if q:
+                like = f"%{q}%"
+                mapping_q = mapping_q.filter(
+                    (FileLinkMap.source_path.like(like)) |
+                    (FileLinkMap.dest_path.like(like)) |
+                    (FileLinkMap.torrent_hash.like(like))
+                )
+            if hash_state in {'linked', 'unlinked'}:
+                mapping_q = mapping_q.filter(FileLinkMap.deleted_at.is_(None))
+            if hash_state == 'linked':
+                mapping_q = mapping_q.filter(FileLinkMap.torrent_hash.isnot(None))
+            elif hash_state == 'unlinked':
+                mapping_q = mapping_q.filter(FileLinkMap.torrent_hash.is_(None))
+            if source_type == 'manual':
+                mapping_q = mapping_q.filter(FileLinkMap.source_type == 'manual')
+            elif source_type == 'downloader':
+                mapping_q = mapping_q.filter(FileLinkMap.source_type == 'downloader')
+            elif source_type == 'pending':
+                mapping_q = mapping_q.filter(FileLinkMap.source_type == 'pending')
+            if fail_state == 'failed':
+                mapping_q = mapping_q.filter(db.func.coalesce(FileLinkMap.backfill_fail_count, 0) > 0)
+            elif fail_state == 'permanent':
+                mapping_q = mapping_q.filter(db.func.coalesce(FileLinkMap.backfill_fail_count, 0) > 2)
 
-        cache_q = HardlinkCache.query
-        if q:
-            like = f"%{q}%"
-            cache_q = cache_q.filter((HardlinkCache.source_path.like(like)) | (HardlinkCache.dest_path.like(like)))
-        cache_q = cache_q.order_by(HardlinkCache.created_at.desc())
-        cache_pg = cache_q.paginate(page=cache_page, per_page=per_page_val, error_out=False)
+            mapping_q = mapping_q.order_by(FileLinkMap.created_at.desc())
+            mapping_pg = mapping_q.paginate(page=page, per_page=per_page_val, error_out=False)
+            if mapping_pg.pages and page > mapping_pg.pages:
+                page = mapping_pg.pages
+                mapping_pg = mapping_q.paginate(page=page, per_page=per_page_val, error_out=False)
+            mappings = mapping_pg.items
+            map_total_pages = max(mapping_pg.pages, 1)
+        else:
+            cache_q = HardlinkCache.query
+            if q:
+                like = f"%{q}%"
+                cache_q = cache_q.filter((HardlinkCache.source_path.like(like)) | (HardlinkCache.dest_path.like(like)))
+            cache_q = cache_q.order_by(HardlinkCache.created_at.desc())
+            cache_pg = cache_q.paginate(page=cache_page, per_page=per_page_val, error_out=False)
+            if cache_pg.pages and cache_page > cache_pg.pages:
+                cache_page = cache_pg.pages
+                cache_pg = cache_q.paginate(page=cache_page, per_page=per_page_val, error_out=False)
+            caches = cache_pg.items
+            cache_total_pages = max(cache_pg.pages, 1)
 
         return {
-            'mappings': mapping_pg.items,
+            'mappings': mappings,
             'map_page': page,
-            'map_total_pages': max(mapping_pg.pages, 1),
-            'caches': cache_pg.items,
+            'map_total_pages': map_total_pages,
+            'caches': caches,
             'cache_page': cache_page,
-            'cache_total_pages': max(cache_pg.pages, 1),
+            'cache_total_pages': cache_total_pages,
             'q': q,
             'hash_state': hash_state,
             'source_type': source_type,
+            'fail_state': fail_state,
             'panel_view': panel_view,
             'per_page': per_page_val,
             'per_page_options': [10, 20, 50, 100],
@@ -1281,6 +1339,29 @@ def init_web_routes(ctx: RouteDeps):
 
         retry_mode = (request.form.get('retry_mode') or 'fast').strip().lower()
         deep_retry = retry_mode == 'deep'
+
+        if deep_retry and _worker_is_live():
+            job, _created, queue_msg = enqueue_job(
+                'backfill_single',
+                target_id=map_id,
+                source='web',
+                payload={'deep_retry': True},
+                job_name='单条映射回填（深度重试）',
+            )
+            if job:
+                log_operation('job_enqueued', 'JobQueue', job.id, '单条映射回填（深度重试）', queue_msg)
+                payload = _mapping_payload()
+                html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
+                return _json_or_redirect(
+                    True,
+                    f'{queue_msg}，已提交后台深度重试（任务 #{job.id}）',
+                    '/mapping',
+                    html=html,
+                    target='mappingPanel',
+                    extra={'job_id': job.id, 'refresh_after_ms': 3000},
+                )
+            return _json_or_redirect(False, queue_msg or '深度重试入队失败', '/mapping', status=400)
+
         ok, msg = run_backfill_for_map_id(map_id, deep_retry=deep_retry)
         db.session.refresh(row)
         payload = _mapping_payload()
@@ -1296,6 +1377,11 @@ def init_web_routes(ctx: RouteDeps):
         row = db.session.get(FileLinkMap, map_id)
         if not row:
             return _json_or_redirect(False, '映射记录不存在', '/mapping', status=404)
+        if _mapping_backfill_running(row):
+            return _json_or_redirect(False, '该映射正在回填，请等待完成后再重置', '/mapping', status=409)
+        remaining = _mapping_reset_cooldown_remaining(row.id)
+        if remaining > 0:
+            return _json_or_redirect(False, f'重置过于频繁，请等待 {remaining} 秒后再试', '/mapping', status=429)
         row.backfill_fail_count = 0
         row.backfill_last_attempt_at = None
         db.session.commit()
@@ -1303,6 +1389,45 @@ def init_web_routes(ctx: RouteDeps):
         payload = _mapping_payload()
         html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
         return _json_or_redirect(True, '回填失败计数已重置，可再次参与回填', '/mapping', html=html, target='mappingPanel')
+
+    @web_bp.route('/mapping/link/reset-fail-bulk', methods=['POST'])
+    def mapping_link_reset_fail_bulk():
+        raw_ids = request.form.getlist('map_ids')
+        ids = []
+        for value in raw_ids:
+            try:
+                ids.append(int(value))
+            except Exception:
+                continue
+        ids = sorted({value for value in ids if value > 0})
+        if not ids:
+            return _json_or_redirect(False, '请先勾选要重置的映射记录', '/mapping', status=400)
+        rows = FileLinkMap.query.filter(FileLinkMap.id.in_(ids)).all()
+        if not rows:
+            return _json_or_redirect(False, '未找到可重置的映射记录', '/mapping', status=404)
+        reset = 0
+        skipped_running = 0
+        skipped_cooldown = 0
+        for row in rows:
+            if _mapping_backfill_running(row):
+                skipped_running += 1
+                continue
+            if _mapping_reset_cooldown_remaining(row.id) > 0:
+                skipped_cooldown += 1
+                continue
+            row.backfill_fail_count = 0
+            row.backfill_last_attempt_at = None
+            log_operation('mapping_backfill_fail_reset', 'FileLinkMap', row.id, row.source_path, '批量重置回填失败计数', commit=False)
+            reset += 1
+        db.session.commit()
+        message = f'已重置 {reset} 条失败计数'
+        if skipped_running:
+            message += f'，{skipped_running} 条正在回填已跳过'
+        if skipped_cooldown:
+            message += f'，{skipped_cooldown} 条处于冷却中已跳过'
+        payload = _mapping_payload()
+        html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(reset > 0, message, '/mapping', html=html, target='mappingPanel', status=200 if reset > 0 else 400)
 
 
     @web_bp.route('/mapping/cache/delete', methods=['POST'])
@@ -1510,13 +1635,10 @@ def init_web_routes(ctx: RouteDeps):
         for key in get_editable_setting_keys():
             if key not in settings:
                 settings[key] = get_default_setting_value(key)
-        if not (settings.get('dev_git_repo') or '').strip():
-            settings['dev_git_repo'] = DEV_DEFAULT_GIT_REPO
-        settings['dev_git_token_masked'] = '******' if (settings.get('dev_git_token') or '').strip() else ''
         for secret_key in ('critical_action_passphrase', 'security_2fa_secret', 'webhook_secret', 'api_access_token'):
             settings[secret_key + '_masked'] = '******' if (settings.get(secret_key) or '').strip() else ''
             settings[secret_key] = ''
-        release = get_release_info()
+        release = get_release_info(allow_network=False)
         snapshots = AppConfigSnapshot.query.order_by(AppConfigSnapshot.created_at.desc()).limit(10).all()
         admin_user = AdminUser.query.order_by(AdminUser.id.asc()).first()
         return settings, release, snapshots, admin_user
@@ -1531,7 +1653,7 @@ def init_web_routes(ctx: RouteDeps):
         settings, release, snapshots, admin_user = _settings_page_payload()
         return render_template('settings_devops.html', settings=settings, release=release, snapshots=snapshots, admin_user=admin_user)
 
-    secret_keep_keys = {'dev_git_token', 'critical_action_passphrase', 'security_2fa_secret', 'webhook_secret', 'api_access_token'}
+    secret_keep_keys = {'critical_action_passphrase', 'security_2fa_secret', 'webhook_secret', 'api_access_token'}
 
     def _save_settings_from_form(form, allowed_keys=None, save_scope=''):
         changed = False
@@ -1563,10 +1685,7 @@ def init_web_routes(ctx: RouteDeps):
             changed_keys.append(key)
         if changed:
             db.session.commit()
-            # Keep entrypoint runtime config in sync with DB settings for next restart.
-            if any(str(key).startswith('dev_') for key in changed_keys):
-                _sync_dev_runtime()
-            if save_scope in {'update', 'dev'}:
+            if save_scope == 'update':
                 dispatch_webhook('settings_changed', {'scope': save_scope or 'all', 'changed_keys': changed_keys}, get_config, logger=current_app.logger)
         return True, '', changed_keys
 
@@ -1575,7 +1694,7 @@ def init_web_routes(ctx: RouteDeps):
         save_scope = (request.form.get('save_scope') or '').strip()
         allowed_keys = SETTINGS_SAVE_SCOPES.get(save_scope)
         ok, msg, changed_keys = _save_settings_from_form(request.form, allowed_keys=allowed_keys, save_scope=save_scope)
-        redirect_to = '/settings/devops' if save_scope in {'dev', 'update'} else '/settings'
+        redirect_to = '/settings/devops' if save_scope == 'update' else '/settings'
         if not ok:
             log_operation(
                 'settings_save_failed',
@@ -1597,11 +1716,6 @@ def init_web_routes(ctx: RouteDeps):
 
 
 
-    @web_bp.route('/settings/dev-restart', methods=['POST'])
-    def settings_dev_restart():
-        return _json_or_redirect(False, '已禁用应用内自动重启，请保存后手动重启容器以应用开发模式配置', '/settings/devops', status=400)
-
-    
     @web_bp.route('/settings/check-update', methods=['POST'])
     def settings_check_update():
         info = get_release_info(force_refresh=True)
@@ -1618,7 +1732,7 @@ def init_web_routes(ctx: RouteDeps):
     @web_bp.route('/settings/export', methods=['GET'])
     def settings_export():
         settings_data = {c.key: c.value for c in AppConfig.query.all()}
-        for k in ('critical_action_passphrase', 'dev_git_token', 'security_2fa_secret', 'webhook_secret', 'api_access_token'):
+        for k in ('critical_action_passphrase', 'security_2fa_secret', 'webhook_secret', 'api_access_token'):
             if settings_data.get(k):
                 settings_data[k] = '***'
         for k, value in list(settings_data.items()):
@@ -1681,7 +1795,6 @@ def init_web_routes(ctx: RouteDeps):
                 applied += 1
         if changed:
             db.session.commit()
-            _sync_dev_runtime()
             log_operation(
                 'settings_imported',
                 'AppConfig',
@@ -1706,8 +1819,7 @@ def init_web_routes(ctx: RouteDeps):
             return _json_or_redirect(False, '快照不存在', '/settings', status=404)
         ok, msg = restore_config_snapshot(row)
         if ok:
-            _sync_dev_runtime()
-        log_operation('settings_snapshot_rollback', 'AppConfigSnapshot', row.id, row.label, msg, ok)
+            log_operation('settings_snapshot_rollback', 'AppConfigSnapshot', row.id, row.label, msg, ok)
         return _json_or_redirect(ok, msg, '/settings', status=200 if ok else 400)
 
     @web_bp.route('/settings/snapshot/delete/<int:snapshot_id>', methods=['POST'])

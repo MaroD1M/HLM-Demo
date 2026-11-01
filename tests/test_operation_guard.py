@@ -106,7 +106,7 @@ def test_support_bundle_redacts_sensitive_values():
         'backfill_metrics_rows': [],
         'backup_files': [],
         'config_rows': [
-            {'key': 'dev_git_token', 'value': 'abc123', 'description': '', 'updated_at': None},
+            {'key': 'webhook_secret', 'value': 'abc123', 'description': '', 'updated_at': None},
             {'key': 'proxy_url', 'value': 'http://127.0.0.1:7890', 'description': '', 'updated_at': None},
         ],
         'recent_operations': [],

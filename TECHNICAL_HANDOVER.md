@@ -1,6 +1,6 @@
 # HLM-Demo 技术交接文档
 
-版本：`v0.5.0`  
+版本：`v0.5.1`  
 数据库 schema：`v17`  
 文档更新时间：2026-11-01  
 适用对象：后续维护者、部署者、测试者、代码接手人
@@ -172,23 +172,25 @@ SQLite
 
 ## 5. 当前已完成内容
 
-### 5.1 v0.5.0 已发布
+### 5.1 v0.5.1 已发布
 
-- GitHub Release：`v0.5.0`
+- GitHub Release：`v0.5.1`
 - 镜像：
-  - `ghcr.io/marod1m/hlm-demo:v0.5.0`
+  - `ghcr.io/marod1m/hlm-demo:v0.5.1`
   - `ghcr.io/marod1m/hlm-demo:latest`
 - 镜像 digest 以 GitHub Packages 页面为准，避免文档中的 digest 随重建失效。
 - 平台：`linux/amd64`、`linux/arm64`
 - GHCR 匿名拉取已验证。
 
-### 5.1.1 v0.5.0 重点变化
+### 5.1.1 v0.5.1 重点变化
 
-- v17 迁移修复历史库缺少 `downloader.category` / `session_ttl_seconds` 导致的启动崩溃。
-- 回填匹配支持“源文件夹名 = 种子名”的多文件种子；深度重试跨分类并取消候选截断。
-- 映射与缓存页 AJAX 操作保留分页和筛选；筛选状态同步到 URL。
-- 深色模式补齐表格、卡片、空状态和分页按钮的对比度。
-- “开发与更新”页面简化为“安全与版本”，侧边栏增加版本号和新版本提示。
+- 修复失败重试后面板不刷新的问题：4xx 响应也会更新失败次数和上次失败时间。
+- 手动重置失败计数增加 60 秒冷却、二次确认和正在回填保护；新增批量重置。
+- 深度重试在 worker 在线时后台执行，默认 120 秒预算；无 worker 时同步执行并受同一预算限制。
+- 映射页只分页当前视图，新增失败状态筛选和种子哈希复制。
+- 版本检查改为缓存优先，侧边栏改用轻量 `/api/version`；手动检查才访问 GitHub。
+- 深色模式补齐定时任务固定操作列和模态框标题栏。
+- **彻底移除应用内开发模式**：删除 `dev_*` 配置、自动拉取、依赖同步、Git 代理、`dev_runtime.env` 与 `data/devsrc` 逻辑。
 
 ### 5.2 安全与初始化
 
@@ -366,7 +368,7 @@ SQLite
 
 ### 阶段 1：稳定性与实测
 
-目标：验证 v0.5.0 真实环境。
+目标：验证 v0.5.1 真实环境。
 
 1. 首次初始化。
 2. 2FA。
@@ -443,7 +445,6 @@ core/services/diagnostics_service.py
 core/services/config_service.py
 core/services/security_service.py
 core/services/operation_guard_service.py
-core/services/runtime_config_service.py
 core/services/webhook_service.py
 core/services/audit_service.py
 templates/                    Jinja 页面与局部面板

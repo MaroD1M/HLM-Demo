@@ -154,6 +154,53 @@ window.HLMAjax={
       return url.pathname + (url.search || '') + (url.hash || '');
     }catch(_){ return action; }
   },
+  replacePanel(targetId, html){
+    const panel=document.getElementById(targetId);
+    if(!panel) return false;
+    panel.innerHTML=html;
+    document.querySelectorAll('.modal.show').forEach((m)=>{const inst=bootstrap.Modal.getInstance(m);if(inst){inst.hide();}});
+    document.querySelectorAll('.modal-backdrop').forEach((b)=>b.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.removeProperty('padding-right');
+    document.querySelectorAll('.modal form.js-ajax-form').forEach((f)=>{ if(f.hasAttribute('data-keep-values')) return; try{f.reset&&f.reset();}catch(_){}});
+    window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();if(window.initCronEditModal) window.initCronEditModal();if(window.bindMappingPanel) window.bindMappingPanel();if(window.bindLogMsgToggles) window.bindLogMsgToggles();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();if(window.HLMCopyBind) window.HLMCopyBind();if(window.HLMInitTooltips) window.HLMInitTooltips();
+    return true;
+  },
+  refreshPanel(targetId){
+    if(!targetId) return;
+    fetch(window.location.pathname + window.location.search, {headers:{'X-Requested-With':'XMLHttpRequest'}})
+      .then((res)=>res.text())
+      .then((text)=>{
+        const doc=new DOMParser().parseFromString(text,'text/html');
+        const newer=doc.getElementById(targetId);
+        if(newer) window.HLMAjax.replacePanel(targetId, newer.innerHTML);
+      })
+      .catch(()=>{});
+  },
+  pollJob(jobId, targetId, intervalMs){
+    let attempts=0;
+    const maxAttempts=90;
+    const tick=async()=>{
+      attempts+=1;
+      let terminal=false;
+      try{
+        const res=await fetch(`/api/v1/jobs/${jobId}`, {headers:{'X-Requested-With':'XMLHttpRequest'}});
+        const data=res.ok?await res.json():null;
+        const job=data&&data.job;
+        if(job && ['success','failed','cancelled'].includes(job.status)){
+          terminal=true;
+          if(targetId) window.HLMAjax.refreshPanel(targetId);
+          if(job.message) window.HLMNotice && window.HLMNotice(job.message, job.status==='success'?'success':'danger');
+        }
+      }catch(_){}
+      if(!terminal && attempts<maxAttempts){
+        window.setTimeout(tick, Math.max(1500, intervalMs||3000));
+      } else if(!terminal && targetId){
+        window.HLMAjax.refreshPanel(targetId);
+      }
+    };
+    window.setTimeout(tick, Math.max(1500, intervalMs||3000));
+  },
   bind(){
 
     document.querySelectorAll('form.js-ajax-form button[type="submit"],form.js-ajax-form button:not([type])').forEach((btn)=>{
@@ -190,17 +237,12 @@ window.HLMAjax={
             throw new Error(`NON_JSON_${res.status}:${short}`);
           }
           window.HLMNotice(data.message|| (data.ok ? '操作已完成' : '操作未完成，请检查后重试'), data.ok ? 'success' : 'danger');
+          const panelApplied = (data.target && data.html) ? window.HLMAjax.replacePanel(data.target, data.html) : false;
+          if(data.job_id){
+            window.HLMAjax.pollJob(data.job_id, data.target||'', data.refresh_after_ms);
+          }
           if(!res.ok||!data.ok){return;}
-          if(data.target&&data.html){
-            const panel=document.getElementById(data.target);
-            if(panel){panel.innerHTML=data.html;}
-            document.querySelectorAll('.modal.show').forEach((m)=>{const inst=bootstrap.Modal.getInstance(m);if(inst){inst.hide();}});
-            document.querySelectorAll('.modal-backdrop').forEach((b)=>b.remove());
-            document.body.classList.remove('modal-open');
-            document.body.style.removeProperty('padding-right');
-            document.querySelectorAll('.modal form.js-ajax-form').forEach((f)=>{ if(f.hasAttribute('data-keep-values')) return; try{f.reset&&f.reset();}catch(_){}});
-            window.HLMAjax.bind();window.HLMAjax.bindFilters&&window.HLMAjax.bindFilters();if(window.bindCronPreview) window.bindCronPreview();if(window.initCronEditModal) window.initCronEditModal();if(window.bindMappingPanel) window.bindMappingPanel();if(window.bindLogMsgToggles) window.bindLogMsgToggles();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();if(window.HLMCopyBind) window.HLMCopyBind();if(window.HLMInitTooltips) window.HLMInitTooltips();
-          } else {
+          if(!panelApplied){
             const refreshOnSuccess = (submitter && submitter.getAttribute('data-refresh-on-success')) || form.getAttribute('data-refresh-on-success');
             if (String(refreshOnSuccess || '').toLowerCase() === 'true') {
               window.location.reload();
@@ -261,7 +303,7 @@ window.HLMTheme={
 };
 window.HLMVersion={
   refresh(){
-    fetch('/api/runtime/summary',{headers:{'X-Requested-With':'XMLHttpRequest'}})
+    fetch('/api/version',{headers:{'X-Requested-With':'XMLHttpRequest'}})
       .then((res)=>res.ok?res.json():null)
       .then((data)=>{
         const release=data&&data.release;

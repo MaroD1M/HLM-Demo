@@ -1,4 +1,4 @@
-# HLM-Demo 部署与运维指南（v0.5.0）
+# HLM-Demo 部署与运维指南（v0.5.1）
 
 本文档面向生产/实测部署，使用 Compose 启动 web、worker、scheduler 三个核心服务。
 
@@ -10,7 +10,7 @@
 
 已发布镜像：
 
-- `ghcr.io/marod1m/hlm-demo:v0.5.0`
+- `ghcr.io/marod1m/hlm-demo:v0.5.1`
 - `ghcr.io/marod1m/hlm-demo:latest`
 
 镜像 digest 以 GitHub Packages 页面为准，避免文档中的 digest 随重建失效。
@@ -197,13 +197,13 @@ docker compose up -d
 
 升级前建议手动备份数据库与 `instance/secret_key`。
 
-## 9. 开发/调试部署（v0.5.0 起简化）
+## 9. 开发/调试部署（v0.5.1 起已移除）
 
-v0.5.0 起不再提供“系统设置 -> 开发模式”的页面入口，普通部署不需要配置开发模式。
+v0.5.1 起彻底移除应用内开发模式：不再自动拉取 Git 仓库、不再同步依赖、不再读取 `instance/dev_runtime.env`，也不再挂载 `data/devsrc`。
 
-- 已有旧版 `instance/dev_runtime.env` 的实例仍会被启动脚本兼容读取。
-- 新部署请使用 `docker compose pull` 更新镜像；本地开发请在仓库内运行。
-- 旧版 `dev_*` 配置项不再在界面展示，相关后端兼容逻辑保留。
+- 旧版 `instance/dev_runtime.env`、`data/devsrc` 和 `dev_*` 配置可以删除。
+- 生产更新统一使用 `docker compose pull && docker compose up -d --force-recreate`。
+- 本地开发请在仓库内使用 Python 虚拟环境运行。
 
 ## 10. API 快速验证
 
@@ -275,22 +275,22 @@ bash scripts/build_image.sh
 或手动：
 
 ```bash
-docker build -t ghcr.io/marod1m/hlm-demo:v0.5.0 .
-docker tag ghcr.io/marod1m/hlm-demo:v0.5.0 ghcr.io/marod1m/hlm-demo:latest
+docker build -t ghcr.io/marod1m/hlm-demo:v0.5.1 .
+docker tag ghcr.io/marod1m/hlm-demo:v0.5.1 ghcr.io/marod1m/hlm-demo:latest
 ```
 
 推送：
 
 ```bash
-docker push ghcr.io/marod1m/hlm-demo:v0.5.0
+docker push ghcr.io/marod1m/hlm-demo:v0.5.1
 docker push ghcr.io/marod1m/hlm-demo:latest
 ```
 
 或打 tag 触发 GitHub Actions：
 
 ```bash
-git tag v0.5.0
-git push origin v0.5.0
+git tag v0.5.1
+git push origin v0.5.1
 ```
 
 CI 会构建 `linux/amd64` 与 `linux/arm64` 镜像并推送到 GHCR。

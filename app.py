@@ -15,6 +15,7 @@ import struct
 import uuid
 import logging
 import sys
+import time
 import re
 from logging.handlers import RotatingFileHandler
 from datetime import datetime, UTC, timedelta
@@ -172,12 +173,25 @@ DEFAULT_SECRET_KEY = 'default-secret-key-for-dev-only'
 WEAK_SECRET_KEYS = {DEFAULT_SECRET_KEY, 'replace-with-a-strong-random-string'}
 SENSITIVE_CONFIG_KEYS = frozenset({
     'critical_action_passphrase',
-    'dev_git_token',
     'security_2fa_secret',
     'webhook_secret',
     'api_access_token',
 })
 UNDECRYPTABLE_SECRET = '__HLM_UNDECRYPTABLE_' + secrets.token_urlsafe(32)
+LEGACY_DEV_CONFIG_KEYS = frozenset({
+    'dev_mode',
+    'dev_auto_pull',
+    'dev_git_repo',
+    'dev_git_branch',
+    'dev_auto_pip_sync',
+    'dev_pip_sync_timeout',
+    'dev_git_token',
+    'dev_proxy_url',
+    'dev_no_proxy',
+    'last_dev_apply_status',
+    'last_dev_apply_message',
+    'last_dev_apply_at',
+})
 
 
 def _load_or_create_secret_key():
@@ -319,50 +333,62 @@ def _is_remote_newer(local_version, remote_version):
     return remote_parts > local_parts
 
 
-def get_release_info(force_refresh=False):
+def get_release_info(force_refresh=False, allow_network=True):
     local_version = app.config.get('APP_VERSION', 'dev')
     enabled = str(get_config('github_version_check_enabled', 'true')).lower() == 'true'
+    repo = (get_config('github_repo', 'marod1m/HLM-Demo') or 'marod1m/HLM-Demo').strip()
+    api_base = (get_config('github_api_base', 'https://api.github.com') or 'https://api.github.com').strip().rstrip('/')
+    cached_remote = (get_config('version_check_cached_remote', '') or '').strip()
+    cached_at = (get_config('version_check_cached_at', '') or '').strip()
+
     if not enabled and not force_refresh:
         return {
             'local_version': local_version,
-            'remote_version': '-',
+            'remote_version': cached_remote or '-',
             'has_update': False,
-            'repo': get_config('github_repo', 'marod1m/HLM-Demo'),
-            'checked_at': '-',
+            'repo': repo,
+            'checked_at': cached_at or '-',
             'message': '已关闭版本检查',
         }
 
-    repo = (get_config('github_repo', 'marod1m/HLM-Demo') or 'marod1m/HLM-Demo').strip()
-    api_base = (get_config('github_api_base', 'https://api.github.com') or 'https://api.github.com').strip().rstrip('/')
+    ttl = int(get_config('version_check_cache_minutes', '720') or '720')
+    if not force_refresh and cached_remote and cached_at:
+        try:
+            cached_ts = datetime.fromisoformat(cached_at.replace('Z', '+00:00'))
+            if cached_ts.tzinfo is None:
+                cached_ts = cached_ts.replace(tzinfo=UTC)
+            age_min = (datetime.now(UTC) - cached_ts.astimezone(UTC)).total_seconds() / 60
+            if age_min < max(1, ttl):
+                return {
+                    'local_version': local_version,
+                    'remote_version': cached_remote,
+                    'has_update': _is_remote_newer(local_version, cached_remote),
+                    'repo': repo,
+                    'checked_at': cached_at,
+                    'message': f'缓存({int(age_min)}分钟内)',
+                }
+        except Exception as exc:
+            app.logger.debug('version cache parse failed: %s', exc)
+
+    if not allow_network and not force_refresh:
+        return {
+            'local_version': local_version,
+            'remote_version': cached_remote or '-',
+            'has_update': _is_remote_newer(local_version, cached_remote) if cached_remote else False,
+            'repo': repo,
+            'checked_at': cached_at or '-',
+            'message': '使用缓存' if cached_remote else '尚未检查更新',
+        }
+
     url = f"{api_base}/repos/{repo}/releases/latest"
     checked_at = datetime.now(UTC).isoformat()
-    ttl = int(get_config('version_check_cache_minutes', '720') or '720')
-    if not force_refresh:
-        cache_remote = (get_config('version_check_cached_remote', '') or '').strip()
-        cache_checked = (get_config('version_check_cached_at', '') or '').strip()
-        if cache_remote and cache_checked:
-            try:
-                cached_ts = datetime.fromisoformat(cache_checked.replace('Z', '+00:00'))
-                if cached_ts.tzinfo is None:
-                    cached_ts = cached_ts.replace(tzinfo=UTC)
-                age_min = (datetime.now(UTC) - cached_ts.astimezone(UTC)).total_seconds() / 60
-                if age_min < max(1, ttl):
-                    return {
-                        'local_version': local_version,
-                        'remote_version': cache_remote,
-                        'has_update': _is_remote_newer(local_version, cache_remote),
-                        'repo': repo,
-                        'checked_at': cache_checked,
-                        'message': f'缓存({int(age_min)}分钟内)',
-                    }
-            except Exception as exc:
-                app.logger.debug('version cache parse failed: %s', exc)
+    timeout = min(5, max(2, int(app.config.get('REQUEST_TIMEOUT_SECONDS', 10) or 10)))
     try:
-        resp = requests.get(url, timeout=app.config['REQUEST_TIMEOUT_SECONDS'], proxies=_outbound_proxies(), headers={'Accept': 'application/vnd.github+json'})
+        resp = requests.get(url, timeout=timeout, proxies=_outbound_proxies(), headers={'Accept': 'application/vnd.github+json'})
         if resp.status_code == 404:
             # Fallback: some repos only use tags without GitHub Release objects.
             tag_url = f"{api_base}/repos/{repo}/tags"
-            tag_resp = requests.get(tag_url, timeout=app.config['REQUEST_TIMEOUT_SECONDS'], proxies=_outbound_proxies(), headers={'Accept': 'application/vnd.github+json'})
+            tag_resp = requests.get(tag_url, timeout=timeout, proxies=_outbound_proxies(), headers={'Accept': 'application/vnd.github+json'})
             tag_resp.raise_for_status()
             tags = tag_resp.json() or []
             remote = str(tags[0].get('name') if tags else '-').strip() or '-'
@@ -389,11 +415,11 @@ def get_release_info(force_refresh=False):
         app.logger.warning('github_version_check_failed repo=%s err=%s', repo, redact_url_credentials(str(exc)))
         return {
             'local_version': local_version,
-            'remote_version': '-',
-            'has_update': False,
+            'remote_version': cached_remote or '-',
+            'has_update': _is_remote_newer(local_version, cached_remote) if cached_remote else False,
             'repo': repo,
             'checked_at': checked_at,
-            'message': f'检查失败: {redact_url_credentials(str(exc))}',
+            'message': f'检查失败: {redact_url_credentials(str(exc))}' + ('（使用缓存）' if cached_remote else ''),
         }
 
 
@@ -2072,6 +2098,12 @@ def run_backfill_for_map_id(map_id, deep_retry=False):
         if target.torrent_hash:
             return True, '该映射已关联种子，无需重试'
         mappings = _load_backfill_path_mappings()
+        try:
+            deep_budget = int(get_config('backfill_deep_budget_seconds', '120') or '120')
+        except Exception:
+            deep_budget = 120
+        deep_budget = max(30, min(600, deep_budget))
+        started_at = time.monotonic()
 
         def list_torrents_for_retry(downloader):
             return list_torrents(downloader, use_category=not deep_retry)
@@ -2087,11 +2119,14 @@ def run_backfill_for_map_id(map_id, deep_retry=False):
             allow_global_fallback=bool(deep_retry),
             max_candidates=0 if deep_retry else 40,
             normalize_path=lambda v: _normalize_for_backfill(v, mappings),
+            budget_seconds=deep_budget if deep_retry else None,
         )
         db.session.commit()
         db.session.refresh(target)
         if target.torrent_hash:
             return True, f'单条回填成功：hash={target.torrent_hash}（匹配统计：成功{matched}/冲突{conflicts}/跳过{skipped}）'
+        if skipped and deep_retry and (time.monotonic() - started_at) >= max(1, deep_budget - 1):
+            return False, f'深度重试超时（预算 {deep_budget} 秒），未增加失败计数；可稍后重试或提高“深度重试预算”'
         if conflicts:
             return False, f'单条回填未成功：检测到候选冲突（成功{matched}/冲突{conflicts}/跳过{skipped}）'
         if skipped:
@@ -2106,6 +2141,7 @@ JOB_TYPE_META = {
     'hardlink': ('硬链接任务', 'hardlink'),
     'delete': ('删除联动', 'delete'),
     'backfill': ('映射回填', 'backfill'),
+    'backfill_single': ('单条映射回填', 'backfill_single'),
     'backup': ('数据库备份', 'backup'),
 }
 
@@ -2120,7 +2156,7 @@ def enqueue_job(job_type, target_id=None, source='manual', payload=None, job_nam
         target = int(target_id) if target_id not in (None, '') else None
     except Exception:
         return None, False, 'target_id 必须为整数'
-    if job_type in {'hardlink', 'delete'} and not target:
+    if job_type in {'hardlink', 'delete', 'backfill_single'} and not target:
         return None, False, '该任务类型必须提供 target_id'
     run_key = f'{run_prefix}:{target or 0}'
     existing = JobQueue.query.filter(
@@ -2203,6 +2239,13 @@ def execute_queued_job(row):
         return run_delete_once(row.target_id)
     if row.job_type == 'backfill':
         return run_backfill_once(row.target_id)
+    if row.job_type == 'backfill_single':
+        payload = {}
+        try:
+            payload = json.loads(row.payload_json or '{}') if row.payload_json else {}
+        except Exception:
+            payload = {}
+        return run_backfill_for_map_id(row.target_id, deep_retry=bool(payload.get('deep_retry')))
     if row.job_type == 'backup':
         return run_backup_once()
     return False, f'未知任务类型: {row.job_type}'
@@ -2503,6 +2546,11 @@ def init_defaults():
         if not AppConfig.query.filter_by(key=key).first():
             set_config(key, value, desc, commit=False)
             changed = True
+    # v0.5.1 removed the in-app development mode; drop legacy config rows.
+    for row in AppConfig.query.all():
+        if row.key in LEGACY_DEV_CONFIG_KEYS:
+            db.session.delete(row)
+            changed = True
     if changed:
         db.session.commit()
 
@@ -2616,31 +2664,6 @@ def init_app():
             app.logger.warning('cleared legacy loopback proxy default inside container; configure host.docker.internal or a LAN proxy if needed')
         if not (get_config('allowed_roots', '') or '').strip():
             app.logger.warning('allowed_roots is empty: absolute paths configured in tasks are not restricted to a media root.')
-        restart_flag = Path(app.instance_path) / 'dev_restart_request.flag'
-        if restart_flag.exists():
-            try:
-                set_config('last_dev_apply_status', 'success')
-                set_config('last_dev_apply_message', '服务已重启并重新启动')
-                set_config('last_dev_apply_at', (datetime.now(UTC)).isoformat())
-                restart_flag.unlink(missing_ok=True)
-            except Exception as exc:
-                app.logger.warning('consume dev restart marker failed: %s', exc)
-
-        apply_result = Path(app.instance_path) / 'dev_apply_result.json'
-        if apply_result.exists():
-            try:
-                payload = json.loads(apply_result.read_text(encoding='utf-8') or '{}')
-                st = str(payload.get('status') or '').strip().lower()
-                msg = str(payload.get('message') or '').strip()
-                ts = str(payload.get('at') or '').strip() or datetime.now(UTC).isoformat()
-                if st in {'success', 'failed', 'skipped'}:
-                    set_config('last_dev_apply_status', st)
-                    set_config('last_dev_apply_message', msg[:500] if msg else '-')
-                    set_config('last_dev_apply_at', ts)
-                apply_result.unlink(missing_ok=True)
-            except Exception as exc:
-                app.logger.warning('consume dev apply result failed: %s', exc)
-
         backup_ok, backup_msg = MIGRATION_SVC.pre_migration_backup_if_needed(target_schema=MIGRATION_SVC.get_target_schema_version())
         if not backup_ok:
             app.logger.error('pre migration backup failed: %s', backup_msg)
@@ -2720,6 +2743,7 @@ def init_app():
             delete_torrent=delete_torrent,
             get_release_info=get_release_info,
             request_stop_by_execution=request_stop_by_execution,
+            is_run_key_active=is_run_key_active,
             get_running_executions_snapshot=get_running_executions_snapshot,
             save_config_snapshot=save_config_snapshot,
             restore_config_snapshot=restore_config_snapshot,

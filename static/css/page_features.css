@@ -524,3 +524,140 @@
   white-space: nowrap;
   vertical-align: bottom;
 }
+
+.mapping-table .mapping-seed-row {
+  min-width: 0;
+}
+
+.mapping-table .mapping-seed-row .hash-ellipsis {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Mapping table width balance: keep seed hash and actions visible together */
+.mapping-table .col-wide {
+  width: 20%;
+}
+
+.mapping-table .col-mid {
+  width: 12%;
+}
+
+.mapping-table .col-narrow {
+  width: 6%;
+}
+
+.mapping-table .col-hash {
+  width: 14%;
+  min-width: 140px;
+}
+
+.mapping-table .col-actions {
+  min-width: 200px;
+}
+
+.mapping-table .wrap-any {
+  max-width: 220px;
+}
+
+/* Compact mapping table so seed hash and actions fit on common desktop widths */
+.mapping-table .col-wide {
+  width: 16%;
+}
+
+.mapping-table .col-mid {
+  width: 10%;
+}
+
+.mapping-table .col-narrow {
+  width: 5%;
+}
+
+.mapping-table .col-hash {
+  width: 12%;
+  min-width: 150px;
+}
+
+.mapping-table .col-actions {
+  min-width: 190px;
+}
+
+.mapping-table .col-actions {
+  width: 190px;
+  min-width: 190px;
+  max-width: 190px;
+}
+
+.mapping-table {
+  table-layout: fixed;
+  width: 100%;
+  min-width: 0;
+}
+
+.mapping-table .col-actions,
+.mapping-table thead th.col-actions {
+  position: static;
+  right: auto;
+  box-shadow: none;
+}
+
+/* Final mapping column balance: all widths sum to 100% in fixed layout */
+.mapping-table .col-narrow {
+  width: 4%;
+}
+
+.mapping-table .col-wide {
+  width: 20%;
+}
+
+.mapping-table .col-mid {
+  width: 10%;
+}
+
+.mapping-table .col-hash {
+  width: 16%;
+  min-width: 0;
+}
+
+.mapping-table .col-actions {
+  width: 20%;
+  min-width: 0;
+  max-width: none;
+}
+
+/* Cron table: fit within the content column and avoid sticky overlap */
+.cron-table {
+  min-width: 0;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.cron-table .col-mid {
+  width: 10%;
+}
+
+.cron-table .col-wide {
+  width: 16%;
+}
+
+.cron-table .col-narrow {
+  width: 6%;
+}
+
+.cron-table .col-actions {
+  position: static;
+  right: auto;
+  width: 20%;
+  min-width: 0;
+  max-width: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cron-table thead .col-actions {
+  background: inherit;
+}
+
+.cron-table .cron-actions-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}

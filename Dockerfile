@@ -2,14 +2,14 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-LABEL org.opencontainers.image.version="v0.5.0"
+LABEL org.opencontainers.image.version="v0.5.1"
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONIOENCODING=utf-8
 
 COPY requirements.txt .
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates coreutils && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .

@@ -248,3 +248,49 @@ def test_backfill_deep_retry_without_candidate_limit_finds_late_hash(tmp_path):
     )
     assert (matched, conflicts, skipped) == (1, 0, 0)
     assert row.torrent_hash == 'a'
+
+
+def test_backfill_budget_timeout_does_not_increment_fail_count(tmp_path):
+    import time
+    src_dir = tmp_path / 'media' / 'show'
+    src_dir.mkdir(parents=True)
+    src = src_dir / 'target.mkv'
+    data = b'b' * 128
+    src.write_bytes(data)
+    row = Row(7, str(src), str(tmp_path / 'dst' / 'target.mkv'), len(data), downloader_id=1)
+    dl = SimpleNamespace(id=1, enabled=True, type='qbittorrent')
+    torrents = [
+        {'hash': f'h{i}', 'name': f'other-{i}', 'save_path': f'/other/{i}', 'content_path': ''}
+        for i in range(5)
+    ]
+
+    def downloader_resolver(_):
+        return dl
+
+    def list_torrents(_):
+        return torrents
+
+    def list_torrent_files(_, th):
+        time.sleep(0.05)
+        return []
+
+    logs = []
+
+    def log_operation(*args):
+        logs.append(args)
+
+    matched, conflicts, skipped = scan_backfill_rows(
+        [row],
+        downloader_resolver,
+        list_torrents,
+        list_torrent_files,
+        log_operation,
+        allow_global_fallback=True,
+        max_candidates=0,
+        budget_seconds=0.01,
+    )
+
+    assert (matched, conflicts, skipped) == (0, 0, 1)
+    assert row.torrent_hash is None
+    assert int(getattr(row, 'backfill_fail_count', 0) or 0) == 0
+    assert any('deep_retry_timeout' in str(item) for item in logs)
