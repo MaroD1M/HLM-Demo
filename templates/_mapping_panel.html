@@ -1,19 +1,32 @@
 {% if (panel_view or 'mapping') == 'mapping' %}
-    <div class="section-title mb-2">文件映射（关联关系）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单条删除、批量删除、全选/反选；也可查看自动关联失败次数并手动重置。来源为“待判定”时，删除联动会先保护处理。"></i></div>
-    <div class="section-muted mb-2">支持快速/深度重试、失败计数重置与批量删除。</div>
+    <div class="section-title mb-2">文件映射（关联关系）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单条/批量快速或深度重试、失败计数重置、批量删除和全选筛选结果。来源为“待判定”时，删除联动会先保护处理。"></i></div>
+    <div class="section-muted mb-2">支持单条/批量快速或深度重试、失败计数重置与批量删除；默认处理当前页勾选项，也可全选筛选结果。</div>
             <form id="mapBulkForm" action="/mapping/link/bulk-delete" method="POST" class="d-none js-ajax-form" data-target="mappingPanel">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       </form>
       <form id="mapResetForm" action="/mapping/link/reset-fail-bulk" method="POST" class="d-none js-ajax-form" data-target="mappingPanel">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       </form>
+      <form id="mapRetryForm" action="/mapping/link/retry-bulk" method="POST" class="d-none js-ajax-form" data-target="mappingPanel">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="retry_mode" id="mapRetryMode" value="fast">
+      </form>
+      <input type="hidden" id="mapFilteredTotal" value="{{ map_total }}">
       <div class="mb-2 d-flex gap-2 flex-wrap">
-        <span id="mapSelectionTip" class="badge text-bg-secondary align-self-center">已选 0 项</span>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleAllByClass('map-check', true)">全选</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleAllByClass('map-check', false)">取消全选</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="invertByClass('map-check')">反选</button>
+        <span id="mapSelectionTip" class="badge text-bg-secondary align-self-center">已选本页 0 项</span>
+        <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectAllFiltered()">全选筛选结果 ({{ map_total }})</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAllCurrentPage('map-check')">全选本页</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearSelection('map-check')">取消全选</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="invertCurrentPage('map-check')">反选本页</button>
         <button type="button" class="btn btn-sm btn-outline-danger" onclick="submitBulkSelection('mapBulkForm','map-check','map_ids','确认批量删除选中的映射记录？仅删除数据库映射，不删除真实文件。')">批量删除映射</button>
         <button type="button" class="btn btn-sm btn-outline-warning" onclick="submitBulkSelection('mapResetForm','map-check','map_ids','确认批量重置选中的映射失败计数？')">批量重置失败计数</button>
+        <div class="dropdown d-inline-block">
+          <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown">批量映射重试</button>
+          <ul class="dropdown-menu">
+            <li><button type="button" class="dropdown-item" onclick="submitBulkRetry('fast')">快速重试</button></li>
+            <li><button type="button" class="dropdown-item" onclick="submitBulkRetry('deep')">深度重试</button></li>
+          </ul>
+        </div>
       </div>
 
       <div class="table-responsive table-shell">
@@ -101,16 +114,18 @@
     {% endif %}
 
 {% if (panel_view or 'mapping') == 'cache' %}
-    <div class="section-title mb-2">硬链接缓存（命中后跳过）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单条删除、批量删除、全选/反选。"></i></div>
-    <div class="section-muted mb-2">用于管理跳过记录，删除后文件可再次参与硬链接。</div>
+    <div class="section-title mb-2">硬链接缓存（命中后跳过）<i class="fa-solid fa-circle-info hint-icon" data-bs-toggle="tooltip" title="支持单条删除、批量删除、全选筛选结果和全选本页。"></i></div>
+    <div class="section-muted mb-2">用于管理跳过记录，删除后文件可再次参与硬链接；默认处理当前页勾选项，也可全选筛选结果。</div>
             <form id="cacheBulkForm" action="/mapping/cache/bulk-delete" method="POST" class="d-none js-ajax-form" data-target="mappingPanel">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       </form>
+      <input type="hidden" id="cacheFilteredTotal" value="{{ cache_total }}">
       <div class="mb-2 d-flex gap-2 flex-wrap">
-        <span id="cacheSelectionTip" class="badge text-bg-secondary align-self-center">已选 0 项</span>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleAllByClass('cache-check', true)">全选</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleAllByClass('cache-check', false)">取消全选</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="invertByClass('cache-check')">反选</button>
+        <span id="cacheSelectionTip" class="badge text-bg-secondary align-self-center">已选本页 0 项</span>
+        <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectAllCacheFiltered()">全选筛选结果 ({{ cache_total }})</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAllCurrentPage('cache-check')">全选本页</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearSelection('cache-check')">取消全选</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="invertCurrentPage('cache-check')">反选本页</button>
         <button type="button" class="btn btn-sm btn-outline-danger" onclick="submitBulkSelection('cacheBulkForm','cache-check','cache_ids','确认批量删除选中的缓存记录？删除后这些源文件可再次硬链接。')">批量删除缓存</button>
       </div>
 

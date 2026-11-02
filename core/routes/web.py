@@ -211,10 +211,10 @@ def init_web_routes(ctx: RouteDeps):
         except Exception:
             return False
 
-    def _enqueue_if_worker(job_type, target_id=None, job_name=None):
+    def _enqueue_if_worker(job_type, target_id=None, job_name=None, payload=None):
         if not _worker_is_live():
             return None, ''
-        row, _created, message = enqueue_job(job_type, target_id=target_id, source='web', job_name=job_name)
+        row, _created, message = enqueue_job(job_type, target_id=target_id, source='web', job_name=job_name, payload=payload)
         if row:
             log_operation('job_enqueued', 'JobQueue', row.id, job_name or job_type, message)
         return row, message
@@ -238,7 +238,7 @@ def init_web_routes(ctx: RouteDeps):
         return max(0, int(remaining))
 
     def _mapping_backfill_running(row):
-        keys = [f'backfill:single:{row.id}', f'backfill_single:{row.id}']
+        keys = [f'backfill_single:{row.id}']
         downloader_id = row.downloader_id
         if not downloader_id:
             fallback = Downloader.query.filter_by(enabled=True, type='qbittorrent').order_by(Downloader.id.asc()).first()
@@ -437,9 +437,17 @@ def init_web_routes(ctx: RouteDeps):
             'delete_tasks': DeleteMonitorTask.query.all(),
         }
 
+    JOB_TYPE_LABELS = {
+        'hardlink': '硬链接任务',
+        'delete': '删除联动',
+        'backfill': '映射回填',
+        'backfill_single': '单条映射回填',
+        'backup': '数据库备份',
+    }
+
     def _jobs_payload():
         jobs = JobQueue.query.order_by(JobQueue.id.desc()).limit(20).all()
-        return {'jobs': jobs}
+        return {'jobs': jobs, 'job_type_labels': JOB_TYPE_LABELS}
 
     @web_bp.route('/partials/jobs')
     def jobs_partial():
@@ -540,10 +548,14 @@ def init_web_routes(ctx: RouteDeps):
 
         job_type = None
         target_id = e.target_id
+        deep_retry = False
         if e.job_type in {'batch_hardlink', 'hardlink_scan'} and e.target_id:
             job_type = 'hardlink'
         elif e.job_type in {'delete_scan', 'delete_monitor_scan'} and e.target_id:
             job_type = 'delete'
+        elif e.job_type == 'backfill_mapping_single' and e.target_id:
+            job_type = 'backfill_single'
+            deep_retry = '深度重试' in (e.job_name or '')
         elif e.job_type in {'backfill_mapping', 'backfill_torrent_mapping'}:
             job_type = 'backfill'
         elif e.job_type == 'db_backup':
@@ -551,7 +563,8 @@ def init_web_routes(ctx: RouteDeps):
             target_id = None
         else:
             return _json_or_redirect(False, f'该任务类型暂不支持重试: {e.job_type}', '/', status=400)
-        row, queue_msg = _enqueue_if_worker(job_type, target_id=target_id, job_name=f'重试:{e.job_name}')
+        payload = {'deep_retry': deep_retry} if job_type == 'backfill_single' else None
+        row, queue_msg = _enqueue_if_worker(job_type, target_id=target_id, job_name=f'重试:{e.job_name}', payload=payload)
         if row:
             return _json_or_redirect(True, f'{queue_msg}，已提交后台重试（任务 #{row.id}）', '/')
         if job_type == 'hardlink':
@@ -560,6 +573,8 @@ def init_web_routes(ctx: RouteDeps):
             ok, msg = run_delete_once(target_id)
         elif job_type == 'backfill':
             ok, msg = run_backfill_once(target_id)
+        elif job_type == 'backfill_single':
+            ok, msg = run_backfill_for_map_id(target_id, deep_retry=deep_retry)
         else:
             ok, msg = run_backup_once()
         return _json_or_redirect(ok, msg, '/', status=200 if ok else 400)
@@ -1169,6 +1184,92 @@ def init_web_routes(ctx: RouteDeps):
         return _json_or_redirect(True, '通知器已删除', '/notifier', html=html, target='notifierJobsPanel')
 
 
+    def _mapping_filter_query(q='', hash_state='all', source_type='all', fail_state='all'):
+        mapping_q = FileLinkMap.query.filter(FileLinkMap.deleted_at.is_(None))
+        if q:
+            like = f"%{q}%"
+            mapping_q = mapping_q.filter(
+                (FileLinkMap.source_path.like(like)) |
+                (FileLinkMap.dest_path.like(like)) |
+                (FileLinkMap.torrent_hash.like(like))
+            )
+        if hash_state == 'linked':
+            mapping_q = mapping_q.filter(FileLinkMap.torrent_hash.isnot(None))
+        elif hash_state == 'unlinked':
+            mapping_q = mapping_q.filter(FileLinkMap.torrent_hash.is_(None))
+        if source_type == 'manual':
+            mapping_q = mapping_q.filter(FileLinkMap.source_type == 'manual')
+        elif source_type == 'downloader':
+            mapping_q = mapping_q.filter(FileLinkMap.source_type == 'downloader')
+        elif source_type == 'pending':
+            mapping_q = mapping_q.filter(FileLinkMap.source_type == 'pending')
+        if fail_state == 'failed':
+            mapping_q = mapping_q.filter(db.func.coalesce(FileLinkMap.backfill_fail_count, 0) > 0)
+        elif fail_state == 'permanent':
+            mapping_q = mapping_q.filter(db.func.coalesce(FileLinkMap.backfill_fail_count, 0) > 2)
+        return mapping_q
+
+    MAPPING_BULK_MAX_ROWS = 500
+    MAPPING_RETRY_MAX_ROWS = 100
+    MAPPING_CACHE_BULK_MAX_ROWS = 500
+
+    def _bulk_scope_rows(max_rows):
+        scope = (request.form.get('scope') or 'page').strip().lower()
+        if scope == 'filtered':
+            q = (request.form.get('q') or '').strip()
+            hash_state = (request.form.get('hash_state') or 'all').strip()
+            source_type = (request.form.get('source_type') or 'all').strip()
+            fail_state = (request.form.get('fail_state') or 'all').strip()
+            query = _mapping_filter_query(q=q, hash_state=hash_state, source_type=source_type, fail_state=fail_state).order_by(FileLinkMap.id.asc())
+            total = query.count()
+            rows = query.limit(max_rows).all() if max_rows else query.all()
+            return rows, scope, total
+        raw_ids = request.form.getlist('map_ids')
+        ids = []
+        for value in raw_ids:
+            try:
+                ids.append(int(value))
+            except Exception:
+                continue
+        ids = sorted({value for value in ids if value > 0})
+        if not ids:
+            return [], scope, 0
+        rows = FileLinkMap.query.filter(FileLinkMap.id.in_(ids), FileLinkMap.deleted_at.is_(None)).all()
+        return rows, scope, len(ids)
+
+    def _bulk_truncated_note(scope, total, count, cap):
+        if scope == 'filtered' and total > count:
+            return f'；筛选共 {total} 条，本次最多处理 {cap} 条，请重复操作'
+        return ''
+
+    def _cache_filter_query(q=''):
+        cache_q = HardlinkCache.query
+        if q:
+            like = f"%{q}%"
+            cache_q = cache_q.filter((HardlinkCache.source_path.like(like)) | (HardlinkCache.dest_path.like(like)))
+        return cache_q
+
+    def _cache_bulk_scope_rows(max_rows):
+        scope = (request.form.get('scope') or 'page').strip().lower()
+        if scope == 'filtered':
+            q = (request.form.get('q') or '').strip()
+            query = _cache_filter_query(q=q).order_by(HardlinkCache.id.asc())
+            total = query.count()
+            rows = query.limit(max_rows).all() if max_rows else query.all()
+            return rows, scope, total
+        raw_ids = request.form.getlist('cache_ids')
+        ids = []
+        for value in raw_ids:
+            try:
+                ids.append(int(value))
+            except Exception:
+                continue
+        ids = sorted({value for value in ids if value > 0})
+        if not ids:
+            return [], scope, 0
+        rows = HardlinkCache.query.filter(HardlinkCache.id.in_(ids)).all()
+        return rows, scope, len(ids)
+
     def _mapping_payload(page=None, cache_page=None, q=None, hash_state=None, source_type=None, panel_view=None, per_page=None, fail_state=None):
         page = max(page if page is not None else request.args.get('page', 1, type=int), 1)
         cache_page = max(cache_page if cache_page is not None else request.args.get('cache_page', 1, type=int), 1)
@@ -1188,35 +1289,13 @@ def init_web_routes(ctx: RouteDeps):
 
         mappings = []
         map_total_pages = 1
+        map_total = 0
         caches = []
         cache_total_pages = 1
+        cache_total = 0
 
         if panel_view == 'mapping':
-            mapping_q = FileLinkMap.query
-            if q:
-                like = f"%{q}%"
-                mapping_q = mapping_q.filter(
-                    (FileLinkMap.source_path.like(like)) |
-                    (FileLinkMap.dest_path.like(like)) |
-                    (FileLinkMap.torrent_hash.like(like))
-                )
-            if hash_state in {'linked', 'unlinked'}:
-                mapping_q = mapping_q.filter(FileLinkMap.deleted_at.is_(None))
-            if hash_state == 'linked':
-                mapping_q = mapping_q.filter(FileLinkMap.torrent_hash.isnot(None))
-            elif hash_state == 'unlinked':
-                mapping_q = mapping_q.filter(FileLinkMap.torrent_hash.is_(None))
-            if source_type == 'manual':
-                mapping_q = mapping_q.filter(FileLinkMap.source_type == 'manual')
-            elif source_type == 'downloader':
-                mapping_q = mapping_q.filter(FileLinkMap.source_type == 'downloader')
-            elif source_type == 'pending':
-                mapping_q = mapping_q.filter(FileLinkMap.source_type == 'pending')
-            if fail_state == 'failed':
-                mapping_q = mapping_q.filter(db.func.coalesce(FileLinkMap.backfill_fail_count, 0) > 0)
-            elif fail_state == 'permanent':
-                mapping_q = mapping_q.filter(db.func.coalesce(FileLinkMap.backfill_fail_count, 0) > 2)
-
+            mapping_q = _mapping_filter_query(q=q, hash_state=hash_state, source_type=source_type, fail_state=fail_state)
             mapping_q = mapping_q.order_by(FileLinkMap.created_at.desc())
             mapping_pg = mapping_q.paginate(page=page, per_page=per_page_val, error_out=False)
             if mapping_pg.pages and page > mapping_pg.pages:
@@ -1224,26 +1303,26 @@ def init_web_routes(ctx: RouteDeps):
                 mapping_pg = mapping_q.paginate(page=page, per_page=per_page_val, error_out=False)
             mappings = mapping_pg.items
             map_total_pages = max(mapping_pg.pages, 1)
+            map_total = int(mapping_pg.total or 0)
         else:
-            cache_q = HardlinkCache.query
-            if q:
-                like = f"%{q}%"
-                cache_q = cache_q.filter((HardlinkCache.source_path.like(like)) | (HardlinkCache.dest_path.like(like)))
-            cache_q = cache_q.order_by(HardlinkCache.created_at.desc())
+            cache_q = _cache_filter_query(q=q).order_by(HardlinkCache.created_at.desc())
             cache_pg = cache_q.paginate(page=cache_page, per_page=per_page_val, error_out=False)
             if cache_pg.pages and cache_page > cache_pg.pages:
                 cache_page = cache_pg.pages
                 cache_pg = cache_q.paginate(page=cache_page, per_page=per_page_val, error_out=False)
             caches = cache_pg.items
             cache_total_pages = max(cache_pg.pages, 1)
+            cache_total = int(cache_pg.total or 0)
 
         return {
             'mappings': mappings,
             'map_page': page,
             'map_total_pages': map_total_pages,
+            'map_total': map_total,
             'caches': caches,
             'cache_page': cache_page,
             'cache_total_pages': cache_total_pages,
+            'cache_total': cache_total,
             'q': q,
             'hash_state': hash_state,
             'source_type': source_type,
@@ -1253,7 +1332,6 @@ def init_web_routes(ctx: RouteDeps):
             'per_page_options': [10, 20, 50, 100],
         }
 
-
     @web_bp.route('/mapping')
     def mapping_list():
         payload = _mapping_payload()
@@ -1262,20 +1340,10 @@ def init_web_routes(ctx: RouteDeps):
 
     @web_bp.route('/mapping/link/bulk-delete', methods=['POST'])
     def mapping_link_bulk_delete():
-        map_ids = request.form.getlist('map_ids')
-        ids = []
-        for v in map_ids:
-            try:
-                ids.append(int(v))
-            except Exception:
-                continue
-        ids = sorted({i for i in ids if i > 0})
-        if not ids:
-            return _json_or_redirect(False, '请先勾选要删除的映射记录', '/mapping', status=400)
-
-        rows = FileLinkMap.query.filter(FileLinkMap.id.in_(ids)).all()
+        rows, scope, total = _bulk_scope_rows(MAPPING_BULK_MAX_ROWS)
         if not rows:
-            return _json_or_redirect(False, '未找到可删除的映射记录', '/mapping', status=404)
+            message = '筛选结果为空' if scope == 'filtered' else '请先勾选要删除的映射记录'
+            return _json_or_redirect(False, message, '/mapping', status=400)
 
         count = 0
         map_ids = [row.id for row in rows]
@@ -1283,13 +1351,14 @@ def init_web_routes(ctx: RouteDeps):
         DeletePendingAction.query.filter(DeletePendingAction.file_map_id.in_(map_ids)).delete(synchronize_session=False)
         HardlinkCache.query.filter(HardlinkCache.source_path.in_(source_paths)).delete(synchronize_session=False)
         for row in rows:
-            log_operation('mapping_record_deleted', 'FileLinkMap', row.id, row.source_path, f'批量删除映射: {row.dest_path}')
+            log_operation('mapping_record_deleted', 'FileLinkMap', row.id, row.source_path, f'批量删除映射: {row.dest_path}', commit=False)
             db.session.delete(row)
             count += 1
         db.session.commit()
+        message = f'已批量删除 {count} 条映射记录' + _bulk_truncated_note(scope, total, count, MAPPING_BULK_MAX_ROWS)
         payload = _mapping_payload()
         html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
-        return _json_or_redirect(True, f'已批量删除 {count} 条映射记录', '/mapping', html=html, target='mappingPanel')
+        return _json_or_redirect(True, message, '/mapping', html=html, target='mappingPanel')
 
     @web_bp.route('/mapping/link/clear', methods=['POST'])
     def mapping_link_clear():
@@ -1330,8 +1399,8 @@ def init_web_routes(ctx: RouteDeps):
         if not map_id:
             return _json_or_redirect(False, 'map_id 不能为空', '/mapping', status=400)
         row = db.session.get(FileLinkMap, map_id)
-        if not row:
-            return _json_or_redirect(False, '映射记录不存在', '/mapping', status=404)
+        if not row or row.deleted_at:
+            return _json_or_redirect(False, '映射记录不存在或已删除', '/mapping', status=404)
         if row.torrent_hash:
             payload = _mapping_payload()
             html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
@@ -1339,6 +1408,22 @@ def init_web_routes(ctx: RouteDeps):
 
         retry_mode = (request.form.get('retry_mode') or 'fast').strip().lower()
         deep_retry = retry_mode == 'deep'
+
+        existing_job = JobQueue.query.filter(
+            JobQueue.run_key == f'backfill_single:{map_id}',
+            JobQueue.status.in_(('queued', 'running')),
+        ).first()
+        if existing_job:
+            payload = _mapping_payload()
+            html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
+            return _json_or_redirect(
+                True,
+                f'该映射已有后台重试任务（#{existing_job.id}），请稍后刷新',
+                '/mapping',
+                html=html,
+                target='mappingPanel',
+                extra={'job_id': existing_job.id, 'refresh_after_ms': 3000},
+            )
 
         if deep_retry and _worker_is_live():
             job, _created, queue_msg = enqueue_job(
@@ -1375,8 +1460,8 @@ def init_web_routes(ctx: RouteDeps):
     @web_bp.route('/mapping/link/reset-fail/<int:map_id>', methods=['POST'])
     def mapping_link_reset_fail(map_id):
         row = db.session.get(FileLinkMap, map_id)
-        if not row:
-            return _json_or_redirect(False, '映射记录不存在', '/mapping', status=404)
+        if not row or row.deleted_at:
+            return _json_or_redirect(False, '映射记录不存在或已删除', '/mapping', status=404)
         if _mapping_backfill_running(row):
             return _json_or_redirect(False, '该映射正在回填，请等待完成后再重置', '/mapping', status=409)
         remaining = _mapping_reset_cooldown_remaining(row.id)
@@ -1392,19 +1477,10 @@ def init_web_routes(ctx: RouteDeps):
 
     @web_bp.route('/mapping/link/reset-fail-bulk', methods=['POST'])
     def mapping_link_reset_fail_bulk():
-        raw_ids = request.form.getlist('map_ids')
-        ids = []
-        for value in raw_ids:
-            try:
-                ids.append(int(value))
-            except Exception:
-                continue
-        ids = sorted({value for value in ids if value > 0})
-        if not ids:
-            return _json_or_redirect(False, '请先勾选要重置的映射记录', '/mapping', status=400)
-        rows = FileLinkMap.query.filter(FileLinkMap.id.in_(ids)).all()
+        rows, scope, total = _bulk_scope_rows(MAPPING_BULK_MAX_ROWS)
         if not rows:
-            return _json_or_redirect(False, '未找到可重置的映射记录', '/mapping', status=404)
+            message = '筛选结果为空' if scope == 'filtered' else '请先勾选要重置的映射记录'
+            return _json_or_redirect(False, message, '/mapping', status=400)
         reset = 0
         skipped_running = 0
         skipped_cooldown = 0
@@ -1420,7 +1496,7 @@ def init_web_routes(ctx: RouteDeps):
             log_operation('mapping_backfill_fail_reset', 'FileLinkMap', row.id, row.source_path, '批量重置回填失败计数', commit=False)
             reset += 1
         db.session.commit()
-        message = f'已重置 {reset} 条失败计数'
+        message = f'已重置 {reset} 条失败计数' + _bulk_truncated_note(scope, total, len(rows), MAPPING_BULK_MAX_ROWS)
         if skipped_running:
             message += f'，{skipped_running} 条正在回填已跳过'
         if skipped_cooldown:
@@ -1428,6 +1504,48 @@ def init_web_routes(ctx: RouteDeps):
         payload = _mapping_payload()
         html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
         return _json_or_redirect(reset > 0, message, '/mapping', html=html, target='mappingPanel', status=200 if reset > 0 else 400)
+
+    @web_bp.route('/mapping/link/retry-bulk', methods=['POST'])
+    def mapping_link_retry_bulk():
+        retry_mode = (request.form.get('retry_mode') or 'fast').strip().lower()
+        deep_retry = retry_mode == 'deep'
+        if deep_retry and not _worker_is_live():
+            return _json_or_redirect(False, '批量深度重试需要 worker 在线，请先启动 worker', '/mapping', status=400)
+        if not _worker_is_live():
+            return _json_or_redirect(False, '批量重试需要 worker 在线；单条快速重试可直接使用', '/mapping', status=400)
+        rows, scope, total = _bulk_scope_rows(MAPPING_RETRY_MAX_ROWS)
+        if not rows:
+            message = '筛选结果为空' if scope == 'filtered' else '请先勾选要重试的映射记录'
+            return _json_or_redirect(False, message, '/mapping', status=400)
+        job_ids = []
+        skipped_linked = 0
+        skipped_running = 0
+        for row in rows:
+            if row.torrent_hash:
+                skipped_linked += 1
+                continue
+            if _mapping_backfill_running(row):
+                skipped_running += 1
+                continue
+            job, _created, queue_msg = enqueue_job(
+                'backfill_single',
+                target_id=row.id,
+                source='web',
+                payload={'deep_retry': deep_retry},
+                job_name=f'批量映射重试（{"深度" if deep_retry else "快速"}）',
+            )
+            if job:
+                job_ids.append(job.id)
+                log_operation('job_enqueued', 'JobQueue', job.id, row.source_path, queue_msg, commit=False)
+        db.session.commit()
+        message = f'已提交 {len(job_ids)} 条后台映射重试' + _bulk_truncated_note(scope, total, len(rows), MAPPING_RETRY_MAX_ROWS)
+        if skipped_linked:
+            message += f'，{skipped_linked} 条已关联已跳过'
+        if skipped_running:
+            message += f'，{skipped_running} 条正在回填已跳过'
+        payload = _mapping_payload()
+        html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
+        return _json_or_redirect(bool(job_ids), message, '/mapping', html=html, target='mappingPanel', status=200 if job_ids else 400, extra={'job_ids': job_ids, 'refresh_after_ms': 5000})
 
 
     @web_bp.route('/mapping/cache/delete', methods=['POST'])
@@ -1447,30 +1565,21 @@ def init_web_routes(ctx: RouteDeps):
 
     @web_bp.route('/mapping/cache/bulk-delete', methods=['POST'])
     def mapping_cache_bulk_delete():
-        cache_ids = request.form.getlist('cache_ids')
-        ids = []
-        for v in cache_ids:
-            try:
-                ids.append(int(v))
-            except Exception:
-                continue
-        ids = sorted({i for i in ids if i > 0})
-        if not ids:
-            return _json_or_redirect(False, '请先勾选要删除的缓存记录', '/mapping', status=400)
-
-        rows = HardlinkCache.query.filter(HardlinkCache.id.in_(ids)).all()
+        rows, scope, total = _cache_bulk_scope_rows(MAPPING_CACHE_BULK_MAX_ROWS)
         if not rows:
-            return _json_or_redirect(False, '未找到可删除的缓存记录', '/mapping', status=404)
+            message = '筛选结果为空' if scope == 'filtered' else '请先勾选要删除的缓存记录'
+            return _json_or_redirect(False, message, '/mapping', status=400)
 
         count = 0
         for row in rows:
-            log_operation('cache_record_deleted', 'HardlinkCache', row.id, row.source_path, '批量删除缓存记录')
+            log_operation('cache_record_deleted', 'HardlinkCache', row.id, row.source_path, '批量删除缓存记录', commit=False)
             db.session.delete(row)
             count += 1
         db.session.commit()
+        message = f'已批量删除 {count} 条缓存记录' + _bulk_truncated_note(scope, total, count, MAPPING_CACHE_BULK_MAX_ROWS)
         payload = _mapping_payload()
         html = render_template('_mapping_panel.html', **payload) if _wants_json() else None
-        return _json_or_redirect(True, f'已批量删除 {count} 条缓存记录', '/mapping', html=html, target='mappingPanel')
+        return _json_or_redirect(True, message, '/mapping', html=html, target='mappingPanel')
 
 
     @web_bp.route('/mapping/cache/clear', methods=['POST'])

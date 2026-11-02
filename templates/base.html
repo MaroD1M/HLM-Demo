@@ -201,6 +201,42 @@ window.HLMAjax={
     };
     window.setTimeout(tick, Math.max(1500, intervalMs||3000));
   },
+  pollJobs(jobIds, targetId, intervalMs){
+    const ids=(jobIds||[]).map((id)=>parseInt(id,10)).filter((id)=>id>0);
+    if(!ids.length) return;
+    let attempts=0;
+    const maxAttempts=120;
+    const tick=async()=>{
+      attempts+=1;
+      let terminal=true;
+      let failed=0;
+      let finished=0;
+      try{
+        const res=await fetch(`/api/v1/jobs/status?ids=${encodeURIComponent(ids.join(','))}`, {headers:{'X-Requested-With':'XMLHttpRequest'}});
+        const data=res.ok?await res.json():null;
+        const byId=new Map(((data&&data.jobs)||[]).map((job)=>[Number(job.id), job]));
+        ids.forEach((id)=>{
+          const job=byId.get(Number(id));
+          if(!job || !['success','failed','cancelled'].includes(job.status)){ terminal=false; return; }
+          finished+=1;
+          if(job.status!=='success') failed+=1;
+        });
+      }catch(_){ terminal=false; }
+      if(terminal){
+        if(targetId) window.HLMAjax.refreshPanel(targetId);
+        const msg=failed?`批量重试完成：成功 ${finished-failed} 条，失败 ${failed} 条`:`批量重试完成：${finished} 条`;
+        window.HLMNotice && window.HLMNotice(msg, failed?'warning':'success');
+        return;
+      }
+      if(attempts<maxAttempts){
+        window.setTimeout(tick, Math.max(2000, intervalMs||5000));
+      } else {
+        if(targetId) window.HLMAjax.refreshPanel(targetId);
+        window.HLMNotice && window.HLMNotice('批量任务仍在执行，请稍后刷新映射列表','info');
+      }
+    };
+    window.setTimeout(tick, Math.max(2000, intervalMs||5000));
+  },
   bind(){
 
     document.querySelectorAll('form.js-ajax-form button[type="submit"],form.js-ajax-form button:not([type])').forEach((btn)=>{
@@ -238,7 +274,9 @@ window.HLMAjax={
           }
           window.HLMNotice(data.message|| (data.ok ? '操作已完成' : '操作未完成，请检查后重试'), data.ok ? 'success' : 'danger');
           const panelApplied = (data.target && data.html) ? window.HLMAjax.replacePanel(data.target, data.html) : false;
-          if(data.job_id){
+          if(Array.isArray(data.job_ids) && data.job_ids.length){
+            window.HLMAjax.pollJobs(data.job_ids, data.target||'', data.refresh_after_ms);
+          } else if(data.job_id){
             window.HLMAjax.pollJob(data.job_id, data.target||'', data.refresh_after_ms);
           }
           if(!res.ok||!data.ok){return;}

@@ -28,7 +28,7 @@
         <button class="btn btn-sm btn-outline-primary"><i class="fa-solid fa-rotate me-1"></i>检查更新</button>
       </form>
     </div>
-    <div class="section-muted small mt-2">{{ release.get('message','-') if release else '尚未检查' }}</div>
+    <div class="section-muted small mt-2">{{ release.get('message','-') if release else '尚未检查' }}。版本检查为手动模式，不会在后台自动访问 GitHub。</div>
     {% if release and release.get('checked_at') and release.get('checked_at') != '-' %}
       <div class="section-muted small">上次检查：{{ fmt_dt(release.get('checked_at')) }}</div>
     {% endif %}

@@ -64,6 +64,32 @@ def init_api_routes(HardlinkTask, DeleteMonitorTask, AppConfig=None, OperationLo
         ok, message = request_stop_queued_job(job_id)
         return jsonify({'ok': ok, 'message': message}), (200 if ok else 400)
 
+    @api_bp.get('/api/v1/jobs/status')
+    def api_jobs_status():
+        raw = (request.args.get('ids') or '').strip()
+        ids = []
+        for part in raw.split(','):
+            try:
+                ids.append(int(part))
+            except Exception:
+                continue
+        ids = sorted({value for value in ids if value > 0})[:200]
+        if not ids or not JobQueue:
+            return jsonify({'ok': True, 'jobs': []})
+        rows = JobQueue.query.filter(JobQueue.id.in_(ids)).all()
+        return jsonify({
+            'ok': True,
+            'jobs': [
+                {
+                    'id': row.id,
+                    'status': row.status,
+                    'message': row.message,
+                    'stop_requested': bool(row.stop_requested),
+                }
+                for row in rows
+            ],
+        })
+
     @api_bp.get('/api/v1/metrics')
     def api_metrics():
         lines = []

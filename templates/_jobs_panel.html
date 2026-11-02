@@ -6,7 +6,7 @@
       {% for job in jobs %}
       <tr>
         <td class="wrap-any">{{ job.job_name }}<div class="text-muted small">#{{ job.id }} · {{ job.run_key }}</div></td>
-        <td>{{ job.job_type }}</td>
+        <td>{{ job_type_labels.get(job.job_type, job.job_type) }}</td>
         <td>
           {% if job.status == 'queued' %}<span class="badge text-bg-secondary">排队</span>
           {% elif job.status == 'running' %}<span class="badge text-bg-info">运行中</span>

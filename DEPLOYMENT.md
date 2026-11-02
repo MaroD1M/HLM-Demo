@@ -1,4 +1,4 @@
-# HLM-Demo 部署与运维指南（v0.5.1）
+# HLM-Demo 部署与运维指南（v0.5.2）
 
 本文档面向生产/实测部署，使用 Compose 启动 web、worker、scheduler 三个核心服务。
 
@@ -10,7 +10,7 @@
 
 已发布镜像：
 
-- `ghcr.io/marod1m/hlm-demo:v0.5.1`
+- `ghcr.io/marod1m/hlm-demo:v0.5.2`
 - `ghcr.io/marod1m/hlm-demo:latest`
 
 镜像 digest 以 GitHub Packages 页面为准，避免文档中的 digest 随重建失效。
@@ -275,22 +275,22 @@ bash scripts/build_image.sh
 或手动：
 
 ```bash
-docker build -t ghcr.io/marod1m/hlm-demo:v0.5.1 .
-docker tag ghcr.io/marod1m/hlm-demo:v0.5.1 ghcr.io/marod1m/hlm-demo:latest
+docker build -t ghcr.io/marod1m/hlm-demo:v0.5.2 .
+docker tag ghcr.io/marod1m/hlm-demo:v0.5.2 ghcr.io/marod1m/hlm-demo:latest
 ```
 
 推送：
 
 ```bash
-docker push ghcr.io/marod1m/hlm-demo:v0.5.1
+docker push ghcr.io/marod1m/hlm-demo:v0.5.2
 docker push ghcr.io/marod1m/hlm-demo:latest
 ```
 
 或打 tag 触发 GitHub Actions：
 
 ```bash
-git tag v0.5.1
-git push origin v0.5.1
+git tag v0.5.2
+git push origin v0.5.2
 ```
 
 CI 会构建 `linux/amd64` 与 `linux/arm64` 镜像并推送到 GHCR。

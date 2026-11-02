@@ -2073,8 +2073,8 @@ def run_backfill_once(downloader_id=None):
 
 def run_backfill_for_map_id(map_id, deep_retry=False):
     row = db.session.get(FileLinkMap, map_id)
-    if not row:
-        return False, '映射记录不存在'
+    if not row or row.deleted_at:
+        return False, '映射记录不存在或已删除'
     if row.torrent_hash:
         return True, '该映射已关联种子，无需重试'
 
@@ -2089,12 +2089,12 @@ def run_backfill_for_map_id(map_id, deep_retry=False):
             return db.session.get(Downloader, did)
         return Downloader.query.filter_by(enabled=True, type='qbittorrent').first()
 
-    run_key = f'backfill:single:{map_id}'
+    run_key = f'backfill_single:{map_id}'
 
     def _runner(stop_checker=None):
         target = db.session.get(FileLinkMap, map_id)
-        if not target:
-            return False, '映射记录不存在'
+        if not target or target.deleted_at:
+            return False, '映射记录不存在或已删除'
         if target.torrent_hash:
             return True, '该映射已关联种子，无需重试'
         mappings = _load_backfill_path_mappings()

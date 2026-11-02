@@ -33,7 +33,8 @@
   <div class="section-title mb-2">筛选条件</div>
   <form class="row g-2 js-ajax-filter" data-target="mappingPanel" method="GET" action="/mapping">
     <input type="hidden" name="panel_view" value="{{ panel_view or 'mapping' }}">
-    <div class="col-md-3"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索路径 / 文件关键字 / 哈希"></div>
+    <div class="{{ 'col-md-6' if (panel_view or 'mapping') == 'cache' else 'col-md-3' }}"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="搜索路径 / 文件关键字 / 哈希"></div>
+    {% if (panel_view or 'mapping') == 'mapping' %}
     <div class="col-md-2">
       <select class="form-select" name="hash_state">
         <option value="all" {% if hash_state=='all' %}selected{% endif %}>全部关联状态</option>
@@ -56,7 +57,8 @@
         <option value="permanent" {% if fail_state=='permanent' %}selected{% endif %}>超过阈值</option>
       </select>
     </div>
-    <div class="col-md-1">
+    {% endif %}
+    <div class="{{ 'col-md-2' if (panel_view or 'mapping') == 'cache' else 'col-md-1' }}">
       <select class="form-select" name="per_page" title="每页条数">
         {% for n in per_page_options or [10,20,50,100] %}
           <option value="{{ n }}" {% if (per_page or 20)==n %}selected{% endif %}>{{ n }}/页</option>
@@ -78,54 +80,126 @@
 
 {% block scripts %}
 <script>
+window.mappingSelectionScope='page';
+window.cacheSelectionScope='page';
 window.updateSelectionTips = function(){
   const mapCount=document.querySelectorAll('.map-check:checked').length;
   const cacheCount=document.querySelectorAll('.cache-check:checked').length;
+  const mapTotalEl=document.getElementById('mapFilteredTotal');
+  const cacheTotalEl=document.getElementById('cacheFilteredTotal');
+  const mapTotal=mapTotalEl?parseInt(mapTotalEl.value||'0',10):0;
+  const cacheTotal=cacheTotalEl?parseInt(cacheTotalEl.value||'0',10):0;
   const mapTip=document.getElementById('mapSelectionTip');
   const cacheTip=document.getElementById('cacheSelectionTip');
-  if(mapTip) mapTip.textContent=`已选 ${mapCount} 项`;
-  if(cacheTip) cacheTip.textContent=`已选 ${cacheCount} 项`;
+  if(mapTip) mapTip.textContent=window.mappingSelectionScope==='filtered'?`已选全部筛选结果 ${mapTotal} 条`:`已选本页 ${mapCount} 项`;
+  if(cacheTip) cacheTip.textContent=window.cacheSelectionScope==='filtered'?`已选全部筛选结果 ${cacheTotal} 条`:`已选本页 ${cacheCount} 项`;
 };
-window.toggleAllByClass = function(cls, checked){
-  document.querySelectorAll('.' + cls).forEach((el)=>{el.checked=!!checked;});
+window.selectAllCurrentPage = function(cls){
+  if(cls==='map-check') window.mappingSelectionScope='page';
+  if(cls==='cache-check') window.cacheSelectionScope='page';
+  document.querySelectorAll('.' + cls).forEach((el)=>{el.checked=true;});
   window.updateSelectionTips();
-  window.HLMNotice && window.HLMNotice(`已${checked ? '全选' : '取消全选'} ${document.querySelectorAll('.'+cls+':checked').length} 项`,'info');
+  window.HLMNotice && window.HLMNotice(`已全选本页 ${document.querySelectorAll('.'+cls+':checked').length} 项`,'info');
 };
-window.invertByClass = function(cls){
+window.clearSelection = function(cls){
+  if(cls==='map-check') window.mappingSelectionScope='page';
+  if(cls==='cache-check') window.cacheSelectionScope='page';
+  document.querySelectorAll('.' + cls).forEach((el)=>{el.checked=false;});
+  window.updateSelectionTips();
+  window.HLMNotice && window.HLMNotice('已取消选择','info');
+};
+window.invertCurrentPage = function(cls){
+  if(cls==='map-check') window.mappingSelectionScope='page';
+  if(cls==='cache-check') window.cacheSelectionScope='page';
   document.querySelectorAll('.' + cls).forEach((el)=>{el.checked=!el.checked;});
   window.updateSelectionTips();
-  window.HLMNotice && window.HLMNotice(`反选后已选 ${document.querySelectorAll('.'+cls+':checked').length} 项`,'info');
+  window.HLMNotice && window.HLMNotice(`反选后已选本页 ${document.querySelectorAll('.'+cls+':checked').length} 项`,'info');
+};
+window.selectAllFiltered = function(){
+  window.mappingSelectionScope='filtered';
+  document.querySelectorAll('.map-check').forEach((el)=>{el.checked=false;});
+  window.updateSelectionTips();
+  window.HLMNotice && window.HLMNotice('已选择当前筛选结果；批量操作将作用于全部筛选记录','info');
+};
+window.selectAllCacheFiltered = function(){
+  window.cacheSelectionScope='filtered';
+  document.querySelectorAll('.cache-check').forEach((el)=>{el.checked=false;});
+  window.updateSelectionTips();
+  window.HLMNotice && window.HLMNotice('已选择当前筛选缓存结果；批量操作将作用于全部筛选记录','info');
+};
+window.toggleAllByClass = function(cls, checked){
+  if(cls==='map-check') window.mappingSelectionScope='page';
+  if(cls==='cache-check') window.cacheSelectionScope='page';
+  document.querySelectorAll('.' + cls).forEach((el)=>{el.checked=!!checked;});
+  window.updateSelectionTips();
+  window.HLMNotice && window.HLMNotice(`已${checked ? '全选本页' : '取消全选'} ${document.querySelectorAll('.'+cls+':checked').length} 项`,'info');
+};
+window.invertByClass = function(cls){
+  window.invertCurrentPage(cls);
+};
+window.addBulkField = function(form, name, value){
+  const input=document.createElement('input');
+  input.type='hidden';
+  input.name=name;
+  input.value=value;
+  input.dataset.bulkTemp='1';
+  form.appendChild(input);
 };
 window.submitBulkSelection = function(formId, checkboxClass, fieldName, confirmText){
   const form=document.getElementById(formId);
   if(!form) return;
-  form.querySelectorAll(`input[name="${fieldName}"]`).forEach((el)=>el.remove());
-  const checked=document.querySelectorAll('.' + checkboxClass + ':checked');
-  if(!checked.length){
-    window.HLMNotice && window.HLMNotice('请先勾选要删除的记录','warning');
-    return;
+  form.querySelectorAll('input[data-bulk-temp="1"]').forEach((el)=>el.remove());
+  const isCache=fieldName==='cache_ids';
+  const scope=isCache?(window.cacheSelectionScope||'page'):(window.mappingSelectionScope||'page');
+  window.addBulkField(form,'scope',scope);
+  if(scope==='filtered'){
+    const filterForm=document.querySelector('form.js-ajax-filter');
+    if(filterForm){
+      const fd=new FormData(filterForm);
+      fd.forEach((value,key)=>{ if(key!=='csrf_token') window.addBulkField(form,key,value); });
+    }
+    const totalEl=document.getElementById(isCache?'cacheFilteredTotal':'mapFilteredTotal');
+    const total=totalEl?parseInt(totalEl.value||'0',10):0;
+    if(total<=0){
+      window.HLMNotice && window.HLMNotice('当前筛选结果为空','warning');
+      return;
+    }
+    if(confirmText && !window.confirm(`${confirmText}\n\n将处理当前筛选结果，共 ${total} 条。`)) return;
+  } else {
+    const checked=document.querySelectorAll('.' + checkboxClass + ':checked');
+    if(!checked.length){
+      window.HLMNotice && window.HLMNotice('请先勾选要处理的记录','warning');
+      return;
+    }
+    const count=checked.length;
+    if(confirmText && !window.confirm(`${confirmText}\n\n当前页选中：${count} 项。`)) return;
+    checked.forEach((el)=>window.addBulkField(form,fieldName,el.value));
   }
-  const count = checked.length;
-  window.HLMNotice && window.HLMNotice(`准备处理 ${count} 项，请确认`,'info');
-  if(confirmText && !window.confirm(`${confirmText}\n\n当前选中：${count} 项`)) return;
-  checked.forEach((el)=>{
-    const input=document.createElement('input');
-    input.type='hidden';
-    input.name=fieldName;
-    input.value=el.value;
-    form.appendChild(input);
-  });
   if(typeof form.requestSubmit === 'function'){
     form.requestSubmit();
   }else{
     form.dispatchEvent(new Event('submit', {cancelable:true, bubbles:true}));
   }
 };
+window.submitBulkRetry = function(mode){
+  const input=document.getElementById('mapRetryMode');
+  if(input) input.value=mode;
+  const text=mode==='deep'
+    ? '确认批量深度重试？深度重试会扫描全部种子文件并受时间预算限制。'
+    : '确认批量快速重试？';
+  window.submitBulkSelection('mapRetryForm','map-check','map_ids',text);
+};
 window.bindMappingPanel = function(){
+  window.mappingSelectionScope='page';
+  window.cacheSelectionScope='page';
   document.querySelectorAll('.map-check,.cache-check').forEach((el)=>{
     if(el.dataset.tipBound==='1') return;
     el.dataset.tipBound='1';
-    el.addEventListener('change', window.updateSelectionTips);
+    el.addEventListener('change', ()=>{
+      if(el.classList.contains('map-check')) window.mappingSelectionScope='page';
+      if(el.classList.contains('cache-check')) window.cacheSelectionScope='page';
+      window.updateSelectionTips();
+    });
   });
   window.updateSelectionTips();
 };
