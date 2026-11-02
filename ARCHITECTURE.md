@@ -1,4 +1,4 @@
-# HLM-Demo 架构说明（v0.5.2）
+# HLM-Demo 架构说明（v0.5.3）
 
 ## 1. 总体结构
 
@@ -9,6 +9,9 @@ Browser
         -> SQLite (WAL)
         -> JobQueue
         -> run_key file locks
+        -> embedded process supervisor
+              -> worker.py 子进程
+              -> scheduler.py 子进程
 
 worker.py
   -> JobQueue 消费
@@ -29,8 +32,9 @@ scheduler.py
 - `core/routes/web.py`：页面与表单。
 - `core/routes/api.py`：JSON API、JobQueue API、指标、OpenAPI。
 - `core/services/`：硬链接、删除、回填、执行、备份、迁移、诊断、配置、安全、Webhook。
-- `worker.py`：后台任务执行进程。
-- `scheduler.py`：独立 cron 调度进程。
+- `worker.py`：后台任务执行进程（默认由 web 进程监管启动）。
+- `scheduler.py`：cron 调度进程（默认由 web 进程监管启动）。
+- `core/services/process_supervisor.py`：单容器内嵌 worker/scheduler 子进程监管、状态和控制。
 - `wsgi.py`：gunicorn 入口。
 - `templates/`、`static/`：服务端渲染页面与本地静态资源。
 
@@ -106,18 +110,18 @@ scheduler.py
 
 ### 执行与队列
 
-- web 检测 worker 心跳。
-- 活跃 worker 时，手动执行自动入队。
-- 无 worker 时同步回退。
+- 默认单容器：web 进程内的 supervisor 自动启动并监管 `worker.py`。
+- web 检测 worker 心跳；活跃 worker 时，手动执行自动入队，否则同步回退。
 - worker 通过 JobQueue 领取任务。
 - 任务带优先级、重试次数、30 分钟租约。
 - 同一 `run_key` 使用跨进程文件锁。
 - 停止请求写入 DB；worker 监控并请求停止。
+- 设置页“后台服务”支持 Worker/Scheduler 启动、停止、重启和状态徽标。
 
 ### Scheduler
 
-- web 生产模式关闭进程内 scheduler。
-- `scheduler.py` 独立运行 cron。
+- 默认单容器：supervisor 启动 `scheduler.py` 子进程。
+- 分离部署：设置 `HLM_EMBEDDED_SUPERVISOR=false`，由外部 scheduler 服务运行。
 - 启动时从 `CronJob` 加载任务。
 - 文件锁避免多进程重复 cron。
 
@@ -137,11 +141,9 @@ scheduler.py
 
 ## 6. 部署模型
 
-- 单镜像多进程角色：
-  - web: gunicorn
-  - worker: python worker.py
-  - scheduler: python scheduler.py
-  - backup: 可变 profile
+- 默认单容器：gunicorn web + 内嵌 supervisor，自动监管 worker/scheduler 子进程。
+- 可选分离部署：`docker-compose.prod.yml` 中独立 worker/scheduler 服务，`hlm` 设置 `HLM_EMBEDDED_SUPERVISOR=false`。
+- backup: 可变 profile。
 - SQLite 本地卷 + WAL。
 - 共享 instance/media/backups/recycle/logs。
 

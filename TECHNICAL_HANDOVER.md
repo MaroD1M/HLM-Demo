@@ -1,8 +1,8 @@
 # HLM-Demo 技术交接文档
 
-版本：`v0.5.2`  
+版本：`v0.5.3`  
 数据库 schema：`v17`  
-文档更新时间：2026-11-01  
+文档更新时间：2026-11-02  
 适用对象：后续维护者、部署者、测试者、代码接手人
 
 ---
@@ -86,7 +86,7 @@ qBittorrent 下载完成
 | 映射回填 | 文件名+大小匹配、冲突处理、批次调优 | 已完成 |
 | 下载器 | qBittorrent，分类过滤 | 已完成 qB；多客户端未完成 |
 | 通知 | Telegram、Apprise | 已完成 |
-| 定时任务 | cron + 独立 scheduler | 已完成 |
+| 定时任务 | cron + 内嵌/独立 scheduler | 已完成 |
 | API | JobQueue、指标、OpenAPI、Webhook | 已完成基础 |
 | 诊断 | 数据库/日志/备份/可写性/支持包 | 已完成 |
 | 安全 | 初始化令牌、管理员、2FA、CSRF、Token、路径限制 | 已完成基础 |
@@ -102,14 +102,9 @@ Web (gunicorn)
   -> Flask web/API
   -> JobQueue
   -> run_key file lock
-
-Worker
-  -> JobQueue consumer
-  -> hardlink/delete/backfill/backup
-  -> qBittorrent/Telegram/Apprise
-
-Scheduler
-  -> cron only
+  -> embedded process supervisor
+       -> Worker 子进程（JobQueue consumer）
+       -> Scheduler 子进程（cron）
 
 SQLite
   -> WAL
@@ -119,7 +114,7 @@ SQLite
 
 当前已实现：
 
-- web / worker / scheduler 三进程拆分。
+- 默认单容器：web + 内嵌 supervisor；可选 web / worker / scheduler 三进程拆分。
 - JobQueue 基础优先级、重试、租约。
 - worker 心跳。
 - 跨进程 run_key 文件锁。
@@ -143,7 +138,7 @@ SQLite
 | 管理员改密 / 2FA | 已完成 |
 | 备份 manifest / 恢复校验 | 已完成 |
 | 恢复前留底 | 已完成 |
-| 独立 scheduler | 已完成 |
+| 内嵌 scheduler（可选独立） | 已完成 |
 | worker 心跳 | 已完成 |
 | 回收站 | 已完成 |
 | Prometheus 指标 | 已完成 |
@@ -172,24 +167,24 @@ SQLite
 
 ## 5. 当前已完成内容
 
-### 5.1 v0.5.2 已发布
+### 5.1 v0.5.3 已发布
 
-- GitHub Release：`v0.5.2`
+- GitHub Release：`v0.5.3`
 - 镜像：
-  - `ghcr.io/marod1m/hlm-demo:v0.5.2`
+  - `ghcr.io/marod1m/hlm-demo:v0.5.3`
   - `ghcr.io/marod1m/hlm-demo:latest`
 - 镜像 digest 以 GitHub Packages 页面为准，避免文档中的 digest 随重建失效。
 - 平台：`linux/amd64`、`linux/arm64`
 - GHCR 匿名拉取已验证。
 
-### 5.1.1 v0.5.2 重点变化
+### 5.1.1 v0.5.3 重点变化
 
-- 新增批量映射重试（快速/深度），worker 在线时逐条提交 `backfill_single` 并自动刷新。
-- 批量操作支持当前页和全选筛选结果；映射页默认排除软删除记录。
-- 统一单条重试 run_key，修复后台深度重试停止不生效的问题。
-- 任务队列显示中文类型；执行记录支持重试单条映射回填。
-- 缓存视图隐藏无效的关联/来源/失败状态筛选。
-- 版本检查保持手动模式，文档明确只有点击“检查更新”才访问 GitHub。
+- 默认单容器运行：web 进程内 supervisor 自动拉起并监管 worker/scheduler 子进程。
+- 设置页新增后台服务状态与控制：Worker/Scheduler 启动、停止、重启。
+- 进程状态写入运行时配置，新增 `/api/runtime/processes` 查询接口。
+- 单条重试失败显示真实原因和建议。
+- Worker/Scheduler 使用文件锁、父进程退出信号和优雅停止，避免重复消费与孤儿进程。
+- 分离部署模式保留在 `docker-compose.prod.yml`。
 
 ### 5.2 安全与初始化
 
@@ -233,7 +228,7 @@ SQLite
 - worker 心跳。
 - 手动任务自动入队。
 - worker stale 修正。
-- 独立 scheduler。
+- 内嵌/独立 scheduler。
 - gunicorn。
 - 备份任务。
 - 执行历史。
@@ -367,7 +362,7 @@ SQLite
 
 ### 阶段 1：稳定性与实测
 
-目标：验证 v0.5.2 真实环境。
+目标：验证 v0.5.3 真实环境。
 
 1. 首次初始化。
 2. 2FA。
@@ -427,8 +422,9 @@ SQLite
 
 ```text
 app.py                        应用装配、认证、安全、qB、扫描、启动
-worker.py                     JobQueue worker
-scheduler.py                  独立 cron scheduler
+worker.py                     JobQueue worker（默认由 supervisor 拉起）
+scheduler.py                  cron scheduler（默认由 supervisor 拉起）
+core/services/process_supervisor.py  内嵌进程监管与状态
 wsgi.py                       gunicorn 入口
 core/models.py                SQLAlchemy 模型
 core/deps.py                  路由依赖对象
@@ -444,6 +440,7 @@ core/services/diagnostics_service.py
 core/services/config_service.py
 core/services/security_service.py
 core/services/operation_guard_service.py
+core/services/process_supervisor.py
 core/services/webhook_service.py
 core/services/audit_service.py
 templates/                    Jinja 页面与局部面板

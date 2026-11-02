@@ -11,6 +11,7 @@ os.environ.setdefault('APP_LOG_DIR', os.path.join(_TEST_INSTANCE, 'logs'))
 os.environ.setdefault('ACCESS_LOG_ENABLED', 'false')
 os.environ.setdefault('TRUST_PROXY_HEADERS', 'false')
 os.environ.setdefault('HLM_ALLOW_NO_AUTH', 'true')
+os.environ.setdefault('HLM_EMBEDDED_SUPERVISOR', 'false')
 atexit.register(lambda: shutil.rmtree(_TEST_INSTANCE, ignore_errors=True))
 
 from app import app, init_app, set_config

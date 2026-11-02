@@ -73,6 +73,18 @@ SETTING_SPECS = {
     'version_check_cached_at': {'default': '', 'desc': '版本检查缓存检查时间'},
     'worker_last_seen_at': {'default': '', 'desc': 'worker 最近心跳时间'},
     'worker_heartbeat_ttl_seconds': {'default': '45', 'desc': 'worker 心跳有效秒数', 'type': 'int', 'min': 5, 'max': 3600},
+    'scheduler_last_seen_at': {'default': '', 'desc': 'scheduler 最近心跳时间'},
+    'worker_desired_state': {'default': 'running', 'desc': '内嵌 worker 期望状态'},
+    'scheduler_desired_state': {'default': 'running', 'desc': '内嵌 scheduler 期望状态'},
+    'worker_control_nonce': {'default': '', 'desc': 'worker 控制请求标记'},
+    'scheduler_control_nonce': {'default': '', 'desc': 'scheduler 控制请求标记'},
+    'worker_manager_state': {'default': 'unknown', 'desc': '内嵌 worker 管理状态'},
+    'scheduler_manager_state': {'default': 'unknown', 'desc': '内嵌 scheduler 管理状态'},
+    'worker_manager_error': {'default': '', 'desc': '内嵌 worker 最近错误'},
+    'scheduler_manager_error': {'default': '', 'desc': '内嵌 scheduler 最近错误'},
+    'worker_pid': {'default': '', 'desc': '内嵌 worker 进程号'},
+    'scheduler_pid': {'default': '', 'desc': '内嵌 scheduler 进程号'},
+    'supervisor_last_seen_at': {'default': '', 'desc': '内嵌进程管理器最近心跳'},
 }
 
 

@@ -280,6 +280,9 @@ window.HLMAjax={
             window.HLMAjax.pollJob(data.job_id, data.target||'', data.refresh_after_ms);
           }
           if(!res.ok||!data.ok){return;}
+          if(submitter && submitter.hasAttribute('data-process-control')){
+            window.setTimeout(()=>{ window.HLMProcessStatus && window.HLMProcessStatus.refresh(); }, 3000);
+          }
           if(!panelApplied){
             const refreshOnSuccess = (submitter && submitter.getAttribute('data-refresh-on-success')) || form.getAttribute('data-refresh-on-success');
             if (String(refreshOnSuccess || '').toLowerCase() === 'true') {
@@ -339,6 +342,55 @@ window.HLMTheme={
   apply(theme){document.documentElement.dataset.theme=theme;try{localStorage.setItem('hlm-theme',theme);}catch(e){} const label=document.getElementById('themeToggleLabel'); if(label) label.textContent=theme==='dark'?'浅色模式':'深色模式';},
   toggle(){this.apply(this.current()==='dark'?'light':'dark');}
 };
+window.HLMProcessStatus={
+  _timer:null,
+  refresh(){
+    if(!document.querySelector('[data-process-badge], [data-process-meta], [data-process-control]')) return;
+    fetch('/api/runtime/processes',{headers:{'X-Requested-With':'XMLHttpRequest'}})
+      .then((res)=>res.ok?res.json():null)
+      .then((data)=>{
+        if(!data||!data.ok) return;
+        const embedded=!!data.embedded;
+        const apply=(name,info)=>{
+          const badge=document.querySelector(`[data-process-badge="${name}"]`);
+          if(badge){
+            let text='检查中', cls='text-bg-secondary';
+            if(info.desired==='stopped'){ text='已停止'; cls='text-bg-secondary'; }
+            else if(info.online){ text='在线'; cls='text-bg-success'; }
+            else if(['starting','stopping'].includes(info.manager_state)){ text=info.manager_state==='starting'?'启动中':'停止中'; cls='text-bg-warning'; }
+            else { text='离线'; cls='text-bg-danger'; }
+            badge.textContent=text;
+            badge.classList.remove('text-bg-success','text-bg-secondary','text-bg-danger','text-bg-warning');
+            badge.classList.add(cls);
+            badge.title=`${name} ${info.desired} / ${info.manager_state}`;
+          }
+          document.querySelectorAll(`[data-process-meta="${name}"]`).forEach((el)=>{
+            const age=info.age_seconds===null?'-':`${info.age_seconds}s`;
+            const pid=info.pid||'-';
+            const err=info.manager_error?` | 错误：${info.manager_error}`:'';
+            el.textContent=`最后心跳 ${age} 前 | PID ${pid} | 状态 ${info.manager_state}${err}`;
+          });
+          document.querySelectorAll(`[data-process-control="${name}"]`).forEach((el)=>{
+            const external=info.manager_state==='external';
+            el.disabled=!embedded||external;
+            el.title=!embedded?'当前为外部服务模式，请使用 Compose 管理':(external?'检测到外部服务进程，请使用 Compose 管理':'');
+          });
+        };
+        apply('worker', data.worker||{});
+        apply('scheduler', data.scheduler||{});
+        const workerOnline=!!(data.worker&&data.worker.online&&data.worker.desired!=='stopped');
+        document.querySelectorAll('[data-process-requires="worker"]').forEach((el)=>{
+          el.disabled=!workerOnline;
+          el.title=workerOnline?'':'Worker 离线或已停止，无法批量重试';
+        });
+      })
+      .catch(()=>{});
+  },
+  start(){
+    this.refresh();
+    if(!this._timer) this._timer=window.setInterval(()=>this.refresh(),10000);
+  }
+};
 window.HLMVersion={
   refresh(){
     fetch('/api/version',{headers:{'X-Requested-With':'XMLHttpRequest'}})
@@ -370,6 +422,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   if(toggle) toggle.addEventListener('click',()=>window.HLMTheme.toggle());
   window.HLMAjax.bind();window.HLMAjax.bindFilters();if(window.HLMHelpToggleBind) window.HLMHelpToggleBind();if(window.HLMCopyBind) window.HLMCopyBind();
   window.HLMVersion.refresh();
+  window.HLMProcessStatus.start();
 });
 window.HLMInitTooltips=function(){
   document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el)=>{

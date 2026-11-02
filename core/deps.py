@@ -52,6 +52,7 @@ class RouteDeps:
     get_release_info: Callable
     request_stop_by_execution: Callable
     is_run_key_active: Callable
+    embedded_supervisor_enabled: Callable
     get_running_executions_snapshot: Callable
     save_config_snapshot: Callable
     restore_config_snapshot: Callable

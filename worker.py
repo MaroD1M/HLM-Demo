@@ -3,19 +3,57 @@
 #!/usr/bin/env python3
 import argparse
 import os
+import signal
 import socket
 import threading
-import time
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 
 os.environ.setdefault('HLM_WORKER', 'true')
+os.environ.setdefault('HLM_EMBEDDED_SUPERVISOR', 'false')
 
 from app import EXEC_MGR, JobQueue, app, claim_next_job, db, execute_queued_job, finish_job, init_app, set_config
 
 
-def _monitor_stop(job_id, run_key, done_event):
+_worker_lock_handle = None
+
+
+def _acquire_worker_lock():
+    global _worker_lock_handle
+    if fcntl is None:
+        return True
+    instance = Path(os.environ.get('HLM_INSTANCE_PATH') or 'instance')
+    try:
+        instance.mkdir(parents=True, exist_ok=True)
+        handle = (instance / 'worker.lock').open('w', encoding='utf-8')
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _worker_lock_handle = handle
+        return True
+    except BlockingIOError:
+        return False
+    except Exception:
+        return True
+
+
+def _set_parent_death_signal():
+    try:
+        import ctypes
+        ctypes.CDLL('libc.so.6').prctl(1, signal.SIGTERM)
+    except Exception:
+        pass
+
+
+def _monitor_stop(job_id, run_key, done_event, shutdown_event=None):
     while not done_event.wait(1.0):
+        if shutdown_event is not None and shutdown_event.is_set():
+            EXEC_MGR.request_stop_by_run_key(run_key)
+            return
         with app.app_context():
             try:
                 db.session.remove()
@@ -65,8 +103,10 @@ def reconcile_stale_jobs(grace_seconds=3600):
         return len(stale)
 
 
-def process_one(worker_id):
+def process_one(worker_id, shutdown_event=None):
     """Claim and execute at most one queued job."""
+    if shutdown_event is not None and shutdown_event.is_set():
+        return False
     with app.app_context():
         row = claim_next_job(worker_id)
         if not row:
@@ -80,7 +120,7 @@ def process_one(worker_id):
             db.session.commit()
             return True
         done_event = threading.Event()
-        monitor = threading.Thread(target=_monitor_stop, args=(job_id, run_key, done_event), daemon=True)
+        monitor = threading.Thread(target=_monitor_stop, args=(job_id, run_key, done_event, shutdown_event), daemon=True)
         monitor.start()
         try:
             ok, message = execute_queued_job(row)
@@ -100,31 +140,50 @@ def main():
     parser.add_argument('--poll-interval', type=float, default=2.0)
     args = parser.parse_args()
 
+    _set_parent_death_signal()
+    if not _acquire_worker_lock():
+        app.logger.warning('another worker owns worker.lock; worker child exits')
+        return
     init_app()
     reconcile_stale_jobs()
     with app.app_context():
         set_config('worker_last_seen_at', datetime.now(UTC).isoformat())
     worker_id = f'{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:8]}'
-    stop_event = threading.Event()
-    heartbeat = threading.Thread(target=heartbeat_loop, args=(stop_event,), daemon=True)
+    shutdown_event = threading.Event()
+    heartbeat = threading.Thread(target=heartbeat_loop, args=(shutdown_event,), daemon=True)
     heartbeat.start()
+
+    def _handle_signal(_signum, _frame):
+        shutdown_event.set()
+
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
+    parent_raw = str(os.environ.get('HLM_PARENT_PID', '') or '').strip()
+    try:
+        parent_pid = int(parent_raw) if parent_raw else None
+    except Exception:
+        parent_pid = None
+
     app.logger.info('worker started id=%s', worker_id)
     try:
-        while True:
+        while not shutdown_event.is_set():
+            if parent_pid is not None and os.getppid() != parent_pid:
+                app.logger.info('parent process changed; worker exits')
+                break
             try:
-                worked = process_one(worker_id)
+                worked = process_one(worker_id, shutdown_event)
                 if args.once:
                     return
                 if not worked:
-                    time.sleep(max(0.2, args.poll_interval))
+                    shutdown_event.wait(max(0.2, args.poll_interval))
             except KeyboardInterrupt:
                 app.logger.info('worker interrupted')
                 return
             except Exception as exc:
                 app.logger.exception('worker loop error: %s', exc)
-                time.sleep(max(1.0, args.poll_interval))
+                shutdown_event.wait(max(1.0, args.poll_interval))
     finally:
-        stop_event.set()
+        shutdown_event.set()
 
 
 if __name__ == '__main__':

@@ -20,8 +20,9 @@
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="invertCurrentPage('map-check')">反选本页</button>
         <button type="button" class="btn btn-sm btn-outline-danger" onclick="submitBulkSelection('mapBulkForm','map-check','map_ids','确认批量删除选中的映射记录？仅删除数据库映射，不删除真实文件。')">批量删除映射</button>
         <button type="button" class="btn btn-sm btn-outline-warning" onclick="submitBulkSelection('mapResetForm','map-check','map_ids','确认批量重置选中的映射失败计数？')">批量重置失败计数</button>
+        <a class="badge text-bg-secondary align-self-center" href="/settings#processStatusCard" data-process-badge="worker">Worker 检查中</a>
         <div class="dropdown d-inline-block">
-          <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown">批量映射重试</button>
+          <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" data-process-requires="worker">批量映射重试</button>
           <ul class="dropdown-menu">
             <li><button type="button" class="dropdown-item" onclick="submitBulkRetry('fast')">快速重试</button></li>
             <li><button type="button" class="dropdown-item" onclick="submitBulkRetry('deep')">深度重试</button></li>

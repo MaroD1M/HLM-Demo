@@ -26,7 +26,7 @@ def _job_payload(row):
     }
 
 
-def init_api_routes(HardlinkTask, DeleteMonitorTask, AppConfig=None, OperationLog=None, db=None, get_config=None, get_release_info=None, get_running_executions_snapshot=None, logger=None, JobQueue=None, enqueue_job=None, request_stop_queued_job=None, started_at=None):
+def init_api_routes(HardlinkTask, DeleteMonitorTask, AppConfig=None, OperationLog=None, db=None, get_config=None, get_release_info=None, get_running_executions_snapshot=None, logger=None, JobQueue=None, enqueue_job=None, request_stop_queued_job=None, started_at=None, embedded_supervisor_enabled=None):
     @api_bp.post('/api/v1/jobs')
     def api_create_job():
         if not JobQueue or not enqueue_job:
@@ -142,6 +142,53 @@ def init_api_routes(HardlinkTask, DeleteMonitorTask, AppConfig=None, OperationLo
             'message': release.get('message', '-'),
             'checked_at': release.get('checked_at', '-'),
             'release': release,
+        })
+
+    @api_bp.get('/api/runtime/processes')
+    def api_runtime_processes():
+        if not get_config:
+            return jsonify({'ok': False, 'message': 'process status unavailable'}), 503
+        try:
+            ttl = int(get_config('worker_heartbeat_ttl_seconds', '45') or '45')
+        except Exception:
+            ttl = 45
+        ttl = max(5, ttl)
+
+        def pack(name):
+            raw = str(get_config(f'{name}_last_seen_at', '') or '').strip()
+            age = None
+            online = False
+            if raw:
+                try:
+                    seen = datetime.fromisoformat(raw.replace('Z', '+00:00'))
+                    if seen.tzinfo is None:
+                        seen = seen.replace(tzinfo=UTC)
+                    age = max(0, int((datetime.now(UTC) - seen.astimezone(UTC)).total_seconds()))
+                    online = age <= ttl
+                except Exception:
+                    age = None
+                    online = False
+            return {
+                'desired': str(get_config(f'{name}_desired_state', 'running') or 'running'),
+                'online': online,
+                'last_seen_at': raw or '-',
+                'age_seconds': age,
+                'pid': str(get_config(f'{name}_pid', '') or ''),
+                'manager_state': str(get_config(f'{name}_manager_state', 'unknown') or 'unknown'),
+                'manager_error': str(get_config(f'{name}_manager_error', '') or ''),
+                'manager_updated_at': str(get_config(f'{name}_manager_updated_at', '') or ''),
+            }
+
+        try:
+            embedded = bool(embedded_supervisor_enabled and embedded_supervisor_enabled())
+        except Exception:
+            embedded = False
+        return jsonify({
+            'ok': True,
+            'embedded': embedded,
+            'worker': pack('worker'),
+            'scheduler': pack('scheduler'),
+            'supervisor_last_seen_at': str(get_config('supervisor_last_seen_at', '') or ''),
         })
 
     @api_bp.get('/api/health')

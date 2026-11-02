@@ -10,6 +10,55 @@
 
 <div id="pageHelp" class="section-card mb-3 d-none"><div class="section-muted">本页按功能分区保存；修改后可按分区保存或保存全部设置。</div></div>
 
+<div class="section-card mb-3" id="processStatusCard">
+  <div class="section-title mb-2">后台服务（Worker / Scheduler）</div>
+  <div class="section-muted mb-3">默认随应用自动启动；单容器内嵌模式下可在此查看状态并手动启动、停止或重启。</div>
+  <div class="row g-3">
+    <div class="col-md-6 section-subcard">
+      <div class="d-flex align-items-center justify-content-between gap-2">
+        <div class="field-title mb-0">Worker</div>
+        <span class="badge text-bg-secondary" data-process-badge="worker">检查中</span>
+      </div>
+      <div class="small text-muted mt-2" data-process-meta="worker">等待状态...</div>
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <form action="/settings/processes/worker/start" method="POST" class="js-ajax-form m-0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-sm btn-outline-success" data-process-control="worker">启动</button>
+        </form>
+        <form action="/settings/processes/worker/stop" method="POST" class="js-ajax-form m-0" data-confirm="确认停止 Worker？正在执行的任务可能会被中断。">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-sm btn-outline-warning" data-process-control="worker">停止</button>
+        </form>
+        <form action="/settings/processes/worker/restart" method="POST" class="js-ajax-form m-0" data-confirm="确认重启 Worker？正在执行的任务可能会被中断。">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-sm btn-outline-primary" data-process-control="worker">重启</button>
+        </form>
+      </div>
+    </div>
+    <div class="col-md-6 section-subcard">
+      <div class="d-flex align-items-center justify-content-between gap-2">
+        <div class="field-title mb-0">Scheduler</div>
+        <span class="badge text-bg-secondary" data-process-badge="scheduler">检查中</span>
+      </div>
+      <div class="small text-muted mt-2" data-process-meta="scheduler">等待状态...</div>
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <form action="/settings/processes/scheduler/start" method="POST" class="js-ajax-form m-0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-sm btn-outline-success" data-process-control="scheduler">启动</button>
+        </form>
+        <form action="/settings/processes/scheduler/stop" method="POST" class="js-ajax-form m-0" data-confirm="确认停止 Scheduler？定时任务将暂停执行。">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-sm btn-outline-warning" data-process-control="scheduler">停止</button>
+        </form>
+        <form action="/settings/processes/scheduler/restart" method="POST" class="js-ajax-form m-0" data-confirm="确认重启 Scheduler？">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-sm btn-outline-primary" data-process-control="scheduler">重启</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="section-card" id="settingsPagePanel">
   <form class="js-ajax-form settings-grid" data-target="settingsPagePanel" action="/settings/save" method="POST">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

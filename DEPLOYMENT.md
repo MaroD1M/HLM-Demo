@@ -1,6 +1,6 @@
-# HLM-Demo 部署与运维指南（v0.5.2）
+# HLM-Demo 部署与运维指南（v0.5.3）
 
-本文档面向生产/实测部署，使用 Compose 启动 web、worker、scheduler 三个核心服务。
+本文档面向生产/实测部署。v0.5.3 起默认使用单个 `hlm` 容器，worker/scheduler 由应用内嵌监管；`docker-compose.prod.yml` 仍支持分离部署。
 
 配套文档：
 
@@ -10,7 +10,7 @@
 
 已发布镜像：
 
-- `ghcr.io/marod1m/hlm-demo:v0.5.2`
+- `ghcr.io/marod1m/hlm-demo:v0.5.3`
 - `ghcr.io/marod1m/hlm-demo:latest`
 
 镜像 digest 以 GitHub Packages 页面为准，避免文档中的 digest 随重建失效。
@@ -74,27 +74,31 @@ HLM_ALLOW_NO_AUTH=false
 ## 4. 启动
 
 ```bash
+# v0.5.3 将 worker/scheduler 内嵌到 hlm，旧版分离容器请一并清理
+docker compose down --remove-orphans
 docker compose pull
 docker compose up -d
 ```
 
-服务角色：
+服务角色（默认单容器）：
 
-| 服务 | 作用 |
+| 服务/进程 | 作用 |
 |---|---|
-| `hlm` | gunicorn web + API |
-| `worker` | 消费 JobQueue，执行硬链接/删除/回填/备份 |
-| `scheduler` | 独立 cron 调度 |
+| `hlm` | gunicorn web + API + 进程监管 |
+| 内嵌 worker | 消费 JobQueue，执行硬链接/删除/回填/备份 |
+| 内嵌 scheduler | cron 调度 |
 | `backup` | 可选备份 profile |
+
+在“系统设置 -> 后台服务”可查看 Worker/Scheduler 状态，并执行启动、停止、重启。
 
 查看状态：
 
 ```bash
 docker compose ps
 docker compose logs -f hlm
-docker compose logs -f worker
-docker compose logs -f scheduler
 ```
+
+如果使用 `docker-compose.prod.yml` 分离部署，则仍可单独查看/管理 `worker`、`scheduler` 服务，并在 `hlm` 上设置 `HLM_EMBEDDED_SUPERVISOR=false`。
 
 健康检查：
 
@@ -235,13 +239,14 @@ curl -X POST http://127.0.0.1:5000/api/v1/jobs \
 - 读取 `data/instance/setup_token.txt` 完成初始化。
 
 ### 手动执行没有进入后台
-- worker 心跳不在有效期内。
-- 检查 `docker compose ps` 和 worker 日志。
-- 无 worker 时会回退为同步执行。
+- 打开“系统设置 -> 后台服务”，确认 Worker 为在线。
+- 如已停止，点击启动或重启。
+- Worker 离线时，手动执行会回退为同步执行。
 
 ### cron 不执行
-- 检查 `scheduler` 服务是否运行。
-- web 生产模式默认关闭进程内 scheduler。
+- 打开“系统设置 -> 后台服务”，确认 Scheduler 为在线。
+- 如已停止，点击启动或重启。
+- 分离部署时检查外部 `scheduler` 服务。
 
 ### 备份恢复后凭据无法解密
 - 恢复时未保留对应 `SECRET_KEY` 或 `instance/secret_key`。
@@ -275,22 +280,22 @@ bash scripts/build_image.sh
 或手动：
 
 ```bash
-docker build -t ghcr.io/marod1m/hlm-demo:v0.5.2 .
-docker tag ghcr.io/marod1m/hlm-demo:v0.5.2 ghcr.io/marod1m/hlm-demo:latest
+docker build -t ghcr.io/marod1m/hlm-demo:v0.5.3 .
+docker tag ghcr.io/marod1m/hlm-demo:v0.5.3 ghcr.io/marod1m/hlm-demo:latest
 ```
 
 推送：
 
 ```bash
-docker push ghcr.io/marod1m/hlm-demo:v0.5.2
+docker push ghcr.io/marod1m/hlm-demo:v0.5.3
 docker push ghcr.io/marod1m/hlm-demo:latest
 ```
 
 或打 tag 触发 GitHub Actions：
 
 ```bash
-git tag v0.5.2
-git push origin v0.5.2
+git tag v0.5.3
+git push origin v0.5.3
 ```
 
 CI 会构建 `linux/amd64` 与 `linux/arm64` 镜像并推送到 GHCR。

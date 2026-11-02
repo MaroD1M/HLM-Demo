@@ -37,7 +37,8 @@ services:
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
       HLM_ALLOW_NO_AUTH: ${HLM_ALLOW_NO_AUTH:-false}
-      HLM_DISABLE_SCHEDULER: "true"
+      # 单容器内嵌 worker/scheduler 监管；如需拆分部署请使用 docker-compose.prod.yml
+      HLM_EMBEDDED_SUPERVISOR: "${HLM_EMBEDDED_SUPERVISOR:-true}"
       HLM_SETUP_TOKEN: ${HLM_SETUP_TOKEN:-}
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-1}
       GUNICORN_THREADS: ${GUNICORN_THREADS:-8}
@@ -92,55 +93,3 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-  worker:
-    image: ghcr.io/marod1m/hlm-demo:latest
-    container_name: hlm-demo-worker
-    restart: unless-stopped
-    environment:
-      SECRET_KEY: ${SECRET_KEY}
-      HLM_INSTANCE_PATH: /app/instance
-      HLM_WORKER: "true"
-      TZ: ${TZ:-Asia/Shanghai}
-      PYTHONUNBUFFERED: "1"
-      APP_LOG_MAX_MB: ${APP_LOG_MAX_MB:-10}
-      APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
-      LOG_FORMAT: ${LOG_FORMAT:-text}
-      SENTRY_DSN: ${SENTRY_DSN:-}
-      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
-      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
-    volumes:
-      - ./data/instance:/app/instance
-      - ./data/backups:/app/data/backups
-      - ./data/logs:/app/data/logs
-      - ./data/recycle:/app/data/recycle
-      - ${MEDIA_ROOT:-./data/media}:/media
-    entrypoint: ["python", "-u", "/app/worker.py"]
-    depends_on:
-      hlm:
-        condition: service_healthy
-  scheduler:
-    image: ghcr.io/marod1m/hlm-demo:latest
-    container_name: hlm-demo-scheduler
-    restart: unless-stopped
-    environment:
-      SECRET_KEY: ${SECRET_KEY}
-      HLM_INSTANCE_PATH: /app/instance
-      TZ: ${TZ:-Asia/Shanghai}
-      PYTHONUNBUFFERED: "1"
-      APP_LOG_MAX_MB: ${APP_LOG_MAX_MB:-10}
-      APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
-      LOG_FORMAT: ${LOG_FORMAT:-text}
-      SENTRY_DSN: ${SENTRY_DSN:-}
-      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
-      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
-    volumes:
-      - ./data/instance:/app/instance
-      - ./data/backups:/app/data/backups
-      - ./data/logs:/app/data/logs
-      - ./data/recycle:/app/data/recycle
-      - ${MEDIA_ROOT:-./data/media}:/media
-    entrypoint: ["python", "-u", "/app/scheduler.py"]
-    depends_on:
-      hlm:
-        condition: service_healthy

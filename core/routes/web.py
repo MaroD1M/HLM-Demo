@@ -3,6 +3,7 @@
 from pathlib import Path
 import json
 import os
+import time
 import secrets
 import shutil
 from urllib.parse import unquote, urlparse
@@ -157,6 +158,7 @@ def init_web_routes(ctx: RouteDeps):
     get_release_info = ctx.get_release_info
     request_stop_by_execution = ctx.request_stop_by_execution
     is_run_key_active = ctx.is_run_key_active
+    embedded_supervisor_enabled = ctx.embedded_supervisor_enabled
     get_running_executions_snapshot = ctx.get_running_executions_snapshot
     save_config_snapshot = ctx.save_config_snapshot
     restore_config_snapshot = ctx.restore_config_snapshot
@@ -199,6 +201,9 @@ def init_web_routes(ctx: RouteDeps):
         return a_text == b_text or a_text.startswith(b_text + os.sep) or b_text.startswith(a_text + os.sep)
 
     def _worker_is_live():
+        desired = str(get_config('worker_desired_state', 'running') or 'running').strip().lower()
+        if desired == 'stopped':
+            return False
         raw = (get_config('worker_last_seen_at', '') or '').strip()
         if not raw:
             return False
@@ -1455,6 +1460,21 @@ def init_web_routes(ctx: RouteDeps):
             log_operation('mapping_retry_linked', 'FileLinkMap', row.id, row.source_path, f'已关联 hash={row.torrent_hash}')
             return _json_or_redirect(True, f'重试成功：已关联种子（{row.torrent_hash}）', '/mapping', html=html, target='mappingPanel')
 
+        reason = ''
+        last_log = OperationLog.query.filter(
+            OperationLog.target_id == map_id,
+            OperationLog.operation_type.in_(('backfill_skipped', 'backfill_conflict')),
+        ).order_by(OperationLog.created_at.desc()).first()
+        if last_log and last_log.message:
+            reason = str(last_log.message).split(';')[0].strip()
+        if reason:
+            msg = f'{msg}；原因: {reason}'
+        if reason == 'candidate_empty_skip_fast':
+            msg += '；建议使用深度重试'
+        elif reason in {'filelist_no_match', 'candidate_empty_fallback_no_match'}:
+            msg += '；请检查 qB 文件名/大小、路径或分类过滤'
+        elif reason == 'missing_basename_or_size':
+            msg += '；映射记录缺少文件大小，请重新扫描硬链接'
         return _json_or_redirect(False, f'重试完成但未关联成功：{msg}', '/mapping', html=html, target='mappingPanel', status=400)
 
     @web_bp.route('/mapping/link/reset-fail/<int:map_id>', methods=['POST'])
@@ -1825,6 +1845,25 @@ def init_web_routes(ctx: RouteDeps):
 
 
 
+    @web_bp.route('/settings/processes/<process>/<action>', methods=['POST'])
+    def settings_process_control(process, action):
+        process = (process or '').strip().lower()
+        action = (action or '').strip().lower()
+        if process not in {'worker', 'scheduler'}:
+            return _json_or_redirect(False, '不支持的后台服务', '/settings', status=400)
+        if action not in {'start', 'stop', 'restart'}:
+            return _json_or_redirect(False, '不支持的操作', '/settings', status=400)
+        if not embedded_supervisor_enabled():
+            return _json_or_redirect(False, '当前为外部服务模式，请使用 Compose 管理 worker/scheduler', '/settings', status=400)
+        desired = 'stopped' if action == 'stop' else 'running'
+        set_config(f'{process}_desired_state', desired, commit=False)
+        set_config(f'{process}_control_nonce', datetime.now(UTC).isoformat(), commit=False)
+        db.session.commit()
+        label = {'worker': 'Worker', 'scheduler': 'Scheduler'}[process]
+        action_label = {'start': '启动', 'stop': '停止', 'restart': '重启'}[action]
+        log_operation('process_control', 'Process', None, label, f'{action_label} {label}')
+        return _json_or_redirect(True, f'已提交 {label} {action_label}请求，请稍后查看状态', '/settings')
+
     @web_bp.route('/settings/check-update', methods=['POST'])
     def settings_check_update():
         info = get_release_info(force_refresh=True)
@@ -1993,6 +2032,9 @@ def init_web_routes(ctx: RouteDeps):
             return _json_or_redirect(False, '备份路径非法', '/diagnostics', status=400)
         if get_running_executions_snapshot():
             return _json_or_redirect(False, '当前仍有任务在运行，请等待任务结束后再恢复数据库', '/diagnostics', status=400)
+        active_job = JobQueue.query.filter(JobQueue.status.in_(('queued', 'running'))).first()
+        if active_job:
+            return _json_or_redirect(False, '后台队列仍有排队/运行中任务，请等待清空后再恢复数据库', '/diagnostics', status=400)
         db_file = Path(current_app.instance_path) / 'hardlink_manager.db'
         ok_check, msg_check = verify_backup_integrity(backup_path)
         if not ok_check:
@@ -2000,12 +2042,27 @@ def init_web_routes(ctx: RouteDeps):
             return _json_or_redirect(False, f'恢复前检查失败: {msg_check}', '/diagnostics', status=400)
 
         paused = False
-        try:
-            if scheduler.running:
-                scheduler.pause()
-                paused = True
-        except Exception:
-            paused = False
+        embedded_processes = bool(embedded_supervisor_enabled())
+        previous_desired = {}
+        if embedded_processes:
+            for name in ('worker', 'scheduler'):
+                previous_desired[name] = str(get_config(f'{name}_desired_state', 'running') or 'running')
+                set_config(f'{name}_desired_state', 'stopped', commit=False)
+                set_config(f'{name}_control_nonce', datetime.now(UTC).isoformat(), commit=False)
+            db.session.commit()
+            for _ in range(30):
+                worker_pid = str(get_config('worker_pid', '') or '')
+                scheduler_pid = str(get_config('scheduler_pid', '') or '')
+                if not worker_pid and not scheduler_pid:
+                    break
+                time.sleep(0.5)
+        else:
+            try:
+                if scheduler.running:
+                    scheduler.pause()
+                    paused = True
+            except Exception:
+                paused = False
         try:
             db.session.remove()
             try:
@@ -2034,6 +2091,11 @@ def init_web_routes(ctx: RouteDeps):
                     scheduler.resume()
                 except Exception:
                     pass
+            if embedded_processes:
+                for name, desired in previous_desired.items():
+                    set_config(f'{name}_desired_state', desired or 'running', commit=False)
+                    set_config(f'{name}_control_nonce', datetime.now(UTC).isoformat(), commit=False)
+                db.session.commit()
         if ok:
             msg = f'{msg}；请重启容器以确保全部连接与状态使用恢复后的数据库'
         try:

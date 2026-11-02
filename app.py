@@ -44,6 +44,7 @@ from core.services.delete_service import scan_delete_rows
 from core.services.backup_service import run_sqlite_backup
 from core.services.execution_service import ExecutionManager
 from core.services.migration_service import MigrationService
+from core.services.process_supervisor import ProcessSupervisor
 from core.services.security_service import is_ip_allowed, is_read_only_forbidden_endpoint
 from core.extensions import db, scheduler
 from core.models import HardlinkTask, DeleteMonitorTask, Downloader, Notifier, HardlinkCache, FileLinkMap, OperationLog, JobExecutionLog, DeletePendingAction, AppConfig, AppConfigSnapshot, CronJob, AdminUser, JobQueue, RecycleItem
@@ -433,6 +434,7 @@ AUTH_STATE = {}
 AUTH_STATE_MAX_ENTRIES = 5000
 APP_BOOTSTRAPPED = False
 SQLITE_PRAGMAS_INSTALLED = False
+PROCESS_SUPERVISOR = None
 SCHEDULER_LOCK_FILE = None
 SCHEDULER_LOCK_PID = None
 QB_SESSION_LOCK = Lock()
@@ -2679,10 +2681,16 @@ def init_app():
         init_file_logger()
         app.logger.info('startup access_log_enabled=%s tz=%s version=%s', app.config.get('ACCESS_LOG_ENABLED'), os.environ.get('TZ', ''), app.config.get('APP_VERSION'))
         init_system_jobs()
+        global PROCESS_SUPERVISOR
+        if PROCESS_SUPERVISOR is None:
+            PROCESS_SUPERVISOR = ProcessSupervisor(app, db, get_config, set_config, app.logger)
+        supervisor_enabled = PROCESS_SUPERVISOR.enabled()
         if not app.config.get('WORKER_MODE'):
-            if not app.config.get('DISABLE_SCHEDULER'):
+            if not app.config.get('DISABLE_SCHEDULER') and not supervisor_enabled:
                 reconcile_stale_running_executions()
                 start_cron_scheduler()
+        if supervisor_enabled:
+            PROCESS_SUPERVISOR.start()
         if APP_BOOTSTRAPPED:
             return
         app.register_blueprint(init_api_routes(
@@ -2694,6 +2702,7 @@ def init_app():
             get_config=get_config,
             get_release_info=get_release_info,
             get_running_executions_snapshot=get_running_executions_snapshot,
+            embedded_supervisor_enabled=lambda: bool(PROCESS_SUPERVISOR and PROCESS_SUPERVISOR.enabled()),
             logger=app.logger,
             JobQueue=JobQueue,
             enqueue_job=enqueue_job,
@@ -2744,6 +2753,7 @@ def init_app():
             get_release_info=get_release_info,
             request_stop_by_execution=request_stop_by_execution,
             is_run_key_active=is_run_key_active,
+            embedded_supervisor_enabled=lambda: bool(PROCESS_SUPERVISOR and PROCESS_SUPERVISOR.enabled()),
             get_running_executions_snapshot=get_running_executions_snapshot,
             save_config_snapshot=save_config_snapshot,
             restore_config_snapshot=restore_config_snapshot,

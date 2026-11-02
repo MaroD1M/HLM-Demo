@@ -16,7 +16,7 @@
 
 </div>
 
-> 当前版本：`v0.5.2`（2026-11-02）
+> 当前版本：`v0.5.3`（2026-11-02）
 
 详细文档：
 
@@ -42,22 +42,21 @@
 ---
 
 
-## 🆕 最近更新说明（v0.5.2）
+## 🆕 最近更新说明（v0.5.3）
 
 ### 主要更新
-- 映射页新增“批量映射重试”，支持快速/深度模式；worker 在线时逐条提交后台任务，完成后自动刷新。
-- 批量操作支持“当前页勾选”和“全选筛选结果”两种范围；批量删除/重置/重试都会显示处理数量和跳过原因。
-- 映射页默认排除软删除记录；缓存视图只显示缓存相关筛选。
-- 修复后台深度重试的停止请求可能不生效、任务队列显示内部类型名、单条执行记录无法重试等问题。
-- 快速重试会复用已在队列/执行中的单条任务，避免同一映射并发回填。
-- 版本检查保持手动模式：点击“检查更新”后才访问 GitHub 并显示新版本提示点。
-- 数据库 schema 仍为 v17；v0.5.2 不涉及数据库结构升级。
+- 单容器内嵌 worker / scheduler：启动 `hlm` 后自动拉起后台子进程，不再需要额外启动 worker/scheduler 服务。
+- 设置页新增“后台服务”卡片：Worker / Scheduler 在线、离线、启动中、已停止状态一目了然，支持启动、停止、重启。
+- 映射页增加 Worker 状态徽标；Worker 离线时自动禁用批量重试入口。
+- 单条重试失败时显示真实原因和建议，不再只提示“未命中可用种子”。
+- `docker-compose.prod.yml` 仍保留外部 worker/scheduler 分离模式，通过 `HLM_EMBEDDED_SUPERVISOR=false` 切换。
+- 数据库 schema 仍为 v17，本次无需额外迁移。
 
 ### 对普通用户的影响
-- 升级方式不变：`docker compose pull && docker compose up -d --force-recreate`。
-- 批量映射重试需要 worker 在线；单条快速重试仍可直接使用。
-- 旧版 `instance/dev_runtime.env` 和 `data/devsrc` 可以删除；v0.5.1 起不再读取。
-- 版本号显示在侧边栏底部；进入“安全与版本”点击“检查更新”后显示更新状态。
+- 默认只需要一个 `hlm` 容器；`docker compose up -d` 会自动启动 web、worker、scheduler。
+- Worker/Scheduler 可以在“系统设置 -> 后台服务”中手动停止、启动或重启，状态会持久化。
+- 批量映射重试不再要求手动启动 worker；默认内嵌模式下自动可用。
+- 单条快速重试失败时按提示使用深度重试，或查看具体失败原因。
 
 ---
 
@@ -74,7 +73,7 @@
 - 🔁 自动化执行：手动执行 + 定时 Cron 双模式
 - 🧹 删除联动：支持冷却、阈值、试运行、通知
 - 🛡️ 删除保护：cross-seed 检测、可选回收站、待判定保护
-- 🧵 后台任务：任务队列 + worker 服务，支持异步执行与停止请求
+- 🧵 后台任务：任务队列 + 内嵌 worker/scheduler，支持异步执行、状态与控制
 - 🌙 界面：响应式布局、暗色主题、htmx 局部刷新与后台任务面板
 - 📦 映射/缓存管理：筛选、重试、批量清理
 - 🪵 日志与诊断：方便定位配置与运行问题
@@ -97,12 +96,13 @@
 ## 🧵 后台 worker 与生产运行
 
 - 生产入口使用 gunicorn（默认 1 worker、8 threads）。
-- `worker.py` 负责消费后台任务队列；Compose 已提供 `worker` 服务。
-- `scheduler.py` 独立运行 cron 调度；Compose 已提供 `scheduler` 服务，web 默认关闭进程内 scheduler。
+- v0.5.3 起默认单容器运行：web 进程自动监管内嵌 `worker.py` 和 `scheduler.py` 子进程，无需额外 Compose 服务。
+- 设置页“后台服务”可查看 Worker/Scheduler 在线状态、PID、最后心跳，并支持启动、停止、重启。
 - worker 会定期写入心跳；检测到活跃 worker 时，硬链接页面“立即执行”会自动转为后台队列，否则回退为同步执行。
 - 同一 run_key 增加跨进程文件锁；web/worker 同时触发同一任务时只允许一个进程执行。
+- 内嵌 worker/scheduler 使用文件锁防止重复消费，并在父进程退出时自动结束。
+- 需要拆分部署时使用 `docker-compose.prod.yml`，并设置 `HLM_EMBEDDED_SUPERVISOR=false`。
 - 多 worker 场景建议保持 gunicorn worker 数为 1，后续可迁移到完全 DB 驱动的任务队列。
-- `HLM_WORKER=true` 时进程不会启动 scheduler。
 
 ---
 
@@ -164,6 +164,7 @@
 - `GET /api/v1/metrics`：Prometheus 文本指标
 - `POST /api/v1/jobs`：创建后台任务
 - `GET /api/v1/jobs` / `GET /api/v1/jobs/{id}` / `GET /api/v1/jobs/status?ids=1,2`：查询后台任务
+- `GET /api/runtime/processes`：查询内嵌 Worker/Scheduler 状态
 - `POST /api/v1/jobs/{id}/stop`：请求停止后台任务
 
 > 设置 `api_access_token` 后，除 `/api/health` 外的所有 `/api/*` 请求都需要携带请求头 `X-API-Token`。
@@ -277,6 +278,8 @@ v0.5.1 起彻底移除应用内开发模式：不再自动拉取 Git 仓库、�
 
 ### Q2：如何更新到新版本？
 ```bash
+# v0.5.3 将 worker/scheduler 内嵌到 hlm，旧版分离容器请一并清理
+docker compose down --remove-orphans
 docker compose pull
 docker compose up -d --force-recreate
 ```
@@ -330,6 +333,7 @@ core/
     backfill_service.py
     backup_service.py
     operation_guard_service.py
+    process_supervisor.py
     diagnostics_service.py
     security_service.py
     webhook_service.py

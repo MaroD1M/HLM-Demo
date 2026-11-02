@@ -26,7 +26,7 @@ audit:
 	$(PY) -m pip_audit -r requirements.txt
 
 smoke:
-	HLM_ALLOW_NO_AUTH=true $(PY) -c "from app import app, init_app; [init_app() for _ in [0] if app.app_context().push() is None]; c=app.test_client(); paths=['/api/health','/','/hardlink','/delete-monitor','/cron','/downloader','/notifier','/logs','/settings']; [(__import__('builtins').print(p, c.get(p).status_code), (_ for _ in ()).throw(AssertionError(f'{p} failed')) if c.get(p).status_code!=200 else None) for p in paths]; print('Smoke check passed.')"
+	HLM_ALLOW_NO_AUTH=true HLM_EMBEDDED_SUPERVISOR=false $(PY) -c "from app import app, init_app; [init_app() for _ in [0] if app.app_context().push() is None]; c=app.test_client(); paths=['/api/health','/','/hardlink','/delete-monitor','/cron','/downloader','/notifier','/logs','/settings']; [(__import__('builtins').print(p, c.get(p).status_code), (_ for _ in ()).throw(AssertionError(f'{p} failed')) if c.get(p).status_code!=200 else None) for p in paths]; print('Smoke check passed.')"
 
 dev:
 	$(PY) app.py

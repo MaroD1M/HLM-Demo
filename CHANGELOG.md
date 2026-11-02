@@ -1,5 +1,23 @@
 # Changelog
 
+## [v0.5.3] - 2026-11-02
+
+### Added
+- 单容器内嵌 worker/scheduler 子进程：启动 `hlm` 时自动拉起 worker 和 scheduler，不再需要额外的 Compose 服务。
+- 设置页新增“后台服务”卡片：展示 Worker/Scheduler 在线、离线、启动中、已停止状态，并支持启动、停止、重启。
+- 新增 `/api/runtime/processes` 状态接口；映射页增加 Worker 状态徽标，Worker 离线时禁用批量重试入口。
+- `docker-compose.prod.yml` 保留外部 worker/scheduler 分离部署模式，通过 `HLM_EMBEDDED_SUPERVISOR=false` 切换。
+
+### Fixed
+- 单条重试失败时显示真实原因和建议（快速预筛无候选、文件列表不匹配、缺少文件大小等）。
+- 内嵌 worker/scheduler 使用文件锁和父进程退出信号，避免重复消费和孤儿进程。
+- 停止 Worker/Scheduler 时使用优雅退出，超时后再强制结束。
+- 单条映射重试与后台任务共用 `backfill_single` 运行键，停止请求能够真正生效。
+
+### Changed
+- 默认 `docker-compose.yml` 合并为单个 `hlm` 服务；worker/scheduler 默认内嵌，不再单独启动。升级旧 compose 时可执行 `docker compose down --remove-orphans` 清理旧容器。
+- Worker/Scheduler 状态、PID、最近心跳和管理器状态写入运行时配置，供页面/API 查询。
+
 ## [v0.5.2] - 2026-11-02
 
 ### Added
