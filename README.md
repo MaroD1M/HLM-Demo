@@ -12,7 +12,7 @@
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-Web-black?style=flat-square&logo=flask)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)
 
 </div>
 
@@ -343,3 +343,13 @@ scripts/
 docker-compose.yml
 docker-compose.prod.yml
 ```
+
+---
+
+## 📄 许可证
+
+Copyright (c) 2026 MaroD1M
+
+本项目使用 [GNU Affero General Public License v3.0（AGPL-3.0）](LICENSE) 发布。
+你可以自由使用、修改和分发本项目，但分发衍生作品或通过网络向用户提供服务时，
+必须按 AGPL-3.0 的要求提供完整对应源码。详见 [LICENSE](LICENSE)。
