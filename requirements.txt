@@ -3,6 +3,6 @@ Flask-SQLAlchemy==3.1.1
 requests==2.34.2
 APScheduler==3.11.3
 cryptography==50.0.2
-gunicorn==23.0.0
+gunicorn==27.0.1
 apprise==2.2.0
 sentry-sdk==2.75.0
